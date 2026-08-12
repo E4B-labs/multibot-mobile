@@ -6,3 +6,11 @@ dist-electron
 *.tsbuildinfo
 electron/resources/speech-helper
 release
+
+# multibot: silnik
+engine/.venv/
+engine-data/
+engine/.env
+__pycache__/
+*.pyc
+.pytest_cache/

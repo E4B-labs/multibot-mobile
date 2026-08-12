@@ -1,0 +1,327 @@
+"""Mostek CDP (faza 4 / Task 2) na PRAWDZIWYM chromium podniesionym providerem Taska 1.
+
+Mockowanie CDP nie sprawdziłoby niczego, co w tym module może pęknąć: ack ramek,
+sesja `flatten`, mapowanie VK, dosięgnięcie renderera przez `Input.dispatch*`.
+Dlatego fixture odpala przeglądarkę (headless — `SLAFY_BROWSER_HEADLESS=1`) w
+katalogu profilu bota, dokładnie tam, gdzie czyta ją `server/computer.py`.
+
+ZAKAZ C: — `SLAFY_DATA_DIR` schodzi na `tmp_path` tylko wtedy, gdy pytest trzyma
+tmp poza C:; inaczej robimy katalog na D: (wzorzec z `test_browser_provider.py`).
+
+Nawigacja i weryfikacja DOM-u lecą WŁASNĄ, synchroniczną sesją CDP obok mostka —
+mostek celowo nie umie nawigować (przeglądaniem steruje Hermes, nie my).
+"""
+
+import base64
+import json
+import os
+import shutil
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+from websockets.sync.client import connect
+
+os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
+
+from server import app as app_module  # noqa: E402
+from server.browser_plugin.provider import SlafyBrowserProvider  # noqa: E402
+
+_D_TMP = Path(r"D:\tmp")
+_BOT = "computerbot"
+_BOT2 = "computerbot2"
+
+# Cała strona jest przyciskiem, więc klik w (100, 100) trafia niezależnie od viewportu.
+_PAGE = (
+    "data:text/html,<body style='margin:0'>"
+    "<button id=b style='position:fixed;inset:0' "
+    "onclick=\"document.title='clicked'\">x</button>"
+    "<input id=i autofocus></body>"
+)
+# Druga karta MUSI mieć inny adres — inaczej `status.url` nie odróżni, na której
+# karcie stoi mostek (obie miałyby ten sam `data:`).
+_PAGE2 = (
+    "data:text/html,<body style='margin:0'>"
+    "<button id=b2 style='position:fixed;inset:0' "
+    "onclick=\"document.title='clicked2'\">y</button></body>"
+)
+
+
+class _SyncCdp:
+    """Minimalny klient CDP dla testu: attach do karty + komendy w tej sesji."""
+
+    def __init__(self, cdp_url: str):
+        info = httpx.get(f"{cdp_url}/json/version", timeout=10).json()
+        self.ws = connect(info["webSocketDebuggerUrl"], open_timeout=10, max_size=None)
+        self._id = 0
+        target = next(t["id"] for t in httpx.get(f"{cdp_url}/json/list", timeout=10).json()
+                      if t["type"] == "page")
+        self.session = self.attach(target)
+
+    def attach(self, target_id: str) -> str:
+        return self.call("Target.attachToTarget", {"targetId": target_id, "flatten": True})["sessionId"]
+
+    def call(self, method: str, params: dict | None = None, session: str | None = None) -> dict:
+        self._id += 1
+        msg = {"id": self._id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        self.ws.send(json.dumps(msg))
+        while True:
+            reply = json.loads(self.ws.recv(timeout=30))
+            if reply.get("id") == self._id:
+                assert "error" not in reply, reply["error"]
+                return reply["result"]
+
+    def eval(self, expression: str, session: str | None = None):
+        result = self.call(
+            "Runtime.evaluate", {"expression": expression, "returnByValue": True}, session or self.session
+        )
+        return result["result"].get("value")
+
+    def goto(self, url: str, marker: str = "b") -> None:
+        self.call("Page.enable", session=self.session)
+        self.call("Page.navigate", {"url": url}, self.session)
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if self.eval("document.readyState") == "complete" and self.eval(f"!!document.getElementById('{marker}')"):
+                return
+            time.sleep(0.1)
+        raise AssertionError("strona testowa się nie wczytała")
+
+    def wait_for(self, expression: str, timeout: float = 10.0, session: str | None = None):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            value = self.eval(expression, session)
+            if value:
+                return value
+            time.sleep(0.1)  # input jedzie fire-and-forget — czekamy na skutek, nie na odpowiedź
+        return None
+
+    def close(self) -> None:
+        self.ws.close()
+
+
+@pytest.fixture(scope="module")
+def browser(tmp_path_factory):
+    if tmp_path_factory.getbasetemp().drive.upper() == "C:":
+        _D_TMP.mkdir(parents=True, exist_ok=True)
+        root = Path(tempfile.mkdtemp(prefix="slafy-computer-", dir=_D_TMP))
+    else:
+        root = tmp_path_factory.mktemp("computer-data")
+    profile = root / "profiles" / _BOT
+    profile.mkdir(parents=True)
+    (profile / "bot.json").write_text(json.dumps({"id": _BOT, "name": "Komp"}), encoding="utf-8")
+
+    old = {k: os.environ.get(k) for k in ("SLAFY_DATA_DIR", "HERMES_HOME", "SLAFY_BROWSER_HEADLESS")}
+    os.environ["SLAFY_DATA_DIR"] = str(root)
+    os.environ["HERMES_HOME"] = str(profile)  # per-bot `user_data_dir` + `browser.json`
+    os.environ["SLAFY_BROWSER_HEADLESS"] = "1"
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers")
+
+    provider = SlafyBrowserProvider()
+    info = provider.create_session("task-computer")
+    # Kontrakt z Taskiem 1: mostek czyta wyłącznie `browser.json` z profilu bota.
+    assert json.loads((profile / "browser.json").read_text(encoding="utf-8"))["cdp_url"]
+    try:
+        yield info["cdp_url"]
+    finally:
+        provider.close_session(info["bb_session_id"])
+        for key, value in old.items():
+            os.environ.pop(key, None) if value is None else os.environ.__setitem__(key, value)
+        if root.parent == _D_TMP:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.fixture
+def client(browser):
+    with TestClient(app_module.app) as c:
+        yield c
+
+
+@pytest.fixture
+def page(browser):
+    cdp = _SyncCdp(browser)
+    cdp.goto(_PAGE)
+    try:
+        yield cdp
+    finally:
+        cdp.close()
+
+
+@pytest.fixture
+def second_bot(browser):
+    """Drugi bot = DRUGA przeglądarka, w tym samym katalogu danych.
+
+    Test przełączania kart potrzebuje świeżego chromium: karta zakładana przez
+    `Target.createTarget` w przeglądarce zużytej przez poprzednie testy potrafi
+    przestać odpowiadać na komendy CDP swojej sesji (renderer milknie także wtedy,
+    gdy nasz mostek jest w ogóle rozłączony — sprawdzone). Przy okazji test pilnuje,
+    że dwa boty = dwie niezależne przeglądarki i dwa niezależne mostki.
+    """
+    root = Path(os.environ["SLAFY_DATA_DIR"])
+    profile = root / "profiles" / _BOT2
+    profile.mkdir(parents=True, exist_ok=True)
+    (profile / "bot.json").write_text(json.dumps({"id": _BOT2, "name": "Komp2"}), encoding="utf-8")
+
+    home = os.environ["HERMES_HOME"]
+    os.environ["HERMES_HOME"] = str(profile)  # provider czyta stąd `user_data_dir`
+    provider = SlafyBrowserProvider()
+    try:
+        info = provider.create_session("task-computer-2")
+    finally:
+        os.environ["HERMES_HOME"] = home
+    try:
+        yield info["cdp_url"]
+    finally:
+        provider.close_session(info["bb_session_id"])
+
+
+def test_status_reports_running_browser_and_url(client, page):
+    assert client.get(f"/api/bots/{_BOT}/computer/status").json() == {
+        "running": True,
+        "url": page.eval("location.href"),
+    }
+
+
+def test_status_false_without_browser(client):
+    """Bot bez `browser.json` = komputer wyłączony, nie błąd."""
+    other = Path(os.environ["SLAFY_DATA_DIR"]) / "profiles" / "bezkompa"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "bot.json").write_text(json.dumps({"id": "bezkompa"}), encoding="utf-8")
+    assert client.get("/api/bots/bezkompa/computer/status").json() == {"running": False, "url": None}
+
+
+def test_screenshot_returns_jpeg(client, page):
+    data = client.post(f"/api/bots/{_BOT}/computer/screenshot").json()["data"]
+    assert base64.b64decode(data)[:2] == b"\xff\xd8"  # magic JPEG
+
+
+def test_screencast_delivers_frames(client, page):
+    with client.websocket_connect(f"/api/bots/{_BOT}/computer") as ws:
+        frame = ws.receive_json()
+    assert frame["type"] == "frame"
+    assert base64.b64decode(frame["data"])[:2] == b"\xff\xd8"
+    assert frame["w"] > 0 and frame["h"] > 0  # przestrzeń współrzędnych dla inputu
+
+
+def test_screencast_delivers_frame_on_idle_static_page(client, page):
+    """GŁÓWNY przypadek take-overu: bot stoi bezczynnie, strona się NIE przemalowuje.
+
+    Chromium nadaje ramki screencastu tylko z klatek kompozytora, a `everyNthFrame`
+    dodatkowo odrzuca n-1 z nich — na statycznej stronie pierwsza ramka nie przyszłaby
+    nigdy i live view zostałby czarny. Pozostałe testy tego nie łapią, bo `_PAGE` ma
+    `<input autofocus>`, a migający kursor przemalowuje stronę bez końca.
+    """
+    page.goto(_PAGE2, marker="b2")  # zero animacji, zero kursora
+    time.sleep(2)  # kompozytor zdąży się uspokoić po nawigacji
+
+    with client.websocket_connect(f"/api/bots/{_BOT}/computer") as ws:
+        box: dict = {}
+        # Wątek-strażnik: bez niego brak ramki wiesza test zamiast go wywalić.
+        reader = threading.Thread(target=lambda: box.update(f=ws.receive_json()), daemon=True)
+        reader.start()
+        reader.join(20)
+        assert box.get("f", {}).get("type") == "frame", "brak ramki ze statycznej strony"
+
+
+def test_two_clients_share_one_screencast(client, page):
+    with client.websocket_connect(f"/api/bots/{_BOT}/computer") as a, \
+         client.websocket_connect(f"/api/bots/{_BOT}/computer") as b:
+        assert a.receive_json()["type"] == "frame"
+        assert b.receive_json()["type"] == "frame"
+
+
+def test_mouse_input_clicks_element(client, page):
+    with client.websocket_connect(f"/api/bots/{_BOT}/computer") as ws:
+        ws.receive_json()  # pierwsza ramka = sesja CDP mostka jest już podpięta
+        for kind in ("mousePressed", "mouseReleased"):
+            ws.send_json({
+                "type": "input",
+                "event": {"kind": "mouse", "type": kind, "x": 100, "y": 100,
+                          "button": "left", "clickCount": 1},
+            })
+        assert page.wait_for("document.title === 'clicked'") is True
+
+
+def test_key_input_types_text_and_enter_submits(client, page):
+    """Enter/Backspace jadą tylko z `windowsVirtualKeyCode` wyliczonym z `key`."""
+    page.eval("document.getElementById('i').focus();"
+              "document.getElementById('i').addEventListener('keydown',"
+              "e=>{if(e.key==='Enter')window.__enter=true});")
+    with client.websocket_connect(f"/api/bots/{_BOT}/computer") as ws:
+        ws.receive_json()
+        for key in ("a", "b", "c"):
+            for kind in ("keyDown", "keyUp"):
+                ws.send_json({"type": "input",
+                              "event": {"kind": "key", "type": kind, "key": key, "code": f"Key{key.upper()}"}})
+        assert page.wait_for("document.getElementById('i').value === 'abc'") is True
+
+        for kind in ("keyDown", "keyUp"):  # UI wysyła tylko key/code — VK dokłada backend
+            ws.send_json({"type": "input",
+                          "event": {"kind": "key", "type": kind, "key": "Backspace", "code": "Backspace"}})
+        assert page.wait_for("document.getElementById('i').value === 'ab'") is True
+
+        for kind in ("keyDown", "keyUp"):
+            ws.send_json({"type": "input",
+                          "event": {"kind": "key", "type": kind, "key": "Enter", "code": "Enter"}})
+        assert page.wait_for("window.__enter === true") is True
+
+
+def test_screencast_follows_new_tab(client, second_bot):
+    """Bot otwiera karty w trakcie streamu — mostek ma się przepiąć na wierzchnią.
+
+    Bez tego live view zamarza na karcie z chwili połączenia, a take-over klika w
+    stronę, której użytkownik nie widzi. Klikamy w pętli, bo przepięcie ma opóźnienie
+    (`_watch` odpytuje `/json/list` co sekundę, potem attach + start screencastu) —
+    dokładnie tak, jak zachowa się użytkownik, któremu pierwszy klik "nie wszedł".
+    """
+    page = _SyncCdp(second_bot)
+    page.goto(_PAGE)
+    with client.websocket_connect(f"/api/bots/{_BOT2}/computer") as ws:
+        ws.receive_json()  # mostek stoi na pierwszej karcie
+        target = page.call("Target.createTarget", {"url": _PAGE2})["targetId"]
+        try:
+            session = page.attach(target)
+            assert page.wait_for("!!document.getElementById('b2')", session=session) is True
+            fresh = page.eval("location.href", session=session)  # `data:` po normalizacji
+
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                assert client.get(f"/api/bots/{_BOT2}/computer/status").json()["url"] == fresh
+                for kind in ("mousePressed", "mouseReleased"):
+                    ws.send_json({"type": "input", "event": {
+                        "kind": "mouse", "type": kind, "x": 100, "y": 100,
+                        "button": "left", "clickCount": 1}})
+                if page.eval("document.title", session=session) == "clicked2":
+                    break
+                time.sleep(0.5)
+            else:
+                pytest.fail("mostek nie przepiął się na nową kartę")
+            assert page.eval("document.title") != "clicked2"  # stara karta nie dostała klika
+        finally:
+            # `Target.closeTarget` TYLKO w teście — to nasza karta. `server/computer.py`
+            # nie wolno wołać komend globalnych: ubiłby kartę spod agenta.
+            page.call("Target.closeTarget", {"targetId": target})
+            page.close()
+
+
+def test_ws_closes_4404_without_browser(client):
+    other = Path(os.environ["SLAFY_DATA_DIR"]) / "profiles" / "bezkompa2"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "bot.json").write_text(json.dumps({"id": "bezkompa2"}), encoding="utf-8")
+    with pytest.raises(Exception) as exc:
+        with client.websocket_connect("/api/bots/bezkompa2/computer") as ws:
+            ws.receive_json()
+    assert getattr(exc.value, "code", None) == 4404
+
+
+def test_ws_closes_4404_for_unknown_bot(client):
+    with pytest.raises(Exception) as exc:
+        with client.websocket_connect("/api/bots/niematakiego/computer") as ws:
+            ws.receive_json()
+    assert getattr(exc.value, "code", None) == 4404

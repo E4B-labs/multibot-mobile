@@ -1,0 +1,60 @@
+[watch] working dir: D:\tmp\watch-hermes\lc6hKU4BdsA-hd2
+[watch] using local file…
+[watch] extracting scene-aware frames over full 730.0s (target 50, cap 35)…
+
+# watch: video report
+
+- **Source:** D:/tmp/watch-hermes/lc6hKU4BdsA-hd/download/video.mp4
+- **Title:** video.mp4
+- **Duration:** 12:10 (730.0s)
+- **Resolution:** 1920x990 (av1)
+- **Detail:** balanced
+- **Frames:** 14 selected from 14 candidates (scene, full range, budget 50, cap 35)
+- **Cue frames:** 15 at transcript-flagged timestamps (transcript-cue)
+- **Frame size:** max 1024px wide, max 1998px tall
+- **Transcript:** none available
+
+> **Warning:** This is a 12-minute video. Frame coverage is sparse at this length under `balanced` detail — its cap spreads thin across the full clip. For better results, re-run with `--start HH:MM:SS --end HH:MM:SS` to zoom into a section, or use `--detail token-burner` to keep every scene-change frame across the whole video.
+
+## Frames
+
+Frames live at: `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames`
+
+**Read each frame path below with the Read tool to view the image.** Frames are in chronological order; `t=MM:SS` is the absolute timestamp in the source video.
+
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0001.jpg` (t=00:00, reason=first-frame)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0000.jpg` (t=00:20, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0001.jpg` (t=00:40, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0002.jpg` (t=01:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0003.jpg` (t=01:50, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0002.jpg` (t=01:53, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0003.jpg` (t=01:58, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0004.jpg` (t=02:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0004.jpg` (t=02:25, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0005.jpg` (t=02:31, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0006.jpg` (t=02:34, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0007.jpg` (t=02:37, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0005.jpg` (t=03:00, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0008.jpg` (t=03:00, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0009.jpg` (t=03:26, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0010.jpg` (t=03:30, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0006.jpg` (t=03:40, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0011.jpg` (t=03:54, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0012.jpg` (t=04:00, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0007.jpg` (t=04:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0008.jpg` (t=05:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0009.jpg` (t=05:45, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0010.jpg` (t=06:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0011.jpg` (t=06:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0012.jpg` (t=07:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0013.jpg` (t=07:36, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0013.jpg` (t=07:45, reason=transcript-cue)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\frame_0014.jpg` (t=08:10, reason=scene-change)
+- `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2\frames\cue_0014.jpg` (t=08:15, reason=transcript-cue)
+
+## Transcript
+
+_No transcript available — proceed with frames only. Captions were missing and the Whisper fallback was unavailable (no API key set, or `--no-whisper` was used). Run `python3 G:\ClaudeCode\plugins\cache\claude-video\watch\0.2.0\skills\watch\scripts\setup.py` to enable Whisper, then re-run._
+
+---
+_Work dir: `D:\tmp\watch-hermes\lc6hKU4BdsA-hd2` — delete when done._

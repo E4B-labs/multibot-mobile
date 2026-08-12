@@ -1,0 +1,170 @@
+[watch] working dir: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd
+[watch] checking metadata/captions via yt-dlp…
+[youtube] Extracting URL: https://youtu.be/F1_0Lkp16Rc
+[youtube] F1_0Lkp16Rc: Downloading webpage
+[youtube] F1_0Lkp16Rc: Downloading android vr player API JSON
+[info] F1_0Lkp16Rc: Downloading subtitles: en-orig, en
+[info] F1_0Lkp16Rc: Downloading 1 format(s): 313+251
+[info] Writing video subtitles to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en-orig.vtt
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en-orig.vtt
+[download]    1.00KiB at   47.62KiB/s (00:00:00)[download]    3.00KiB at  142.86KiB/s (00:00:00)[download]    7.00KiB at  333.34KiB/s (00:00:00)[download]   15.00KiB at  681.76KiB/s (00:00:00)[download]   16.04KiB at  697.25KiB/s (00:00:00)[download] 100% of   16.04KiB in 00:00:00 at 160.37KiB/s
+[info] Writing video subtitles to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en.vtt
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en.vtt
+[download]    1.00KiB at  999.12KiB/s (00:00:00)[download]    3.00KiB at    2.93MiB/s (00:00:00)[download]    7.00KiB at    6.83MiB/s (00:00:00)[download]   15.00KiB at    7.33MiB/s (00:00:00)[download]   16.04KiB at    5.22MiB/s (00:00:00)[download] 100% of   16.04KiB in 00:00:00 at 196.56KiB/s
+[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.info.json
+[SubtitlesConvertor] Converting subtitles
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[watch] downloading video via yt-dlp…
+[youtube] Extracting URL: https://youtu.be/F1_0Lkp16Rc
+[youtube] F1_0Lkp16Rc: Downloading webpage
+[youtube] F1_0Lkp16Rc: Downloading android vr player API JSON
+[info] F1_0Lkp16Rc: Downloading subtitles: en-orig, en
+[info] F1_0Lkp16Rc: Downloading 1 format(s): 247+251
+Deleting existing file D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en-orig.vtt
+[info] Writing video subtitles to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en-orig.vtt
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en-orig.vtt
+[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at    2.92MiB/s (00:00:00)[download]    7.00KiB at    6.81MiB/s (00:00:00)[download]   15.00KiB at   14.60MiB/s (00:00:00)[download]   16.04KiB at    7.82MiB/s (00:00:00)[download] 100% of   16.04KiB in 00:00:00 at 208.26KiB/s
+Deleting existing file D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en.vtt
+[info] Writing video subtitles to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en.vtt
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.en.vtt
+[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at    2.92MiB/s (00:00:00)[download]    7.00KiB at    6.81MiB/s (00:00:00)[download]   15.00KiB at   14.60MiB/s (00:00:00)[download]   16.04KiB at    7.83MiB/s (00:00:00)[download] 100% of   16.04KiB in 00:00:00 at 211.02KiB/s
+[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.info.json
+[SubtitlesConvertor] Converting subtitles
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.f247.webm
+[download]   0.0% of    5.28MiB at  999.36KiB/s ETA 00:05[download]   0.1% of    5.28MiB at    1.46MiB/s ETA 00:03[download]   0.1% of    5.28MiB at    3.42MiB/s ETA 00:01[download]   0.3% of    5.28MiB at    7.32MiB/s ETA 00:00[download]   0.6% of    5.28MiB at    3.36MiB/s ETA 00:01[download]   1.2% of    5.28MiB at    4.10MiB/s ETA 00:01[download]   2.3% of    5.28MiB at    5.17MiB/s ETA 00:00[download]   4.7% of    5.28MiB at    6.92MiB/s ETA 00:00[download]   9.5% of    5.28MiB at    8.46MiB/s ETA 00:00[download]  18.9% of    5.28MiB at    9.70MiB/s ETA 00:00[download]  37.9% of    5.28MiB at    7.75MiB/s ETA 00:00[download]  75.8% of    5.28MiB at    6.34MiB/s ETA 00:00[download] 100.0% of    5.28MiB at    6.45MiB/s ETA 00:00[download] 100% of    5.28MiB in 00:00:00 at 5.76MiB/s   
+[download] Destination: D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.f251.webm
+[download]   0.1% of    1.72MiB at  500.04KiB/s ETA 00:05[download]   0.2% of    1.72MiB at 1000.07KiB/s ETA 00:01[download]   0.4% of    1.72MiB at    2.28MiB/s ETA 00:00[download]   0.9% of    1.72MiB at    4.88MiB/s ETA 00:00[download]   1.8% of    1.72MiB at    6.06MiB/s ETA 00:00[download]   3.6% of    1.72MiB at    6.15MiB/s ETA 00:00[download]   7.2% of    1.72MiB at    5.91MiB/s ETA 00:00[download]  14.5% of    1.72MiB at    5.79MiB/s ETA 00:00[download]  29.0% of    1.72MiB at    5.80MiB/s ETA 00:00[download]  58.1% of    1.72MiB at    5.81MiB/s ETA 00:00[download] 100.0% of    1.72MiB at    6.56MiB/s ETA 00:00[download] 100% of    1.72MiB in 00:00:00 at 4.89MiB/s   
+[Merger] Merging formats into "D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.mp4"
+Deleting original file D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.f247.webm (pass -k to keep)
+Deleting original file D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\download\video.f251.webm (pass -k to keep)
+[watch] extracting scene-aware frames over full 106.0s (target 50, cap 45)…
+
+# watch: video report
+
+- **Source:** https://youtu.be/F1_0Lkp16Rc
+- **Title:** Introducing Grok Bot
+- **Uploader:** Grok
+- **Duration:** 01:46 (106.0s)
+- **Resolution:** 1280x720 (vp9)
+- **Detail:** balanced
+- **Frames:** 45 selected from 76 candidates (scene, full range, budget 50, cap 45)
+- **Cue frames:** 5 at transcript-flagged timestamps (transcript-cue)
+- **Frame size:** max 1024px wide, max 1998px tall
+- **Transcript:** 47 segments (via captions)
+
+## Frames
+
+Frames live at: `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames`
+
+**Read each frame path below with the Read tool to view the image.** Frames are in chronological order; `t=MM:SS` is the absolute timestamp in the source video.
+
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0001.jpg` (t=00:00, reason=first-frame)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0003.jpg` (t=00:04, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0004.jpg` (t=00:05, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0006.jpg` (t=00:06, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0008.jpg` (t=00:09, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\cue_0000.jpg` (t=00:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0010.jpg` (t=00:11, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0011.jpg` (t=00:13, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0013.jpg` (t=00:15, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0015.jpg` (t=00:17, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0016.jpg` (t=00:18, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0018.jpg` (t=00:20, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0020.jpg` (t=00:23, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0021.jpg` (t=00:24, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0023.jpg` (t=00:27, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\cue_0001.jpg` (t=00:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0025.jpg` (t=00:30, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0027.jpg` (t=00:34, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0028.jpg` (t=00:37, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0030.jpg` (t=00:38, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0032.jpg` (t=00:42, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0033.jpg` (t=00:43, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0035.jpg` (t=00:46, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0037.jpg` (t=00:49, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\cue_0002.jpg` (t=00:50, reason=transcript-cue)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0039.jpg` (t=00:55, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0040.jpg` (t=00:56, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0042.jpg` (t=01:00, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0044.jpg` (t=01:02, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0045.jpg` (t=01:05, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0047.jpg` (t=01:09, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\cue_0003.jpg` (t=01:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0049.jpg` (t=01:12, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0050.jpg` (t=01:14, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0052.jpg` (t=01:17, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0054.jpg` (t=01:22, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0056.jpg` (t=01:22, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0057.jpg` (t=01:22, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0059.jpg` (t=01:24, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0061.jpg` (t=01:27, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0062.jpg` (t=01:28, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\cue_0004.jpg` (t=01:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0064.jpg` (t=01:30, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0066.jpg` (t=01:33, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0067.jpg` (t=01:34, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0069.jpg` (t=01:37, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0071.jpg` (t=01:39, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0073.jpg` (t=01:40, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0074.jpg` (t=01:41, reason=scene-change)
+- `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd\frames\frame_0076.jpg` (t=01:43, reason=scene-change)
+
+## Transcript
+
+_Source: captions._
+
+```
+[00:09] Can you send NDAs to all of our campus leads?
+[00:09] leads? &gt;&gt; How many employees do I have starting on
+[00:11] &gt;&gt; How many employees do I have starting on Monday?
+[00:11] Monday? &gt;&gt; Confirm which companies on LinkedIn
+[00:13] &gt;&gt; Confirm which companies on LinkedIn you're currently parsing through.
+[00:23] &gt;&gt; There wasn't anything to learn. It was just like bringing on a co-orker to my
+[00:25] just like bringing on a co-orker to my team. Something really cool that bot can
+[00:28] team. Something really cool that bot can do is actually watch how you work and
+[00:30] do is actually watch how you work and then be able to record what you're doing
+[00:33] then be able to record what you're doing and then summarize that into a real
+[00:35] and then summarize that into a real workflow.
+[00:36] workflow. &gt;&gt; It's not using your computer. So you can
+[00:38] &gt;&gt; It's not using your computer. So you can keep doing work in parallel while bot is
+[00:40] keep doing work in parallel while bot is working on another instance.
+[00:42] working on another instance. &gt;&gt; For almost every other AI product I've
+[00:44] &gt;&gt; For almost every other AI product I've used, the output is in the chat. With
+[00:46] used, the output is in the chat. With bot, the output is somewhere else.
+[00:48] bot, the output is somewhere else. Having an actual computer instance that
+[00:50] Having an actual computer instance that has the browser open that understands
+[00:52] has the browser open that understands how the site actually functions. That's
+[00:54] how the site actually functions. That's I think why it's worked so well. It all
+[00:56] I think why it's worked so well. It all started with email. I said just go off
+[00:58] started with email. I said just go off and send them. All of them are sent out
+[00:59] and send them. All of them are sent out as I had said and it's kind of built its
+[01:01] as I had said and it's kind of built its own layer of trust and it's something
+[01:02] own layer of trust and it's something that I'm totally comfortable being hands
+[01:04] that I'm totally comfortable being hands off with.
+[01:05] off with. &gt;&gt; I have a Figma agent that will create
+[01:07] &gt;&gt; I have a Figma agent that will create slides for me during a meeting. It will
+[01:10] slides for me during a meeting. It will hold the discovery notes and then create
+[01:11] hold the discovery notes and then create a slide deck at the end of the call. And
+[01:13] a slide deck at the end of the call. And they're always like, "How did you create
+[01:15] they're always like, "How did you create that during the call? That's
+[01:17] that during the call? That's incredible." I think it's funny when
+[01:18] incredible." I think it's funny when they talk to each other and they
+[01:19] they talk to each other and they actually give direction to each other.
+[01:23] actually give direction to each other. &gt;&gt; I notice that's kind of replacing like
+[01:25] &gt;&gt; I notice that's kind of replacing like all of my other apps. Like I'm just
+[01:27] all of my other apps. Like I'm just living with my bots like in that window
+[01:29] living with my bots like in that window and I'm not switching between everything
+[01:31] and I'm not switching between everything else.
+[01:31] else. &gt;&gt; I've always had like a AI thinking
+[01:33] &gt;&gt; I've always had like a AI thinking partner, but I've never had an AI doing
+[01:35] partner, but I've never had an AI doing partner that like actually does things.
+[01:37] partner that like actually does things. With bot, there are no limitations.
+[01:39] With bot, there are no limitations. &gt;&gt; It's so natural. Can't really imagine
+[01:41] &gt;&gt; It's so natural. Can't really imagine going back to an old way of working.
+```
+
+---
+_Work dir: `D:\tmp\watch-hermes\F1_0Lkp16Rc-hd` — delete when done._

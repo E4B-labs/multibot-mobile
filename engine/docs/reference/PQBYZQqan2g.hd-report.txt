@@ -1,0 +1,817 @@
+[watch] working dir: D:\tmp\watch-hermes\PQBYZQqan2g-hd
+[watch] checking metadata/captions via yt-dlp…
+[youtube] Extracting URL: https://youtu.be/PQBYZQqan2g
+[youtube] PQBYZQqan2g: Downloading webpage
+[youtube] PQBYZQqan2g: Downloading android vr player API JSON
+[info] PQBYZQqan2g: Downloading subtitles: en-orig, en
+[info] PQBYZQqan2g: Downloading 1 format(s): 399+251
+[info] Writing video subtitles to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en-orig.vtt
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en-orig.vtt
+[download]    1.00KiB at  997.46KiB/s (00:00:00)[download]    3.00KiB at    2.92MiB/s (00:00:00)[download]    7.00KiB at    6.82MiB/s (00:00:00)[download]   15.00KiB at    7.32MiB/s (00:00:00)[download]   31.00KiB at    3.36MiB/s (00:00:00)[download]   63.00KiB at    4.39MiB/s (00:00:00)[download]  127.00KiB at    5.64MiB/s (00:00:00)[download]  245.64KiB at    7.05MiB/s (00:00:00)[download] 100% of  245.64KiB in 00:00:00 at 1.89MiB/s
+[info] Writing video subtitles to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en.vtt
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en.vtt
+[download]    1.00KiB at  998.64KiB/s (00:00:00)[download]    3.00KiB at    2.93MiB/s (00:00:00)[download]    7.00KiB at    6.83MiB/s (00:00:00)[download]   15.00KiB at    7.32MiB/s (00:00:00)[download]   31.00KiB at    3.36MiB/s (00:00:00)[download]   63.00KiB at    4.39MiB/s (00:00:00)[download]  127.00KiB at    5.64MiB/s (00:00:00)[download]  245.64KiB at    7.04MiB/s (00:00:00)[download] 100% of  245.64KiB in 00:00:00 at 1.83MiB/s
+[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.info.json
+[SubtitlesConvertor] Converting subtitles
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[watch] downloading video via yt-dlp…
+[youtube] Extracting URL: https://youtu.be/PQBYZQqan2g
+[youtube] PQBYZQqan2g: Downloading webpage
+[youtube] PQBYZQqan2g: Downloading android vr player API JSON
+[info] PQBYZQqan2g: Downloading subtitles: en-orig, en
+[info] PQBYZQqan2g: Downloading 1 format(s): 398+251
+Deleting existing file D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en-orig.vtt
+[info] Writing video subtitles to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en-orig.vtt
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en-orig.vtt
+[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at    2.93MiB/s (00:00:00)[download]    7.00KiB at    6.83MiB/s (00:00:00)[download]   15.00KiB at    7.33MiB/s (00:00:00)[download]   31.00KiB at    3.36MiB/s (00:00:00)[download]   63.00KiB at    4.39MiB/s (00:00:00)[download]  127.00KiB at    5.64MiB/s (00:00:00)[download]  245.64KiB at    7.06MiB/s (00:00:00)[download] 100% of  245.64KiB in 00:00:00 at 1.87MiB/s
+Deleting existing file D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en.vtt
+[info] Writing video subtitles to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en.vtt
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.en.vtt
+[download]    1.00KiB at  996.98KiB/s (00:00:00)[download]    3.00KiB at    2.92MiB/s (00:00:00)[download]    7.00KiB at    6.82MiB/s (00:00:00)[download]   15.00KiB at    7.32MiB/s (00:00:00)[download]   31.00KiB at    3.03MiB/s (00:00:00)[download]   63.00KiB at    4.10MiB/s (00:00:00)[download]  127.00KiB at    5.17MiB/s (00:00:00)[download]  245.64KiB at    6.66MiB/s (00:00:00)[download] 100% of  245.64KiB in 00:00:00 at 1.76MiB/s
+[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.info.json
+[SubtitlesConvertor] Converting subtitles
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.f398.mp4
+[download]   0.0% of   35.53MiB at  999.60KiB/s ETA 00:36[download]   0.0% of   35.53MiB at    2.93MiB/s ETA 00:12[download]   0.0% of   35.53MiB at    3.42MiB/s ETA 00:10[download]   0.0% of   35.53MiB at    7.32MiB/s ETA 00:04[download]   0.1% of   35.53MiB at    3.36MiB/s ETA 00:10[download]   0.2% of   35.53MiB at    4.39MiB/s ETA 00:08[download]   0.3% of   35.53MiB at    5.39MiB/s ETA 00:06[download]   0.7% of   35.53MiB at    7.11MiB/s ETA 00:04[download]   1.4% of   35.53MiB at    8.75MiB/s ETA 00:04[download]   2.8% of   35.53MiB at    9.79MiB/s ETA 00:03[download]   5.6% of   35.53MiB at    7.79MiB/s ETA 00:04[download]  11.3% of   35.53MiB at    6.70MiB/s ETA 00:04[download]  22.5% of   35.53MiB at    6.20MiB/s ETA 00:04[download]  27.0% of   35.53MiB at    6.12MiB/s ETA 00:04[download]  27.0% of   35.53MiB at  500.33KiB/s ETA 00:53[download]  27.0% of   35.53MiB at    1.47MiB/s ETA 00:17[download]  27.0% of   35.53MiB at    2.28MiB/s ETA 00:11[download]  27.0% of   35.53MiB at    4.88MiB/s ETA 00:05[download]  27.1% of   35.53MiB at    7.57MiB/s ETA 00:03[download]  27.1% of   35.53MiB at    6.15MiB/s ETA 00:04[download]  27.3% of   35.53MiB at    5.91MiB/s ETA 00:04[download]  27.7% of   35.53MiB at    5.66MiB/s ETA 00:04[download]  28.4% of   35.53MiB at    5.48MiB/s ETA 00:04[download]  29.8% of   35.53MiB at    5.55MiB/s ETA 00:04[download]  32.6% of   35.53MiB at    6.34MiB/s ETA 00:03[download]  38.2% of   35.53MiB at    6.27MiB/s ETA 00:03[download]  49.5% of   35.53MiB at    5.97MiB/s ETA 00:03[download]  54.7% of   35.53MiB at    5.93MiB/s ETA 00:02[download]  54.7% of   35.53MiB at  499.92KiB/s ETA 00:32[download]  54.7% of   35.53MiB at    1.46MiB/s ETA 00:10[download]  54.7% of   35.53MiB at    3.42MiB/s ETA 00:04[download]  54.7% of   35.53MiB at    4.88MiB/s ETA 00:03[download]  54.8% of   35.53MiB at    7.57MiB/s ETA 00:02[download]  54.9% of   35.53MiB at    6.84MiB/s ETA 00:02[download]  55.0% of   35.53MiB at    6.20MiB/s ETA 00:02[download]  55.4% of   35.53MiB at    6.07MiB/s ETA 00:02[download]  56.1% of   35.53MiB at    6.40MiB/s ETA 00:02[download]  57.5% of   35.53MiB at    7.87MiB/s ETA 00:01[download]  60.3% of   35.53MiB at    5.63MiB/s ETA 00:02[download]  66.0% of   35.53MiB at    3.05MiB/s ETA 00:03[download]  71.8% of   35.53MiB at    3.16MiB/s ETA 00:03[download]  81.4% of   35.53MiB at    3.77MiB/s ETA 00:01[download]  82.8% of   35.53MiB at    3.85MiB/s ETA 00:01[download]  82.8% of   35.53MiB at  Unknown B/s ETA Unknown[download]  82.8% of   35.53MiB at  Unknown B/s ETA Unknown[download]  82.8% of   35.53MiB at  Unknown B/s ETA Unknown[download]  82.8% of   35.53MiB at  Unknown B/s ETA Unknown[download]  82.9% of   35.53MiB at   15.13MiB/s ETA 00:00  [download]  83.0% of   35.53MiB at   12.31MiB/s ETA 00:00[download]  83.1% of   35.53MiB at   12.40MiB/s ETA 00:00[download]  83.5% of   35.53MiB at   11.86MiB/s ETA 00:00[download]  84.2% of   35.53MiB at   11.34MiB/s ETA 00:00[download]  85.6% of   35.53MiB at   11.22MiB/s ETA 00:00[download]  88.4% of   35.53MiB at    7.66MiB/s ETA 00:00[download]  94.0% of   35.53MiB at    6.58MiB/s ETA 00:00[download] 100.0% of   35.53MiB at    6.29MiB/s ETA 00:00[download] 100% of   35.53MiB in 00:00:07 at 4.88MiB/s   
+[download] Destination: D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.f251.webm
+[download]   0.0% of   18.67MiB at  500.04KiB/s ETA 00:38[download]   0.0% of   18.67MiB at  999.68KiB/s ETA 00:19[download]   0.0% of   18.67MiB at    2.28MiB/s ETA 00:08[download]   0.1% of   18.67MiB at    4.88MiB/s ETA 00:03[download]   0.2% of   18.67MiB at    7.57MiB/s ETA 00:02[download]   0.3% of   18.67MiB at    6.15MiB/s ETA 00:03[download]   0.7% of   18.67MiB at    5.91MiB/s ETA 00:03[download]   1.3% of   18.67MiB at    5.93MiB/s ETA 00:03[download]   2.7% of   18.67MiB at    5.83MiB/s ETA 00:03[download]   5.4% of   18.67MiB at    5.82MiB/s ETA 00:03[download]  10.7% of   18.67MiB at    5.83MiB/s ETA 00:02[download]  21.4% of   18.67MiB at    6.23MiB/s ETA 00:02[download]  42.9% of   18.67MiB at    5.93MiB/s ETA 00:01[download]  53.4% of   18.67MiB at    6.01MiB/s ETA 00:01[download]  53.4% of   18.67MiB at  500.45KiB/s ETA 00:17[download]  53.4% of   18.67MiB at    1.47MiB/s ETA 00:05[download]  53.5% of   18.67MiB at    3.42MiB/s ETA 00:02[download]  53.5% of   18.67MiB at    7.33MiB/s ETA 00:01[download]  53.6% of   18.67MiB at    5.05MiB/s ETA 00:01[download]  53.8% of   18.67MiB at    5.59MiB/s ETA 00:01[download]  54.1% of   18.67MiB at    5.64MiB/s ETA 00:01[download]  54.8% of   18.67MiB at    5.66MiB/s ETA 00:01[download]  56.1% of   18.67MiB at    5.67MiB/s ETA 00:01[download]  58.8% of   18.67MiB at    6.84MiB/s ETA 00:01[download]  64.1% of   18.67MiB at    6.60MiB/s ETA 00:01[download]  74.9% of   18.67MiB at    6.41MiB/s ETA 00:00[download]  96.3% of   18.67MiB at    5.63MiB/s ETA 00:00[download] 100.0% of   18.67MiB at    5.73MiB/s ETA 00:00[download] 100% of   18.67MiB in 00:00:03 at 5.25MiB/s   
+[Merger] Merging formats into "D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.mp4"
+Deleting original file D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.f251.webm (pass -k to keep)
+Deleting original file D:\tmp\watch-hermes\PQBYZQqan2g-hd\download\video.f398.mp4 (pass -k to keep)
+[watch] extracting scene-aware frames over full 1231.6s (target 50, cap 28)…
+
+# watch: video report
+
+- **Source:** https://youtu.be/PQBYZQqan2g
+- **Title:** Grok Bot is For Real. What You Need to Know.
+- **Uploader:** Nate Herk | AI Automation
+- **Duration:** 20:32 (1231.6s)
+- **Resolution:** 1280x720 (av1)
+- **Detail:** balanced
+- **Frames:** 28 selected from 55 candidates (scene, 2 near-duplicates dropped, full range, budget 50, cap 28)
+- **Cue frames:** 22 at transcript-flagged timestamps (transcript-cue)
+- **Frame size:** max 1024px wide, max 1998px tall
+- **Transcript:** 692 segments (via captions)
+
+> **Warning:** This is a 20-minute video. Frame coverage is sparse at this length under `balanced` detail — its cap spreads thin across the full clip. For better results, re-run with `--start HH:MM:SS --end HH:MM:SS` to zoom into a section, or use `--detail token-burner` to keep every scene-change frame across the whole video.
+
+## Frames
+
+Frames live at: `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames`
+
+**Read each frame path below with the Read tool to view the image.** Frames are in chronological order; `t=MM:SS` is the absolute timestamp in the source video.
+
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0001.jpg` (t=00:00, reason=first-frame)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0003.jpg` (t=00:03, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0005.jpg` (t=00:07, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0007.jpg` (t=00:10, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0009.jpg` (t=00:17, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0000.jpg` (t=00:45, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0001.jpg` (t=01:05, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0011.jpg` (t=01:05, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0002.jpg` (t=01:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0003.jpg` (t=01:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0013.jpg` (t=01:31, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0004.jpg` (t=01:45, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0014.jpg` (t=01:53, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0005.jpg` (t=02:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0016.jpg` (t=02:27, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0006.jpg` (t=03:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0007.jpg` (t=03:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0018.jpg` (t=03:44, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0008.jpg` (t=04:05, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0009.jpg` (t=04:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0010.jpg` (t=05:05, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0011.jpg` (t=05:20, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0012.jpg` (t=05:35, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0020.jpg` (t=05:41, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0013.jpg` (t=07:20, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0023.jpg` (t=08:54, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0025.jpg` (t=08:57, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0014.jpg` (t=09:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0027.jpg` (t=09:28, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0029.jpg` (t=10:50, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0015.jpg` (t=11:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0031.jpg` (t=11:24, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0033.jpg` (t=12:52, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0016.jpg` (t=13:30, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0017.jpg` (t=14:10, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0035.jpg` (t=14:13, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0037.jpg` (t=14:36, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0018.jpg` (t=16:05, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0019.jpg` (t=16:20, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0039.jpg` (t=16:27, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0042.jpg` (t=17:10, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0043.jpg` (t=17:14, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0045.jpg` (t=17:19, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0047.jpg` (t=17:31, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0049.jpg` (t=17:35, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0020.jpg` (t=18:05, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\cue_0021.jpg` (t=18:15, reason=transcript-cue)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0051.jpg` (t=18:25, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0053.jpg` (t=19:38, reason=scene-change)
+- `D:\tmp\watch-hermes\PQBYZQqan2g-hd\frames\frame_0055.jpg` (t=20:08, reason=scene-change)
+
+## Transcript
+
+_Source: captions._
+
+```
+[00:02] Okay, so we just got Grockbot, which is probably the easiest way that I found to
+[00:03] probably the easiest way that I found to be able to spin up teams of different AI
+[00:05] be able to spin up teams of different AI agents that you can use from your phone
+[00:07] agents that you can use from your phone on your computer. Everything stays
+[00:08] on your computer. Everything stays synced and they're always on. It kind of
+[00:10] synced and they're always on. It kind of feels like you've got Cloud Code,
+[00:11] feels like you've got Cloud Code, Codeex, and Hermes Agent all in your
+[00:13] Codeex, and Hermes Agent all in your pocket. It's super easy to set up. So,
+[00:15] pocket. It's super easy to set up. So, let's just jump right in. So, what
+[00:16] let's just jump right in. So, what you're going to want to do is go to
+[00:18] you're going to want to do is go to Google, type in Grockbot, and then click
+[00:20] Google, type in Grockbot, and then click on this link and download this for
+[00:22] on this link and download this for Windows, for Apple, and for your iOS
+[00:24] Windows, for Apple, and for your iOS device, so everything stays synced
+[00:26] device, so everything stays synced together. Now, this is super cool. This
+[00:27] together. Now, this is super cool. This is what it's going to look like. You can
+[00:28] is what it's going to look like. You can have a ton of different agents on the
+[00:30] have a ton of different agents on the side and you can talk to each one
+[00:31] side and you can talk to each one individually and you can have them
+[00:33] individually and you can have them actually talking to each other which is
+[00:35] actually talking to each other which is super cool. Each of the bots have their
+[00:36] super cool. Each of the bots have their own computer which is really cool. You
+[00:38] own computer which is really cool. You can sign in to a session and it will
+[00:40] can sign in to a session and it will keep that login. You can record yourself
+[00:42] keep that login. You can record yourself doing something on the bot's computer
+[00:43] doing something on the bot's computer and then it will be able to just
+[00:44] and then it will be able to just replicate it like a skill and there's so
+[00:46] replicate it like a skill and there's so many other things. They get smarter over
+[00:47] many other things. They get smarter over time. It's super cool. Now in order to
+[00:49] time. It's super cool. Now in order to try this out you are going to have to be
+[00:51] try this out you are going to have to be on the cursor ultra plan. So get the
+[00:52] on the cursor ultra plan. So get the ultra plan then you can download
+[00:54] ultra plan then you can download Grockbot and play around. Okay. So when
+[00:56] Grockbot and play around. Okay. So when you open the app this is kind of what it
+[00:57] you open the app this is kind of what it looks like. It's going to first walk you
+[00:59] looks like. It's going to first walk you through like, "Hey, this is Grockbot."
+[01:00] through like, "Hey, this is Grockbot." Create your first bot. You can, you
+[01:02] Create your first bot. You can, you know, give it a name and a color and a
+[01:04] know, give it a name and a color and a shape and all this. And then once you're
+[01:05] shape and all this. And then once you're actually in here and you've made a few,
+[01:07] actually in here and you've made a few, it's going to look like almost like an
+[01:08] it's going to look like almost like an iMessage channel or like a Telegram
+[01:10] iMessage channel or like a Telegram channel. You have different bots that
+[01:11] channel. You have different bots that you can switch between. On the right
+[01:13] you can switch between. On the right hand side, you're going to have
+[01:14] hand side, you're going to have settings. You can give them a name, a
+[01:16] settings. You can give them a name, a title, a description, and then you can
+[01:18] title, a description, and then you can also look at their computers. So, right
+[01:19] also look at their computers. So, right here, you can see that Klouse, my agent
+[01:21] here, you can see that Klouse, my agent right here, is inside of my school
+[01:23] right here, is inside of my school community, logged in as me, and it's
+[01:24] community, logged in as me, and it's going through and it's liking posts that
+[01:26] going through and it's liking posts that I wanted it to like. So, it's
+[01:28] I wanted it to like. So, it's controlling this browser and I also can
+[01:30] controlling this browser and I also can too though. If I wanted to come in here
+[01:31] too though. If I wanted to come in here and I wanted to, for example, go to
+[01:33] and I wanted to, for example, go to YouTube, I could log in as myself if I
+[01:35] YouTube, I could log in as myself if I wanted to and then it would stay logged
+[01:37] wanted to and then it would stay logged in. It's even making me do this little
+[01:38] in. It's even making me do this little capsk thing. Wow, this thing is really
+[01:40] capsk thing. Wow, this thing is really not letting me in. Okay, there we go.
+[01:42] not letting me in. Okay, there we go. Now I can finally get through to
+[01:43] Now I can finally get through to YouTube. You can see we can also open up
+[01:45] YouTube. You can see we can also open up right here a file manager. So, we could
+[01:47] right here a file manager. So, we could open up the terminal and we have this
+[01:48] open up the terminal and we have this teach a task button which is where I
+[01:50] teach a task button which is where I could record myself doing something and
+[01:52] could record myself doing something and then Grockbot would automatically turn
+[01:53] then Grockbot would automatically turn that into a skill which is exactly what
+[01:55] that into a skill which is exactly what I did right here with this AIS skill
+[01:58] I did right here with this AIS skill that it created. And now it has this one
+[02:00] that it created. And now it has this one called like 7-day challenge post on
+[02:01] called like 7-day challenge post on school. It went ahead and ran it. And
+[02:03] school. It went ahead and ran it. And I've also got this thing set up with my
+[02:05] I've also got this thing set up with my GitHub repo, my Herk 2 as you can see
+[02:07] GitHub repo, my Herk 2 as you can see because that's where I've been building
+[02:09] because that's where I've been building my AI operating system. So, if you guys
+[02:10] my AI operating system. So, if you guys are building your own second brains and
+[02:12] are building your own second brains and AI operating systems, you can bring that
+[02:14] AI operating systems, you can bring that into Grockbot and all of your agents
+[02:16] into Grockbot and all of your agents that you build can automatically have
+[02:17] that you build can automatically have that context so you're not starting
+[02:18] that context so you're not starting over. But if you don't have an operating
+[02:20] over. But if you don't have an operating system, that's completely fine because
+[02:21] system, that's completely fine because when you create a new agent, it
+[02:23] when you create a new agent, it basically onboards you. It asks you some
+[02:25] basically onboards you. It asks you some questions and it says, "Hey, what do you
+[02:26] questions and it says, "Hey, what do you want me to do for you?" So, right here,
+[02:27] want me to do for you?" So, right here, you can see I've got Klaus. He is my
+[02:29] you can see I've got Klaus. He is my executive assistant. I've got this dev
+[02:31] executive assistant. I've got this dev who is an AI engineer. And what's cool
+[02:33] who is an AI engineer. And what's cool is if I want Claus to help me like build
+[02:35] is if I want Claus to help me like build a product, Claus will actually delegate
+[02:37] a product, Claus will actually delegate work to my dev because it knows what
+[02:40] work to my dev because it knows what they do. So basically when you have an
+[02:41] they do. So basically when you have an agent, you give it a name, a title, and
+[02:44] agent, you give it a name, a title, and a description. And the description is
+[02:45] a description. And the description is basically almost like the same way
+[02:47] basically almost like the same way agents use skills. They say, "Okay,
+[02:48] agents use skills. They say, "Okay, cool. I have to do this task. Let me
+[02:50] cool. I have to do this task. Let me look at all the other agents and see if
+[02:52] look at all the other agents and see if there's any agent whose description
+[02:53] there's any agent whose description matches this task. And if so, I will
+[02:55] matches this task. And if so, I will just shoot them a message and then they
+[02:57] just shoot them a message and then they will help me out with that instead." So
+[02:58] will help me out with that instead." So each agent that you build can be very
+[03:00] each agent that you build can be very specialized to do very specific things.
+[03:02] specialized to do very specific things. If I come here to click on new chat, I
+[03:04] If I come here to click on new chat, I can start a chat with one of the bots.
+[03:05] can start a chat with one of the bots. Or if I want to go ahead and create my
+[03:07] Or if I want to go ahead and create my own new bot. Now I have the ability to
+[03:10] own new bot. Now I have the ability to set this thing up however I want. You
+[03:12] set this thing up however I want. You can see right here it says, "Hey, good
+[03:13] can see right here it says, "Hey, good to meet you. What do you want me around
+[03:15] to meet you. What do you want me around for? Research and writing, something
+[03:17] for? Research and writing, something specific, day-to-day work, whatever you
+[03:18] specific, day-to-day work, whatever you want." So, let's just make this agent
+[03:20] want." So, let's just make this agent like my morning briefer. So, I just want
+[03:22] like my morning briefer. So, I just want you to help me every morning plan my day
+[03:25] you to help me every morning plan my day and look at what I have to do. And you
+[03:27] and look at what I have to do. And you can see it says, "Okay, cool. I'm
+[03:28] can see it says, "Okay, cool. I'm checking what's already connected so I
+[03:29] checking what's already connected so I know where to pull tasks from." And the
+[03:31] know where to pull tasks from." And the only thing that I've connected so far,
+[03:32] only thing that I've connected so far, if I go to the plugins, is GitHub. I
+[03:35] if I go to the plugins, is GitHub. I need to connect things like Gmail,
+[03:36] need to connect things like Gmail, Google Calendar, Slack, Google Drive,
+[03:38] Google Calendar, Slack, Google Drive, ClickUp, all of these other things that
+[03:39] ClickUp, all of these other things that I use, I need to connect. And it's just
+[03:41] I use, I need to connect. And it's just as simple as a little signin. But what's
+[03:44] as simple as a little signin. But what's cool about that is if you connect GitHub
+[03:45] cool about that is if you connect GitHub for one agent, like my Clouse or my dev,
+[03:48] for one agent, like my Clouse or my dev, then all of your different agents will
+[03:49] then all of your different agents will be able to use that connection. So, they
+[03:51] be able to use that connection. So, they share those plugins. It asked me where
+[03:53] share those plugins. It asked me where my to-dos and calendar live, and I just
+[03:54] my to-dos and calendar live, and I just went ahead and say Google Calendar and
+[03:56] went ahead and say Google Calendar and and Gmail. And now it's going to have me
+[03:58] and Gmail. And now it's going to have me actually connect those plugins. It's
+[04:00] actually connect those plugins. It's asking me if I want to connect these. It
+[04:02] asking me if I want to connect these. It says you'll get a quick sign in and then
+[04:03] says you'll get a quick sign in and then it's a onetime setup. So I'll click yes,
+[04:05] it's a onetime setup. So I'll click yes, connect both. And so it just pops up
+[04:07] connect both. And so it just pops up like this. And all you have to do is
+[04:08] like this. And all you have to do is click authorize and then you just do
+[04:09] click authorize and then you just do your signin as you would in lots of
+[04:11] your signin as you would in lots of other apps. Okay. So we just connected
+[04:13] other apps. Okay. So we just connected Gmail and calendar. And now it's asking
+[04:15] Gmail and calendar. And now it's asking when do we actually run these morning
+[04:18] when do we actually run these morning routine things. So it's weekday mornings
+[04:20] routine things. So it's weekday mornings by default. I'll pull today's calendar
+[04:22] by default. I'll pull today's calendar and anything important in Gmail. I'll
+[04:24] and anything important in Gmail. I'll just go ahead and say 7 a.m. Now what
+[04:26] just go ahead and say 7 a.m. Now what does this mean? This means that your
+[04:27] does this mean? This means that your agents can actually create routines. And
+[04:29] agents can actually create routines. And because all of this is happening on the
+[04:31] because all of this is happening on the cloud, this will run even if my
+[04:32] cloud, this will run even if my computer's off, even if my phone's off.
+[04:34] computer's off, even if my phone's off. You can see right here, created routine
+[04:35] You can see right here, created routine called morning day plan, which shows up
+[04:37] called morning day plan, which shows up right here in the agent section. So
+[04:40] right here in the agent section. So these are the instructions. Build Nate's
+[04:41] these are the instructions. Build Nate's morning plan and send it in the chat.
+[04:43] morning plan and send it in the chat. Look up current MCP tools, calendar,
+[04:45] Look up current MCP tools, calendar, Gmail. Pull today's calendar events.
+[04:47] Gmail. Pull today's calendar events. Pull actional Gmail items. Write a short
+[04:49] Pull actional Gmail items. Write a short description. Blah blah blah. And
+[04:50] description. Blah blah blah. And obviously, we could tweak this
+[04:51] obviously, we could tweak this instruction if we wanted to. It asks if
+[04:53] instruction if we wanted to. It asks if we want a sample. Yeah, I'll say run one
+[04:55] we want a sample. Yeah, I'll say run one right now. So, this is so cool because
+[04:57] right now. So, this is so cool because it makes it so easy to build
+[04:58] it makes it so easy to build automations, to have different agents.
+[05:00] automations, to have different agents. And as you can see in here, this one's
+[05:01] And as you can see in here, this one's still called new bot. If I click on it
+[05:03] still called new bot. If I click on it right here, I can give it a name. So,
+[05:05] right here, I can give it a name. So, I'm just going to call this one coffee
+[05:07] I'm just going to call this one coffee because it's a morning skill. I will
+[05:09] because it's a morning skill. I will just say my morning planner. And then
+[05:11] just say my morning planner. And then you want to give this agent a super
+[05:13] you want to give this agent a super specific oneliner of what it actually
+[05:15] specific oneliner of what it actually does so that if Klouse or if my dev or
+[05:17] does so that if Klouse or if my dev or other agents needed to use it, it would
+[05:19] other agents needed to use it, it would know to use this one. This agent looks
+[05:20] know to use this one. This agent looks in my Gmail and my calendar to help me
+[05:23] in my Gmail and my calendar to help me plan my day every single weekday. And
+[05:25] plan my day every single weekday. And then if you also want to play with the
+[05:27] then if you also want to play with the way it looks, you can change the shape
+[05:28] way it looks, you can change the shape and the color in here. You could also
+[05:30] and the color in here. You could also generate it by describing it or you
+[05:32] generate it by describing it or you could upload some sort of image. And
+[05:34] could upload some sort of image. And here's the cool part. Remember how
+[05:35] here's the cool part. Remember how earlier I showed you guys how Klouse has
+[05:36] earlier I showed you guys how Klouse has its own computer and right now it's open
+[05:38] its own computer and right now it's open on school as you can see or YouTube. I
+[05:40] on school as you can see or YouTube. I guess coffee has its own screen and so
+[05:43] guess coffee has its own screen and so does dev. So every time you're building
+[05:45] does dev. So every time you're building things with different agents, they have
+[05:47] things with different agents, they have their own computers and they can do
+[05:48] their own computers and they can do their own things. It's very cool. Okay,
+[05:50] their own things. It's very cool. Okay, so here is my sample for tomorrow. what
+[05:53] so here is my sample for tomorrow. what I'm going to get in the morning. It's
+[05:54] I'm going to get in the morning. It's showing my day. It's showing the
+[05:55] showing my day. It's showing the meetings I have. It says, "Here are
+[05:57] meetings I have. It says, "Here are things worth acting on from email. So,
+[05:59] things worth acting on from email. So, I've got this thing that I need to get
+[06:01] I've got this thing that I need to get back to. I've got this call on Thursday
+[06:03] back to. I've got this call on Thursday that I have to respond to. I have got
+[06:04] that I have to respond to. I have got this chat invite. Very cool." And then
+[06:06] this chat invite. Very cool." And then it's suggesting things like, "Use 7 to 9
+[06:09] it's suggesting things like, "Use 7 to 9 planned day to clear this item that you
+[06:11] planned day to clear this item that you have to skim this notes and prepare for
+[06:13] have to skim this notes and prepare for that call." Awesome. Your afternoon is
+[06:15] that call." Awesome. Your afternoon is pretty stacked, so pick one of these
+[06:16] pretty stacked, so pick one of these things and shorten your lunch and gym or
+[06:18] things and shorten your lunch and gym or move the gym block. Cool. It even told
+[06:20] move the gym block. Cool. It even told me to protect my evening because I have
+[06:22] me to protect my evening because I have a dinner reservation tomorrow night. So,
+[06:23] a dinner reservation tomorrow night. So, that's super cool because think about
+[06:24] that's super cool because think about this. I didn't tell it anything. All I
+[06:27] this. I didn't tell it anything. All I said was help me plan my day. And once I
+[06:29] said was help me plan my day. And once I iterate on this and say, "Hey, by the
+[06:30] iterate on this and say, "Hey, by the way, here are some things I liked about
+[06:31] way, here are some things I liked about this. Here are some things I didn't
+[06:33] this. Here are some things I didn't like." It's going to get better and
+[06:34] like." It's going to get better and better and smarter over time. And think
+[06:36] better and smarter over time. And think about how quick that whole skill and
+[06:37] about how quick that whole skill and whole routine was for me to set up. All
+[06:39] whole routine was for me to set up. All right, so I'm going to jump back over to
+[06:40] right, so I'm going to jump back over to Claus real quick. Take a look at this. I
+[06:42] Claus real quick. Take a look at this. I had it do the skill where it went
+[06:44] had it do the skill where it went through my free school community and
+[06:45] through my free school community and liked posts that were for my 7-day
+[06:48] liked posts that were for my 7-day challenge. And here's what it did after
+[06:50] challenge. And here's what it did after one run. It said, "Okay, here's the dry
+[06:52] one run. It said, "Okay, here's the dry run. Here are the three posts that I
+[06:53] run. Here are the three posts that I liked. Shout out to you three community
+[06:55] liked. Shout out to you three community members. You guys are awesome." And then
+[06:56] members. You guys are awesome." And then it said, "Hey, here's something I
+[06:57] it said, "Hey, here's something I noticed. It's not very clear. I can't
+[06:59] noticed. It's not very clear. I can't tell very clearly if they're liked or
+[07:01] tell very clearly if they're liked or not already." And then it said, "Okay,
+[07:03] not already." And then it said, "Okay, cool." I went ahead and I put open the
+[07:04] cool." I went ahead and I put open the post before liking into the skill. So,
+[07:06] post before liking into the skill. So, without me even asking it to, after it
+[07:08] without me even asking it to, after it ran the skill, it basically gave itself
+[07:10] ran the skill, it basically gave itself feedback on what worked and what didn't.
+[07:12] feedback on what worked and what didn't. And then it fixed itself. So, over time,
+[07:13] And then it fixed itself. So, over time, it's going to get smarter every time it
+[07:15] it's going to get smarter every time it runs the skills. And it builds more
+[07:17] runs the skills. And it builds more context and more memory over time as you
+[07:19] context and more memory over time as you talk to it more and as you do more
+[07:20] talk to it more and as you do more things. Now you guys saw how quickly and
+[07:22] things. Now you guys saw how quickly and easy it was for me to create this
+[07:23] easy it was for me to create this routine over here with coffee. And what
+[07:26] routine over here with coffee. And what I did here is I ran this based on a
+[07:28] I did here is I ran this based on a schedule. So I ran this, you know,
+[07:29] schedule. So I ran this, you know, weekdays at 7 a.m. But what else you can
+[07:32] weekdays at 7 a.m. But what else you can do is you can run things here on actual
+[07:35] do is you can run things here on actual triggers. So on a Slack message, on a
+[07:37] triggers. So on a Slack message, on a GitHub event, on a Teams message. These
+[07:40] GitHub event, on a Teams message. These are currently the triggers right now.
+[07:41] are currently the triggers right now. Just the same way in N you had all these
+[07:43] Just the same way in N you had all these different, you know, Gmail triggers and
+[07:44] different, you know, Gmail triggers and things like that. I'm assuming that
+[07:45] things like that. I'm assuming that these are going to become much much more
+[07:48] these are going to become much much more broad. Like there's going to be hundreds
+[07:49] broad. Like there's going to be hundreds and hundreds of triggers in here. But
+[07:51] and hundreds of triggers in here. But right now, we're starting off with just
+[07:52] right now, we're starting off with just these six. So, watch this. I'm going to
+[07:54] these six. So, watch this. I'm going to create a new agent real quick. And I'm
+[07:55] create a new agent real quick. And I'm going to call this one sort of like my
+[07:57] going to call this one sort of like my media agent. And I'm going to connect
+[07:59] media agent. And I'm going to connect this agent to Slack. And so that it can
+[08:01] this agent to Slack. And so that it can basically notify me when there's things
+[08:02] basically notify me when there's things going on in the Slack channels that have
+[08:03] going on in the Slack channels that have to do with sponsorships or new videos or
+[08:06] to do with sponsorships or new videos or new opportunities, anything to do with
+[08:07] new opportunities, anything to do with the media side that I deal with in Slack
+[08:09] the media side that I deal with in Slack with a few different teams. you're going
+[08:11] with a few different teams. you're going to be helping me manage media,
+[08:13] to be helping me manage media, sponsorships, things like that, all
+[08:15] sponsorships, things like that, all within Slack. And so, you notice how I'm
+[08:17] within Slack. And so, you notice how I'm spinning up agents to do very, very
+[08:18] spinning up agents to do very, very specific things. Even on their website
+[08:20] specific things. Even on their website on Grockbot, it's basically showing you
+[08:22] on Grockbot, it's basically showing you that agents should be doing one specific
+[08:24] that agents should be doing one specific job. Sales outbound, talent scout, paid
+[08:27] job. Sales outbound, talent scout, paid media, expense manager, if you try to
+[08:29] media, expense manager, if you try to make one mega agent do a ton of
+[08:31] make one mega agent do a ton of different things, it's just going to get
+[08:32] different things, it's just going to get confused and all there there's going to
+[08:33] confused and all there there's going to be all these routines. It won't be as
+[08:35] be all these routines. It won't be as good. But if you have each agent do one
+[08:37] good. But if you have each agent do one specific job very well and because you
+[08:40] specific job very well and because you have good descriptions and because you
+[08:41] have good descriptions and because you have the ability for agents to talk to
+[08:43] have the ability for agents to talk to each other, the jobs are going to still
+[08:45] each other, the jobs are going to still get done. It's just the same way in
+[08:47] get done. It's just the same way in Claude Code or Codeex. You like to have
+[08:48] Claude Code or Codeex. You like to have your main orchestrator and you like to
+[08:50] your main orchestrator and you like to have them basically delegate work to a
+[08:52] have them basically delegate work to a bunch of different little sub agents. So
+[08:53] bunch of different little sub agents. So here's the Slack card that popped up.
+[08:55] here's the Slack card that popped up. I'm going to go ahead and authorize into
+[08:56] I'm going to go ahead and authorize into Slack real quick. It's asking what Slack
+[08:58] Slack real quick. It's asking what Slack channels it should treat as home base.
+[08:59] channels it should treat as home base. I'm going to ask it what channels can
+[09:01] I'm going to ask it what channels can you actually see and read because if
+[09:03] you actually see and read because if you're like me in Slack, you might be in
+[09:05] you're like me in Slack, you might be in a ton of different workspaces and
+[09:06] a ton of different workspaces and channels and things like that. So, it's
+[09:07] channels and things like that. So, it's just worth seeing what it actually
+[09:09] just worth seeing what it actually knows. Now, look at this. It basically
+[09:11] knows. Now, look at this. It basically was only able to see some of the stuff
+[09:12] was only able to see some of the stuff inside one workspace, but I have another
+[09:14] inside one workspace, but I have another email with some other channels I'm in,
+[09:16] email with some other channels I'm in, right? So, I said, "Hey, I want to
+[09:17] right? So, I said, "Hey, I want to connect another one." And it just lets
+[09:18] connect another one." And it just lets you add another one. So, here we have a
+[09:20] you add another one. So, here we have a default connection, but now I also have
+[09:22] default connection, but now I also have one that I'm calling work. And I can
+[09:23] one that I'm calling work. And I can sign in with a different account here so
+[09:25] sign in with a different account here so that I can use different channels. There
+[09:27] that I can use different channels. There we go. Now I've authenticated another
+[09:29] we go. Now I've authenticated another Slack account and it should be able to
+[09:31] Slack account and it should be able to see everything that I'm doing in there
+[09:32] see everything that I'm doing in there now, which is great. Now my Grockbot can
+[09:35] now, which is great. Now my Grockbot can see into all of these public channels as
+[09:36] see into all of these public channels as well as these private channels in DMs,
+[09:38] well as these private channels in DMs, which is just great. So what I want you
+[09:41] which is just great. So what I want you to do is help me set up a routine that's
+[09:43] to do is help me set up a routine that's on a Slack trigger. So, inside of the
+[09:46] on a Slack trigger. So, inside of the default Slack workspace, what I want you
+[09:47] default Slack workspace, what I want you to do is when you get a message from the
+[09:52] to do is when you get a message from the um YouTube testing Nate channel, I want
+[09:55] um YouTube testing Nate channel, I want that to trigger you to basically give me
+[09:56] that to trigger you to basically give me a notification on what happened. So,
+[09:59] a notification on what happened. So, let's see if it's able to understand
+[10:00] let's see if it's able to understand what I'm saying and create us a routine
+[10:03] what I'm saying and create us a routine inside of its settings that's based on a
+[10:05] inside of its settings that's based on a trigger rather than a timebased routine.
+[10:08] trigger rather than a timebased routine. Okay, cool. So, it created a routine
+[10:10] Okay, cool. So, it created a routine called YouTube testing Nate alerts.
+[10:12] called YouTube testing Nate alerts. Perfect. You can see right here it says
+[10:13] Perfect. You can see right here it says when to run on new messages in the
+[10:15] when to run on new messages in the YouTube testing Nate channel. So it
+[10:17] YouTube testing Nate channel. So it founded the right channel. It created
+[10:19] founded the right channel. It created the right trigger and it set up the
+[10:20] the right trigger and it set up the actual instruction. So before this works
+[10:22] actual instruction. So before this works it says one setup step. So it actually
+[10:24] it says one setup step. So it actually fires. It's in that channel. You have to
+[10:26] fires. It's in that channel. You have to run /invite atcursor. So let me just
+[10:28] run /invite atcursor. So let me just copy this command. The channel listeners
+[10:29] copy this command. The channel listeners only hear channels the cursor slack app
+[10:31] only hear channels the cursor slack app is in. So let me just go ahead and try
+[10:33] is in. So let me just go ahead and try that real quick. I'm inviting at cursor.
+[10:35] that real quick. I'm inviting at cursor. There we go. It was just added. And now
+[10:37] There we go. It was just added. And now in here, let's say, hey, a new
+[10:39] in here, let's say, hey, a new sponsorship deal has come in for $1,000
+[10:42] sponsorship deal has come in for $1,000 million billion dollars for um a YouTube
+[10:45] million billion dollars for um a YouTube video. The company is called Chipotle.
+[10:48] video. The company is called Chipotle. Okay, so I shot that off. Let's see
+[10:50] Okay, so I shot that off. Let's see what's going on inside of Grockbot.
+[10:54] what's going on inside of Grockbot. Okay, so we're seeing that it's having
+[10:55] Okay, so we're seeing that it's having the little new bot is working animation.
+[10:58] the little new bot is working animation. It says newbot because I haven't named
+[10:59] It says newbot because I haven't named this yet. I haven't touched anything
+[11:01] this yet. I haven't touched anything besides sending that message in Slack.
+[11:03] besides sending that message in Slack. Boom. New in YouTube testing. Nate, you
+[11:05] Boom. New in YouTube testing. Nate, you posted that a Chipotle YouTube
+[11:06] posted that a Chipotle YouTube sponsorship deal came in for this much
+[11:08] sponsorship deal came in for this much money. Cool. So, that's how you can see
+[11:10] money. Cool. So, that's how you can see that that routine is working and that
+[11:12] that that routine is working and that got set up so quickly. With Nitn, that
+[11:14] got set up so quickly. With Nitn, that might have taken me maybe 15 minutes.
+[11:16] might have taken me maybe 15 minutes. With Cloud Code, that might have taken
+[11:18] With Cloud Code, that might have taken me like 7 minutes. With this, this took
+[11:22] me like 7 minutes. With this, this took like 2 minutes and one prompt. It's
+[11:23] like 2 minutes and one prompt. It's pretty insane. And remember, you just
+[11:25] pretty insane. And remember, you just want to give your bots a name. I'll call
+[11:27] want to give your bots a name. I'll call this guy money. The title will be Slack
+[11:31] this guy money. The title will be Slack Media. And the description is basically
+[11:33] Media. And the description is basically this agent is in charge of managing my
+[11:35] this agent is in charge of managing my Slack communication for media and
+[11:37] Slack communication for media and sponsorships, things like that. Now, if
+[11:39] sponsorships, things like that. Now, if you wanted to reference some of the
+[11:40] you wanted to reference some of the skills or routines that this agent uses
+[11:42] skills or routines that this agent uses and giving it more context for other
+[11:44] and giving it more context for other agents, that's perfectly fine. And it
+[11:45] agents, that's perfectly fine. And it even acknowledged that I named it money
+[11:47] even acknowledged that I named it money and it said money works. I'll answer to
+[11:49] and it said money works. I'll answer to that from here. Okay. So, what about
+[11:51] that from here. Okay. So, what about skills? How do skills work in here?
+[11:52] skills? How do skills work in here? Well, if you do slash, you can run
+[11:54] Well, if you do slash, you can run skills like slash commands. So, the only
+[11:56] skills like slash commands. So, the only one that we've currently built, I
+[11:57] one that we've currently built, I believe, was that school one. So, if I
+[11:59] believe, was that school one. So, if I type school, it says like 7-day
+[12:01] type school, it says like 7-day challenge posts on school. And I could
+[12:03] challenge posts on school. And I could go ahead and use that skill if I want
+[12:04] go ahead and use that skill if I want to. So, skills work across all the
+[12:07] to. So, skills work across all the agents that you have. Same thing with
+[12:08] agents that you have. Same thing with plugins, but the computer sessions are
+[12:10] plugins, but the computer sessions are different. And the descriptions of your
+[12:11] different. And the descriptions of your agents are different. Okay, now watch
+[12:13] agents are different. Okay, now watch this. I'm going to go to Klouse and
+[12:15] this. I'm going to go to Klouse and let's pretend, you know, because this is
+[12:16] let's pretend, you know, because this is kind of like my executive assistant.
+[12:17] kind of like my executive assistant. This is what I'm going to be assuming is
+[12:19] This is what I'm going to be assuming is like my router to different agents. I'm
+[12:21] like my router to different agents. I'm just going to be like, "Hey, I kind of
+[12:23] just going to be like, "Hey, I kind of forgot what's going on with one of our
+[12:25] forgot what's going on with one of our most recent YouTube videos, which you
+[12:26] most recent YouTube videos, which you might be able to find in the Slack
+[12:27] might be able to find in the Slack channels. U maybe you should just check
+[12:29] channels. U maybe you should just check in with money to see if he has any
+[12:32] in with money to see if he has any information about, you know, what's
+[12:33] information about, you know, what's going on with our anthropic reel or just
+[12:36] going on with our anthropic reel or just what's been going on with that." So,
+[12:38] what's been going on with that." So, what this should do is it should
+[12:39] what this should do is it should basically tell Klaus that, you know, I'm
+[12:41] basically tell Klaus that, you know, I'm just an executive assistant, but I can
+[12:43] just an executive assistant, but I can see that money is a Slack media agent.
+[12:45] see that money is a Slack media agent. So, I'm going to go ahead and shoot a
+[12:46] So, I'm going to go ahead and shoot a message off to Money to take care of
+[12:48] message off to Money to take care of that and then come back to me and I'll
+[12:49] that and then come back to me and I'll answer to Nate in this main session.
+[12:51] answer to Nate in this main session. There we go. It said pinging money about
+[12:53] There we go. It said pinging money about the enthropic reel. It said message
+[12:55] the enthropic reel. It said message money. And if I click into this, we can
+[12:57] money. And if I click into this, we can actually see the conversation. It's view
+[12:59] actually see the conversation. It's view only, but we can see what Claus said to
+[13:01] only, but we can see what Claus said to Money. And we're going to be able to see
+[13:03] Money. And we're going to be able to see Money responding to Klouse right here.
+[13:04] Money responding to Klouse right here. Can you share the latest status from
+[13:06] Can you share the latest status from Slack or whatever you have? Any
+[13:07] Slack or whatever you have? Any blockers, next steps, blah blah blah.
+[13:09] blockers, next steps, blah blah blah. Keep it tight. I'll relay it to him. So,
+[13:11] Keep it tight. I'll relay it to him. So, there you go. You can see money just
+[13:12] there you go. You can see money just responded to Klouse. And then if I go
+[13:14] responded to Klouse. And then if I go back to the main Klouse and if I go back
+[13:16] back to the main Klouse and if I go back to my conversation with Klouse, it just
+[13:18] to my conversation with Klouse, it just responded right here. And what else is
+[13:20] responded right here. And what else is cool is if I go to my conversation with
+[13:21] cool is if I go to my conversation with money, it says, "Hey, by the way, Klouse
+[13:23] money, it says, "Hey, by the way, Klouse asked me about this." So, they're not
+[13:24] asked me about this." So, they're not going to be able to keep things secret.
+[13:26] going to be able to keep things secret. They're going to snitch on each other if
+[13:27] They're going to snitch on each other if they're, you know, being weird. But
+[13:28] they're, you know, being weird. But that's how that works. And I think that
+[13:29] that's how that works. And I think that that is a super cool feature. And I
+[13:31] that is a super cool feature. And I think that that really encourages you to
+[13:33] think that that really encourages you to make sure that each agent is very
+[13:34] make sure that each agent is very specialized because they're able to
+[13:36] specialized because they're able to easily talk to each other. So, at this
+[13:37] easily talk to each other. So, at this point, I've built out these four agents.
+[13:39] point, I've built out these four agents. And what if I wanted to turn off my
+[13:40] And what if I wanted to turn off my computer and go for a walk? Or maybe I'm
+[13:42] computer and go for a walk? Or maybe I'm even going on a vacation. Well, guess
+[13:43] even going on a vacation. Well, guess what? On my phone, I've got this exact
+[13:45] what? On my phone, I've got this exact same stuff. So, if I open up Klouse on
+[13:47] same stuff. So, if I open up Klouse on my phone, I have the exact same messages
+[13:49] my phone, I have the exact same messages and I can just say, "Hey there." And
+[13:52] and I can just say, "Hey there." And what's going to happen is that's going
+[13:53] what's going to happen is that's going to come through there. I just sent it
+[13:54] to come through there. I just sent it off. It comes through in real time. So,
+[13:56] off. It comes through in real time. So, everything is completely synced because
+[13:58] everything is completely synced because this is all in the cloud. You don't even
+[13:59] this is all in the cloud. You don't even have to worry about spinning up your own
+[14:01] have to worry about spinning up your own VPS or doing anything locally. It all is
+[14:03] VPS or doing anything locally. It all is just syncing perfectly. The connectors
+[14:05] just syncing perfectly. The connectors still work. Um, all of their desktops
+[14:07] still work. Um, all of their desktops still work. So, if I go in here and I go
+[14:09] still work. So, if I go in here and I go to the browser, remember how Klouse was
+[14:10] to the browser, remember how Klouse was over here on YouTube? I can come into
+[14:12] over here on YouTube? I can come into here on my phone and I can also see
+[14:15] here on my phone and I can also see what's going on in here and I can
+[14:16] what's going on in here and I can control this with my phone. So in right
+[14:19] control this with my phone. So in right here on my phone I'm typing in um Nate
+[14:22] here on my phone I'm typing in um Nate Herk. I'm going to go ahead and search
+[14:23] Herk. I'm going to go ahead and search for Nate Herk videos on YouTube and I'm
+[14:25] for Nate Herk videos on YouTube and I'm able to do this on my phone. So I'm
+[14:27] able to do this on my phone. So I'm controlling a cloud computer from my
+[14:29] controlling a cloud computer from my phone which is kind of being managed
+[14:30] phone which is kind of being managed over here by Klouse. It's just very very
+[14:33] over here by Klouse. It's just very very cool that this is being set up so
+[14:34] cool that this is being set up so quickly for you. Okay, so let's talk
+[14:36] quickly for you. Okay, so let's talk about what else we've got in here and
+[14:38] about what else we've got in here and what are some actual limitations. So the
+[14:40] what are some actual limitations. So the first thing is how much am I going to
+[14:42] first thing is how much am I going to use this? Will I actually use this?
+[14:43] use this? Will I actually use this? Well, if I'm sitting down at my desk and
+[14:46] Well, if I'm sitting down at my desk and I am working on knowledge work, if I'm
+[14:48] I am working on knowledge work, if I'm trying to build things, I will not be
+[14:50] trying to build things, I will not be using this. I will be using my codeex,
+[14:52] using this. I will be using my codeex, my claw code. That's what I like to
+[14:53] my claw code. That's what I like to drive with when I'm sitting down at my
+[14:55] drive with when I'm sitting down at my desk. Now, if I'm traveling, if I'm in
+[14:57] desk. Now, if I'm traveling, if I'm in the back of an Uber, if I'm on a
+[14:59] the back of an Uber, if I'm on a vacation, if I'm sitting at a
+[15:00] vacation, if I'm sitting at a restaurant, this is what I'll be using
+[15:02] restaurant, this is what I'll be using because my phone syncs to it right away
+[15:04] because my phone syncs to it right away and it just keeps things super clean and
+[15:06] and it just keeps things super clean and super easy. That's kind of the way that
+[15:07] super easy. That's kind of the way that I distinguish between Hermes agent right
+[15:09] I distinguish between Hermes agent right now and cloud code or codeex is I just
+[15:11] now and cloud code or codeex is I just like to use my Hermes when I'm on the
+[15:12] like to use my Hermes when I'm on the go. And I think that using this on the
+[15:14] go. And I think that using this on the go is honestly much better and much
+[15:16] go is honestly much better and much easier. Now obviously this on the back
+[15:18] easier. Now obviously this on the back end is using a Grock model, right? It's
+[15:21] end is using a Grock model, right? It's not using my codec subscription or you
+[15:23] not using my codec subscription or you know anthropics APIs. It's not using
+[15:25] know anthropics APIs. It's not using those models. So if you really really
+[15:27] those models. So if you really really like the other models way more and if
+[15:28] like the other models way more and if you notice that you don't like the way
+[15:29] you notice that you don't like the way that the Grock models interact, then
+[15:31] that the Grock models interact, then maybe you won't want to use this as
+[15:32] maybe you won't want to use this as much. But the way that I'm thinking
+[15:34] much. But the way that I'm thinking about this is I'm not going to be
+[15:35] about this is I'm not going to be building crazy software, crazy apps from
+[15:37] building crazy software, crazy apps from here. I'm more so going to be doing
+[15:39] here. I'm more so going to be doing things like checking in on things,
+[15:41] things like checking in on things, communicating to the team, reviewing
+[15:42] communicating to the team, reviewing things, setting reminders, things like
+[15:45] things, setting reminders, things like that. Just very general knowledge work.
+[15:47] that. Just very general knowledge work. And obviously, I'm going to save my deep
+[15:48] And obviously, I'm going to save my deep dive, like my deep I need to be in flow
+[15:50] dive, like my deep I need to be in flow state for this kind of stuff. I'm going
+[15:52] state for this kind of stuff. I'm going to be saving that for when I'm sitting
+[15:54] to be saving that for when I'm sitting down at my desk. Okay, so let's see what
+[15:56] down at my desk. Okay, so let's see what else we have when we think about like
+[15:57] else we have when we think about like other settings and things. But real
+[15:59] other settings and things. But real quick, I'm just going to send off this
+[16:00] quick, I'm just going to send off this message to Klouse. I'm asking him to
+[16:01] message to Klouse. I'm asking him to basically spin up a waiting list page
+[16:05] basically spin up a waiting list page and I told him to work with our AI
+[16:07] and I told him to work with our AI engineer. So, it's looping in dev.
+[16:08] engineer. So, it's looping in dev. They're going to get to work. Hopefully,
+[16:10] They're going to get to work. Hopefully, we're able to see something on a local
+[16:11] we're able to see something on a local host on their cloud computer in a bit.
+[16:13] host on their cloud computer in a bit. While they're working on that, let's go
+[16:14] While they're working on that, let's go over here to our settings. So, I'm going
+[16:16] over here to our settings. So, I'm going to click on my name. I can see that I
+[16:17] to click on my name. I can see that I have weekly usage. So, I've used 2%.
+[16:20] have weekly usage. So, I've used 2%. This resets in 7 days. And we can also,
+[16:23] This resets in 7 days. And we can also, you know, spend money. We talked about
+[16:25] you know, spend money. We talked about getting this on iOS. And if I go to the
+[16:27] getting this on iOS. And if I go to the settings, let's see what else we have.
+[16:29] settings, let's see what else we have. your theme, your time zone, execution on
+[16:31] your theme, your time zone, execution on local computer, you can change the
+[16:32] local computer, you can change the permissions to be ask every time or
+[16:34] permissions to be ask every time or never allow. You can set rules. So when
+[16:36] never allow. You can set rules. So when Grockbot wants to do certain things, you
+[16:38] Grockbot wants to do certain things, you should have it ask first or
+[16:40] should have it ask first or automatically allow. Wow, that prototype
+[16:42] automatically allow. Wow, that prototype took like no time at all. Let's see if
+[16:45] took like no time at all. Let's see if we can open this up. So if I click on
+[16:46] we can open this up. So if I click on local host, we have it right here. Get
+[16:48] local host, we have it right here. Get certified in a automation without the
+[16:50] certified in a automation without the overwhelm. So this is interesting
+[16:51] overwhelm. So this is interesting because it has good data, but it didn't
+[16:54] because it has good data, but it didn't correctly use like our brand guidelines
+[16:56] correctly use like our brand guidelines and our logos. So, I wonder what the
+[16:58] and our logos. So, I wonder what the issue is there. I wonder if it's because
+[16:59] issue is there. I wonder if it's because it couldn't find it. I noticed that you
+[17:02] it couldn't find it. I noticed that you didn't really use our brand guidelines
+[17:03] didn't really use our brand guidelines as far as color scheme and logo. So,
+[17:07] as far as color scheme and logo. So, just wanted to know why you didn't do
+[17:09] just wanted to know why you didn't do that. And you know what's interesting
+[17:10] that. And you know what's interesting about this? It created this weightless
+[17:12] about this? It created this weightless page in our local host because this is
+[17:14] page in our local host because this is on my Google Chrome. Whereas, if I
+[17:16] on my Google Chrome. Whereas, if I wanted it to do it on its own local
+[17:18] wanted it to do it on its own local host, that's different. If it wanted it
+[17:19] host, that's different. If it wanted it to do it on its computer, it would have
+[17:21] to do it on its computer, it would have to build that in a different way. So, as
+[17:22] to build that in a different way. So, as you guys know how local host works,
+[17:24] you guys know how local host works, that's only going to work on one local
+[17:25] that's only going to work on one local device. And that's kind of cool that it
+[17:27] device. And that's kind of cool that it created it here locally for me on my
+[17:29] created it here locally for me on my actual desktop rather than doing it on
+[17:31] actual desktop rather than doing it on their cloud computer. It could do that,
+[17:33] their cloud computer. It could do that, but we just would have had to specify.
+[17:35] but we just would have had to specify. And then cloud said, "Yeah, that's on
+[17:36] And then cloud said, "Yeah, that's on me." When I briefed dev, I said to pick
+[17:38] me." When I briefed dev, I said to pick a sensible default if branding wasn't
+[17:40] a sensible default if branding wasn't handy, and they assumed that AIS-ish was
+[17:42] handy, and they assumed that AIS-ish was navy and indigo. I didn't point them at
+[17:44] navy and indigo. I didn't point them at brand assets or Herku packaging. Do you
+[17:46] brand assets or Herku packaging. Do you want me to do that again? I'm just going
+[17:48] want me to do that again? I'm just going to say yes, and we'll take a look at
+[17:49] to say yes, and we'll take a look at that version. But anyways, that's
+[17:51] that version. But anyways, that's basically it. It's really just a matter
+[17:52] basically it. It's really just a matter of getting in here, connecting in some
+[17:54] of getting in here, connecting in some of your business context, and then just
+[17:55] of your business context, and then just building out a bunch of essentially
+[17:57] building out a bunch of essentially different skills. I would say different
+[17:58] different skills. I would say different skills, different sub agents, and then
+[18:00] skills, different sub agents, and then just seeing how you can have them work
+[18:01] just seeing how you can have them work together and just spin up your routines
+[18:03] together and just spin up your routines as quick as you can because they're
+[18:05] as quick as you can because they're super quick and easy to set up. If you
+[18:07] super quick and easy to set up. If you want to take a look at all the other
+[18:08] want to take a look at all the other plugins, you just click on plugin. You
+[18:09] plugins, you just click on plugin. You can scroll through, you can search for
+[18:10] can scroll through, you can search for them. If you want to connect certain
+[18:12] them. If you want to connect certain custom ones, you certainly can. And you
+[18:14] custom ones, you certainly can. And you can also see all of your actual skills
+[18:16] can also see all of your actual skills in here. These are skills that I have
+[18:18] in here. These are skills that I have made. I've only made one so far. This is
+[18:19] made. I've only made one so far. This is where we can update the name, the
+[18:21] where we can update the name, the description, the instructions, and you
+[18:23] description, the instructions, and you can also go ahead and delete them. Now,
+[18:24] can also go ahead and delete them. Now, look how cool this is. Klaus found the
+[18:26] look how cool this is. Klaus found the brand guidelines and then it messaged
+[18:28] brand guidelines and then it messaged Dev and here is the new message and the
+[18:31] Dev and here is the new message and the chain between Klouse and Dev. They
+[18:33] chain between Klouse and Dev. They talked about the prototype. Dev
+[18:35] talked about the prototype. Dev delivered it and then Klaus came back
+[18:36] delivered it and then Klaus came back and said, "Hey, here's the actual brand
+[18:37] and said, "Hey, here's the actual brand guidelines. Here's the logo and the
+[18:39] guidelines. Here's the logo and the brand guideline doc." And now Dev is
+[18:41] brand guideline doc." And now Dev is saying, "Hey, I got this from Klouse. I
+[18:42] saying, "Hey, I got this from Klouse. I have to restyle the weight list, blah
+[18:44] have to restyle the weight list, blah blah blah." So, I think you guys get the
+[18:46] blah blah." So, I think you guys get the point. They're talking to each other. We
+[18:47] point. They're talking to each other. We have routines set up. we can keep
+[18:49] have routines set up. we can keep building these things really easily. And
+[18:51] building these things really easily. And I think that this is just super cool
+[18:53] I think that this is just super cool that I'm able to continue my work on my
+[18:55] that I'm able to continue my work on my phone super easily. Now, one thing that
+[18:57] phone super easily. Now, one thing that I think when you sort of look at tools
+[18:59] I think when you sort of look at tools like this is you don't want to get
+[19:00] like this is you don't want to get carried away or caught up in the hype of
+[19:01] carried away or caught up in the hype of these tools because yes, they're cool
+[19:02] these tools because yes, they're cool and they're fun to play around with, but
+[19:04] and they're fun to play around with, but don't just start forcing all these
+[19:05] don't just start forcing all these agents and routines that you don't
+[19:07] agents and routines that you don't actually need. Really think about what
+[19:08] actually need. Really think about what is constraining your business. What are
+[19:10] is constraining your business. What are the pain points that you're feeling on
+[19:11] the pain points that you're feeling on the day-to-day? And does this tool solve
+[19:13] the day-to-day? And does this tool solve some of those pain points? For me, I'm
+[19:15] some of those pain points? For me, I'm going to try to set up all of the Hermes
+[19:17] going to try to set up all of the Hermes agents that I have right in here. And I
+[19:18] agents that I have right in here. And I think it's going to feel more cohesive
+[19:19] think it's going to feel more cohesive because they can talk to each other more
+[19:21] because they can talk to each other more easily than the way I have them setting
+[19:22] easily than the way I have them setting up talking to each other in Hermes. But
+[19:24] up talking to each other in Hermes. But if you actually don't have a need, if
+[19:26] if you actually don't have a need, if you don't have a problem to solve with
+[19:27] you don't have a problem to solve with this tool, then it might just be a waste
+[19:29] this tool, then it might just be a waste of time if you spent like all week
+[19:30] of time if you spent like all week playing with it. You know, I think it's
+[19:31] playing with it. You know, I think it's cool and it's fun, but if you really
+[19:33] cool and it's fun, but if you really want to talk about like if you need it,
+[19:35] want to talk about like if you need it, it's good to sort of think about that
+[19:37] it's good to sort of think about that element, right? So, this should be done.
+[19:39] element, right? So, this should be done. I'm going to go into the weight list and
+[19:41] I'm going to go into the weight list and I'm going to hard refresh. Boom. Okay,
+[19:43] I'm going to hard refresh. Boom. Okay, this looks way more on brand. There's
+[19:44] this looks way more on brand. There's still some design things that I don't
+[19:46] still some design things that I don't love about it, but all I said was, "Hey,
+[19:47] love about it, but all I said was, "Hey, build me a super simple weight list
+[19:49] build me a super simple weight list form." I don't even know if this
+[19:50] form." I don't even know if this actually leads anywhere. We would have
+[19:52] actually leads anywhere. We would have to like keep iterating. If we wanted the
+[19:54] to like keep iterating. If we wanted the dev to actually make this go to ClickUp
+[19:56] dev to actually make this go to ClickUp or something like that, we definitely
+[19:57] or something like that, we definitely could. But on a first pass, you can see
+[20:00] could. But on a first pass, you can see that it was able to look inside of my
+[20:01] that it was able to look inside of my repo. I had it had all the context of
+[20:04] repo. I had it had all the context of what's going on with this program and it
+[20:06] what's going on with this program and it built it out for me super quick. But
+[20:07] built it out for me super quick. But anyways, that is going to do it for
+[20:09] anyways, that is going to do it for today. I hope that this showed you
+[20:10] today. I hope that this showed you what's possible with this tool. As they
+[20:12] what's possible with this tool. As they release new updates, I'm going to be
+[20:13] release new updates, I'm going to be excited to cover them. Hopefully, we get
+[20:15] excited to cover them. Hopefully, we get some cool stuff. Hopefully, we get the
+[20:17] some cool stuff. Hopefully, we get the automations and the routines to become
+[20:19] automations and the routines to become easier and easier to build with
+[20:20] easier and easier to build with different triggers. I'm super excited to
+[20:22] different triggers. I'm super excited to see how this tool evolves. So, if you
+[20:24] see how this tool evolves. So, if you enjoyed or you learned something new,
+[20:25] enjoyed or you learned something new, please give it a like. It helps me out a
+[20:26] please give it a like. It helps me out a ton. And as always, I appreciate you
+[20:27] ton. And as always, I appreciate you guys making it to the end of the video.
+[20:29] guys making it to the end of the video. And I'll see you on the next one. Thanks
+[20:31] And I'll see you on the next one. Thanks everyone.
+```
+
+---
+_Work dir: `D:\tmp\watch-hermes\PQBYZQqan2g-hd` — delete when done._
