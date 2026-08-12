@@ -40,7 +40,7 @@ os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 from server import app as app_module  # noqa: E402
 from server import bots, plugins  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP  # noqa: E402  # ścieżki zależne od platformy
 _FAKE = Path(__file__).resolve().parent / "_fake_mcp_server.py"
 
 # Serwer echo jako custom plugin stdio (poza katalogiem → droga bezpośrednia,

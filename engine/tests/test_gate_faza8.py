@@ -35,7 +35,6 @@ ZAKAZ C: dane na D: (guard jak w gate 4/5/6), TEMP/TMP procesu gatewaya też.
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -56,7 +55,7 @@ from server import app as app_module  # noqa: E402
 from server import bots, gateway, providers  # noqa: E402
 from server.bots import profile_dir  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP, kill_tree  # noqa: E402  # zależne od platformy
 
 BOT = "memo"
 MARKER = "ULUBIONY-KOLOR-KACPRA-TO-KOBALTOWY"
@@ -185,12 +184,7 @@ def llm():
 def _kill_gateway():
     proc = gateway._proc
     if proc is not None:
-        # `terminate()` na Windows nie propaguje się na dzieci.
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-        try:
-            proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            pass
+        kill_tree(proc)
         gateway._proc = None
         time.sleep(1)
 

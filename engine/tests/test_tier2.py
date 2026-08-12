@@ -24,7 +24,7 @@ import pytest
 
 from server.browser_plugin import provider as prov
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP  # ścieżki zależne od platformy
 
 
 @pytest.fixture
@@ -162,10 +162,6 @@ def test_tier2_real_chromium_is_one_process(root, provider, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(root))
     monkeypatch.setenv("SLAFY_COMPUTER_TIER", "2")
     monkeypatch.delenv("SLAFY_BROWSER_HEADLESS", raising=False)  # tier 2 wymusza headless sam
-    monkeypatch.setenv(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        os.environ.get("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers"),
-    )
     alfa, beta = root / "profiles" / "alfa", root / "profiles" / "beta"
 
     first = _session_for(provider, alfa, "t1")

@@ -11,7 +11,6 @@ potrafi urosnąć do setek MB).
 """
 
 import json
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,7 +20,7 @@ import pytest
 
 from server.browser_plugin.provider import SlafyBrowserProvider
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP  # ścieżki zależne od platformy
 
 
 @pytest.fixture
@@ -34,10 +33,6 @@ def home(tmp_path, monkeypatch):
         root.mkdir()
     monkeypatch.setenv("HERMES_HOME", str(root))
     monkeypatch.setenv("SLAFY_BROWSER_HEADLESS", "1")
-    monkeypatch.setenv(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        os.environ.get("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers"),
-    )
     yield root
     if root.parent == _D_TMP:
         shutil.rmtree(root, ignore_errors=True)

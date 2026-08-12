@@ -22,7 +22,6 @@ ZAKAZ C: dane na D: (guard jak gate 8/9), TEMP/TMP procesu gatewaya też.
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -39,7 +38,7 @@ import test_gate_faza1 as gate1  # noqa: E402
 from server import app as app_module  # noqa: E402
 from server import bots, gateway, permissions, providers  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP, kill_tree  # noqa: E402  # zależne od platformy
 FREE = "freebot"
 LOCKED = "lockedbot"
 API_KEY = "gate13-test-key-0123456789"
@@ -94,11 +93,7 @@ def live_gateway(data_root, llm, monkeypatch):
     finally:
         proc = gateway._proc
         if proc is not None:
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-            try:
-                proc.wait(timeout=60)
-            except subprocess.TimeoutExpired:
-                pass
+            kill_tree(proc)
             gateway._proc = None
             time.sleep(1)
 

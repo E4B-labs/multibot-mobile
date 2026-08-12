@@ -36,7 +36,8 @@ from server import app as app_module  # noqa: E402
 from server.browser_plugin.provider import SlafyBrowserProvider  # noqa: E402
 from test_computer import _SyncCdp  # noqa: E402  # ten sam minimalny klient CDP, bez kopiowania
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP  # noqa: E402  # ścieżki zależne od platformy
+
 _BOT = "gatebot"
 _BOT2 = "gatebot2"
 _USER = "slafy"
@@ -109,7 +110,6 @@ def data_root(tmp_path_factory):
     old = {k: os.environ.get(k) for k in ("SLAFY_DATA_DIR", "HERMES_HOME", "SLAFY_BROWSER_HEADLESS")}
     os.environ["SLAFY_DATA_DIR"] = str(root)
     os.environ["SLAFY_BROWSER_HEADLESS"] = "1"
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers")
     try:
         yield root
     finally:

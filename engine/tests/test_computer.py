@@ -31,7 +31,8 @@ os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 from server import app as app_module  # noqa: E402
 from server.browser_plugin.provider import SlafyBrowserProvider  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP  # noqa: E402  # ścieżki zależne od platformy
+
 _BOT = "computerbot"
 _BOT2 = "computerbot2"
 
@@ -121,16 +122,20 @@ def browser(tmp_path_factory):
     os.environ["SLAFY_DATA_DIR"] = str(root)
     os.environ["HERMES_HOME"] = str(profile)  # per-bot `user_data_dir` + `browser.json`
     os.environ["SLAFY_BROWSER_HEADLESS"] = "1"
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers")
 
+    # Wszystko po podmianie env MUSI być w `try` — inaczej padnięty start
+    # chromium zostawia `SLAFY_DATA_DIR` przestawiony na resztę sesji pytesta
+    # (a `test_voice` sprawdza go co do katalogu).
     provider = SlafyBrowserProvider()
-    info = provider.create_session("task-computer")
-    # Kontrakt z Taskiem 1: mostek czyta wyłącznie `browser.json` z profilu bota.
-    assert json.loads((profile / "browser.json").read_text(encoding="utf-8"))["cdp_url"]
+    info = None
     try:
+        info = provider.create_session("task-computer")
+        # Kontrakt z Taskiem 1: mostek czyta wyłącznie `browser.json` z profilu bota.
+        assert json.loads((profile / "browser.json").read_text(encoding="utf-8"))["cdp_url"]
         yield info["cdp_url"]
     finally:
-        provider.close_session(info["bb_session_id"])
+        if info is not None:
+            provider.close_session(info["bb_session_id"])
         for key, value in old.items():
             os.environ.pop(key, None) if value is None else os.environ.__setitem__(key, value)
         if root.parent == _D_TMP:

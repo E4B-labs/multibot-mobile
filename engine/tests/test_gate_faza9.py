@@ -33,7 +33,6 @@ ZAKAZ C: dane na D: (guard jak gate 4/6/8), TEMP/TMP procesów też.
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -55,7 +54,7 @@ from server import app as app_module  # noqa: E402
 from server import bots, gateway, providers, skills  # noqa: E402
 from server.bots import profile_dir  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP, kill_tree  # noqa: E402  # zależne od platformy
 
 BOT = "teachbot"
 BOT2 = "teachbot2"
@@ -107,7 +106,6 @@ def data_root(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(root))
     monkeypatch.setenv("TEMP", str(_D_TMP))
     monkeypatch.setenv("TMP", str(_D_TMP))
-    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", r"D:\tmp\pw-browsers")
     try:
         yield root
     finally:
@@ -261,11 +259,7 @@ def live_gateway(data_root, llm, monkeypatch):
     finally:
         proc = gateway._proc
         if proc is not None:
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-            try:
-                proc.wait(timeout=60)
-            except subprocess.TimeoutExpired:
-                pass
+            kill_tree(proc)
             gateway._proc = None
             time.sleep(1)
 

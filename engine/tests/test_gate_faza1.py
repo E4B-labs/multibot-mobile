@@ -42,8 +42,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
+from conftest import TMP_ROOT, kill_tree  # zakaz zapisu na C: — także dla temp subprocessów
+
 REPO = Path(__file__).resolve().parent.parent
-TMP_ROOT = r"D:\tmp"  # zakaz zapisu na C: — także dla temp subprocessów
 API_KEY = "e2e-test-key-0123456789"  # >=16 znaków: has_usable_secret (api_server.py:7154)
 REPLY = "mock-llm: potwierdzam odbior"
 MSG1 = "pierwsza wiadomosc: zapamietaj slowo ANANAS"
@@ -164,6 +165,10 @@ class Stack:
                 [sys.executable, "-m", "uvicorn", "server.app:app",
                  "--host", "127.0.0.1", "--port", str(self.port)],
                 cwd=REPO, env=self.env, stdout=fh, stderr=subprocess.STDOUT,
+                # Własna grupa procesów: na POSIX to jedyny sposób, żeby `kill_tree`
+                # dosięgnął WNUKA (`hermes gateway` spawnięty przez uvicorna) —
+                # inaczej zostałby żywy i trzymał port. Na Windows ignorowane.
+                start_new_session=True,
             )
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -178,13 +183,10 @@ class Stack:
         raise AssertionError(f"serwer nie wstał w {timeout} s; log: {self.log}")
 
     def kill(self, gateway_port: int | None = None) -> None:
-        """Ubija DRZEWO: uvicorn + spawnięty przez niego `hermes gateway`.
-        `terminate()` nie wystarcza — na Windows nie propaguje się na dzieci."""
+        """Ubija DRZEWO: uvicorn + spawnięty przez niego `hermes gateway`."""
         if self.proc is None:
             return
-        subprocess.run(["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
-                       capture_output=True)
-        self.proc.wait(timeout=60)
+        kill_tree(self.proc)
         self.proc = None
         # Oba porty muszą przestać przyjmować połączenia, zanim wstanie następny
         # serwer — inaczej jego `ensure_running()` zobaczy konającego gatewaya.
@@ -210,8 +212,8 @@ def stack(llm):
         "HERMES_HOME": str(data_dir),
         "API_SERVER_KEY": API_KEY,
         "SLAFY_GATEWAY_URL": f"http://127.0.0.1:{gw_port}",
-        "TEMP": TMP_ROOT,
-        "TMP": TMP_ROOT,
+        "TEMP": str(TMP_ROOT),
+        "TMP": str(TMP_ROOT),
         "PYTHONUNBUFFERED": "1",
     }
     s = Stack(env, _free_port(), data_dir / "server.log")
@@ -304,7 +306,7 @@ def test_openrouter_smoke():
         **os.environ,
         "SLAFY_DATA_DIR": str(data_dir), "HERMES_HOME": str(data_dir),
         "API_SERVER_KEY": API_KEY, "SLAFY_GATEWAY_URL": f"http://127.0.0.1:{gw_port}",
-        "TEMP": TMP_ROOT, "TMP": TMP_ROOT,
+        "TEMP": str(TMP_ROOT), "TMP": str(TMP_ROOT),
     }
     s = Stack(env, _free_port(), data_dir / "server.log")
     try:

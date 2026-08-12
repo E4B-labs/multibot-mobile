@@ -15,6 +15,10 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    # Jedno miejsce dla `playwright install` i dla pytesta — inaczej chromium
+    # ląduje gdzie indziej, niż go szukają testy (i gateway).
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
     defaults:
       run:
         working-directory: engine

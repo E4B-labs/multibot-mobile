@@ -92,7 +92,9 @@ def test_ensure_shared_tokens_migrates_preexisting_dir(two_bots):
     assert os.path.samefile(link, plugins.shared_tokens_dir())
 
     # Symulacja profilu sprzed tej warstwy: prawdziwy katalog z tokenem.
-    link.rmdir()
+    # `rmdir` zdejmuje junction (Windows), ale na POSIX symlink trzeba `unlink`
+    # — `os.rmdir` na dowiązaniu rzuca ENOTDIR.
+    link.unlink() if link.is_symlink() else link.rmdir()
     link.mkdir()
     (link / "stary.json").write_text("{}")
     plugins.ensure_shared_tokens("ala")

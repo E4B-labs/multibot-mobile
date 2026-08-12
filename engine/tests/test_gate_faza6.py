@@ -46,7 +46,6 @@ import hmac
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -67,7 +66,7 @@ from server import app as app_module  # noqa: E402
 from server import bots, gateway, providers, routines  # noqa: E402
 from server.bots import profile_dir  # noqa: E402
 
-_D_TMP = Path(r"D:\tmp")
+from conftest import TMP_ROOT as _D_TMP, kill_tree  # noqa: E402  # zależne od platformy
 
 BOT = "cronny"
 # Marker w promptcie: szukamy GO w żądaniach mocka, więc musi być unikalny.
@@ -136,13 +135,7 @@ def live_gateway(data_root, llm, monkeypatch):
     finally:
         proc = gateway._proc
         if proc is not None:
-            # `terminate()` na Windows nie propaguje się na dzieci — a żywy
-            # potomek trzyma uchwyty na katalog danych i wywraca sprzątanie.
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-            try:
-                proc.wait(timeout=60)
-            except subprocess.TimeoutExpired:
-                pass
+            kill_tree(proc)
             gateway._proc = None
             time.sleep(1)  # SQLite potrafi trzymać uchwyt chwilę po zabiciu
 
