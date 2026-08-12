@@ -21,6 +21,11 @@ cd engine
 uv venv .venv --python 3.12
 uv pip install --python .venv/Scripts/python.exe -r requirements.txt   # win
 #              --python .venv/bin/python                               # mac/linux
+# hermes-agent: tylko editable (backend odrzuca wheel), SHA w requirements.txt
+git config --global core.longpaths true   # windows
+git clone --filter=blob:none https://github.com/NousResearch/hermes-agent ../..​/hermes-agent
+git -C ../../hermes-agent checkout 17688f9
+uv pip install --python .venv/Scripts/python.exe -e ../../hermes-agent
 .venv/Scripts/python.exe -m playwright install chromium
 cd ..
 

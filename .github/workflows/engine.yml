@@ -28,6 +28,14 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
+      # hermes-agent: build backend odrzuca wheel/sdist, tylko editable;
+      # core.longpaths dla MAX_PATH na windows (docusaurus i18n w repo hermesa)
+      - name: Install hermes-agent (editable @ 17688f9)
+        run: |
+          git config --global core.longpaths true
+          git clone --filter=blob:none https://github.com/NousResearch/hermes-agent ${{ runner.temp }}/hermes-agent
+          git -C ${{ runner.temp }}/hermes-agent checkout 17688f9
+          pip install -e ${{ runner.temp }}/hermes-agent
       - name: Install chromium
         run: python -m playwright install chromium --with-deps
       - name: Run pytest

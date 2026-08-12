@@ -2,10 +2,13 @@
 #   uv venv .venv --python 3.12
 #   uv pip install --python .venv/Scripts/python.exe -r requirements.txt
 #
-# hermes-agent pinowany na SHA — CI i świeże maszyny nie mają sąsiedniego
-# klona. Dev lokalny może nadpisać instalacją editable:
-#   uv pip install -e G:/Projects/hermes-agent
-hermes-agent @ git+https://github.com/NousResearch/hermes-agent@17688f9
+# hermes-agent NIE jest tu pinowany: jego backend budowy odrzuca wheel/sdist
+# ("Building wheels or sdists for hermes-agent is not supported"), działa
+# wyłącznie editable. Instalacja (SHA: 17688f9):
+#   git config --global core.longpaths true   # windows: MAX_PATH przy clone
+#   git clone --filter=blob:none https://github.com/NousResearch/hermes-agent
+#   git -C hermes-agent checkout 17688f9
+#   uv pip install --python .venv/Scripts/python.exe -e ./hermes-agent
 aiohttp
 fastapi
 uvicorn
