@@ -31,6 +31,14 @@ SCRIPT = ROOT / "scripts" / "termux-install.sh"
 def test_script_syntax():
     # Ścieżka WZGLĘDNA + cwd, nie absolutna: bashe na Windowsie (git bash, WSL)
     # inaczej tłumaczą "G:\..." i "G:/..." i nie znajdują pliku.
+    # windows-latest ma na PATH bash.exe z WSL bez dystrybucji — exit 1 zanim
+    # dojdzie do składni; probe odróżnia "bash nie działa" od "błąd składni".
+    try:
+        probe = subprocess.run(["bash", "-c", "exit 0"], cwd=ROOT)
+    except FileNotFoundError:
+        pytest.skip("brak basha na PATH")
+    if probe.returncode != 0:
+        pytest.skip("bash na PATH nie działa (WSL bez dystrybucji)")
     run = subprocess.run(["bash", "-n", "scripts/termux-install.sh"], cwd=ROOT)
     assert run.returncode == 0
 
