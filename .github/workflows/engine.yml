@@ -15,10 +15,6 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    # Jedno miejsce dla `playwright install` i dla pytesta — inaczej chromium
-    # ląduje gdzie indziej, niż go szukają testy (i gateway).
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
     defaults:
       run:
         working-directory: engine
@@ -40,10 +36,16 @@ jobs:
           git clone --filter=blob:none https://github.com/NousResearch/hermes-agent ${{ runner.temp }}/hermes-agent
           git -C ${{ runner.temp }}/hermes-agent checkout 17688f9
           pip install -e ${{ runner.temp }}/hermes-agent
+      # PLAYWRIGHT_BROWSERS_PATH w obu stepach ta sama — inaczej chromium
+      # ląduje gdzie indziej, niż go szukają testy (i gateway). Kontekst
+      # `runner` nie działa w env na poziomie joba, stąd per-step.
       - name: Install chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
         run: python -m playwright install chromium --with-deps
       - name: Run pytest
         env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
           SLAFY_DATA_DIR: ${{ runner.temp }}/slafy-data
           HERMES_HOME: ${{ runner.temp }}/slafy-data
         run: python -m pytest -q --basetemp="${{ runner.temp }}/pytest"
