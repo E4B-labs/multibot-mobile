@@ -85,6 +85,9 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
     cfg.instances && Object.keys(cfg.instances).length
       ? cfg.instances
       : {
+          // multibot: silnik slafy w domyślnej flocie — sidecar podnosi się sam
+          // przy pierwszej turze; bez venvu instancja jest po prostu unavailable.
+          slafy: { driver: "slafy" },
           grok: { driver: "grokAgent" },
           gemini: { driver: "geminiAgent" },
           claude: { driver: "claudeAgent" },

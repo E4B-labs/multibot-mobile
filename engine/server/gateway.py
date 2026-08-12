@@ -101,11 +101,13 @@ Zero własnej pętli agenta — gadamy HTTP-em do gotowego serwera Hermesa
       dopiero wtedy, gdy ktoś ustawi BYOK.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -402,8 +404,15 @@ def stop() -> None:
     _proc = None
 
 
-def chat(bot_id: str, message: str) -> dict:
-    """Jedna tura rozmowy z botem. Non-stream — streaming dopiero w fazie 3."""
+def _prepare(bot_id: str, message: str) -> tuple[str, str]:
+    """Wszystko, co musi się zdarzyć PRZED strzałem do gatewaya: podniesienie
+    procesu, configi profilu, pluginy, skille i rozwinięcie slasha.
+
+    multibot: wyciągnięte z `chat()` po to, żeby wariant streamowany
+    (`chat_stream`) robił dokładnie ten sam prep. `httpx.post` ZOSTAJE w `chat()`
+    — testy podmieniają `gateway.httpx.post` (test_skills, test_usage,
+    test_permissions), więc przeniesienie żądania do helpera zerwałoby im mocka.
+    """
     ensure_running()
     _ensure_profile_key(bot_id)
     _ensure_browser_config(bot_id)
@@ -415,8 +424,12 @@ def chat(bot_id: str, message: str) -> dict:
     _ensure_skills_config(bot_id)
     # `/nazwa` = wywołanie skilla: do gatewaya leci wiadomość z wklejonym ciałem
     # skilla, bo platforma `api_server` nie ma własnego dispatchu slashy.
-    message = skills.slash_message(bot_id, message)
-    sid = session_id(bot_id)
+    return skills.slash_message(bot_id, message), session_id(bot_id)
+
+
+def chat(bot_id: str, message: str) -> dict:
+    """Jedna tura rozmowy z botem. Non-stream — wariant SSE to `chat_stream`."""
+    message, sid = _prepare(bot_id, message)
     response = httpx.post(
         chat_url(bot_id),
         json={
@@ -435,6 +448,80 @@ def chat(bot_id: str, message: str) -> dict:
     return {
         "reply": data["choices"][0]["message"]["content"],
         "session_id": sid,
+    }
+
+
+def chat_stream(bot_id: str, message: str) -> Iterator[dict]:
+    """Ta sama tura co `chat()`, ale strumieniowana — generator eventów.
+
+    multibot (faza F2): proxy SSE gatewaya Hermesa. Ten sam prep i ten sam
+    endpoint `POST /p/<bot>/v1/chat/completions`, tylko `stream: True`, więc
+    ścieżka non-stream zostaje nietknięta.
+
+    Format po stronie Hermesa (`api_server.py:4405-4590`): najpierw ramka z
+    `delta.role`, potem ramki `delta.content`, tool-activity jako WŁASNY event
+    `hermes.tool.progress` (`api_server.py:4441-4442`), na koniec ramka z
+    `finish_reason` + `usage` i `data: [DONE]`.
+
+    Yielduje słowniki: `delta` (kawałek tekstu), `working` (aktywność
+    narzędzia), `usage` (tokeny), `done` (pełna odpowiedź + `session_id`).
+    Błąd sieci/HTTP leci wyjątkiem — mapuje go warstwa HTTP (`server/app.py`).
+    """
+    message, sid = _prepare(bot_id, message)
+    parts: list[str] = []
+    finish_reason = None
+    with httpx.stream(
+        "POST",
+        chat_url(bot_id),
+        json={
+            "model": "hermes-agent",
+            "messages": [{"role": "user", "content": message}],
+            "stream": True,
+        },
+        headers={"X-Hermes-Session-Id": sid, **_auth()},
+        timeout=300.0,  # jak w `chat()` — tura z tool-callami trwa minuty
+    ) as response:
+        response.raise_for_status()
+        event = None
+        for line in response.iter_lines():
+            line = line.rstrip("\r")
+            if not line:  # pusta linia = koniec ramki, `event:` nie przechodzi dalej
+                event = None
+                continue
+            if line.startswith("event:"):
+                event = line[6:].strip()
+                continue
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:  # ramka nie-JSON = nic, czego umiemy użyć
+                continue
+            if event == "hermes.tool.progress":
+                yield {"type": "working", "tool": chunk}
+                continue
+            choice = (chunk.get("choices") or [{}])[0]
+            text = (choice.get("delta") or {}).get("content")
+            if text:
+                parts.append(text)
+                yield {"type": "delta", "text": text}
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
+            if chunk.get("usage"):
+                usage.record(bot_id, chunk["usage"])  # jak w `chat()` — nigdy nie rzuca
+                yield {
+                    "type": "usage",
+                    "input": chunk["usage"].get("prompt_tokens", 0),
+                    "output": chunk["usage"].get("completion_tokens", 0),
+                }
+    yield {
+        "type": "done",
+        "reply": "".join(parts),
+        "session_id": sid,
+        "finish_reason": finish_reason,
     }
 
 

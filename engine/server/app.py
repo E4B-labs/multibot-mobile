@@ -57,7 +57,8 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, Request, UploadFile, WebSocket
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -346,6 +347,15 @@ def set_provider(bot_id: str, body: ProviderIn) -> dict:
     )
 
 
+@app.get("/api/bots/{bot_id}/provider")
+def get_provider(bot_id: str) -> dict:
+    # multibot: `providers.get_provider` istniało od fazy 1, ale nie miało trasy —
+    # BYOK UI musi umieć odczytać stan, nie tylko zapisać. Klucza nie oddaje
+    # (`has_key: bool`), więc GET jest bezpieczny.
+    _require(bot_id)
+    return providers.get_provider(bot_id)
+
+
 @app.get("/api/bots/{bot_id}/messages")
 async def messages(bot_id: str) -> list[dict]:
     _require(bot_id)
@@ -462,9 +472,52 @@ async def _run_chat(bot_id: str, message: str) -> dict:
         await _broadcast({"type": "working", "bot_id": bot_id, "working": False})
 
 
-@app.post("/api/bots/{bot_id}/chat")
-async def chat(bot_id: str, body: ChatIn) -> dict:
+async def _stream_chat(bot_id: str, message: str):
+    """Tura czatu jako SSE. multibot (faza F2) — na potrzeby harnessu, który
+    renderuje odpowiedź token po tokenie.
+
+    Eventy: `delta` (kawałek tekstu), `working` (aktywność narzędzia), `usage`
+    (tokeny), `done` (pełna odpowiedź), `error`. Parzystość z `_run_chat`:
+    te same broadcasty WS (`working` true/false, wiadomość usera i asystenta,
+    marker uwagi), więc UI silnika widzi turę tak samo jak przy non-stream.
+
+    ponytail: `@mention` (delegacja do innego bota) ścieżka streamowana
+    pomija — to osobna, nieskładająca się na strumień tura. Kto potrzebuje
+    delegacji, woła endpoint bez `?stream=1`.
+    """
+
+    def frame(kind: str, payload: dict) -> str:
+        return f"event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    await _broadcast({"type": "working", "bot_id": bot_id, "working": True})
+    await _broadcast(_message_event(bot_id, "user", message))
+    reply = ""
+    try:
+        # `gateway.chat_stream` jest synchroniczne (httpx) — do puli wątków, żeby
+        # nie blokować pętli z WS-ami; `iterate_in_threadpool` robi to per element.
+        async for event in iterate_in_threadpool(gateway.chat_stream(bot_id, message)):
+            if event["type"] == "done":
+                reply = event["reply"]
+            yield frame(event.pop("type"), event)
+        await _broadcast(_message_event(bot_id, "assistant", reply))
+        await _set_attention(bot_id, _attention_reason(reply))
+    except Exception as exc:  # padnięty gateway = event w strumieniu, nie 500 bez ciała
+        yield frame("error", {"message": f"{type(exc).__name__}: {exc}"})
+    finally:
+        # `finally` z tego samego powodu co w `_run_chat`: przerwana tura nie może
+        # zostawić otwartych UI z botem w stanie "working" na zawsze.
+        await _broadcast({"type": "working", "bot_id": bot_id, "working": False})
+
+
+@app.post("/api/bots/{bot_id}/chat", response_model=None)
+async def chat(bot_id: str, body: ChatIn, stream: int = 0) -> dict | StreamingResponse:
     _require(bot_id)  # gateway odpowiedziałby profilem domyślnym albo 404 bez kontekstu
+    if stream:  # multibot: `?stream=1` = SSE; bez parametru kontrakt bez zmian
+        return StreamingResponse(
+            _stream_chat(bot_id, body.message),
+            media_type="text/event-stream",
+            headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
+        )
     return await _run_chat(bot_id, body.message)
 
 

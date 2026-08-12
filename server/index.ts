@@ -14,6 +14,7 @@ import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE
 import type { RuntimeEvent } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
+import { ensureEngine } from "./engine/supervisor.ts"; // multibot: przelotka BYOK
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
@@ -648,6 +649,31 @@ const server = createServer(async (req, res) => {
       const status = configStatus();
       broadcast({ kind: "config", ...status });
       return json(res, 200, status);
+    }
+
+    // ── multibot: BYOK silnika (przelotka) ──
+    // Provider modelu ustawia się W SILNIKU, per bot (`providers.py`: config.yaml
+    // profilu + klucz do jego .env). UI BYOK gada z harnessem, nie z silnikiem
+    // wprost, więc idzie tędy. Pełny, generyczny proxy do silnika to faza F3 —
+    // tu wyłącznie te dwie trasy, których potrzebuje BYOK.
+    m = path.match(/^\/api\/engine\/provider\/([\w-]+)$/);
+    if (m && (method === "GET" || method === "POST")) {
+      const botId = m[1];
+      try {
+        const baseUrl = await ensureEngine();
+        const target = `${baseUrl}/api/bots/${encodeURIComponent(botId)}/provider`;
+        // GET czyta stan (silnik nigdy nie oddaje klucza — tylko `has_key`),
+        // POST zapisuje; po stronie silnika zapis to PUT.
+        const upstream = await fetch(target, {
+          method: method === "GET" ? "GET" : "PUT",
+          headers: { "content-type": "application/json" },
+          body: method === "GET" ? undefined : JSON.stringify(await readBody(req)),
+          signal: AbortSignal.timeout(30_000),
+        });
+        return json(res, upstream.status, await upstream.json().catch(() => ({})));
+      } catch (e) {
+        return json(res, 503, { error: e instanceof Error ? e.message : String(e) });
+      }
     }
 
     // ── connectors (Composio) ──

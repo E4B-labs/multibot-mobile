@@ -13,6 +13,7 @@ bo start gatewaya to na Windows kilkanaście sekund, własny proces i plik lock 
 za drogo i za kruche na test jednostkowy. Prawdziwy gateway sprawdza gate fazy 1.
 """
 
+import json
 import os
 import re
 import sys
@@ -203,3 +204,64 @@ def test_chat_hits_profile_prefixed_route(client, mock_gateway):
 
 def test_chat_for_missing_bot_is_404(client, mock_gateway):
     assert client.post("/api/bots/niema/chat", json={"message": "hej"}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# multibot (faza F2): `?stream=1` = SSE. Ścieżka non-stream zostaje nietknięta —
+# testy wyżej są tego dowodem, te niżej sprawdzają wyłącznie nowy wariant.
+# --------------------------------------------------------------------------- #
+def _sse_events(raw: str) -> list[tuple[str, dict]]:
+    """Surowe ciało SSE → lista `(nazwa_eventu, payload)`."""
+    out = []
+    for block in raw.strip().split("\n\n"):
+        name, data = None, None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                name = line[6:].strip()
+            elif line.startswith("data:"):
+                data = json.loads(line[5:].strip())
+        if name:
+            out.append((name, data))
+    return out
+
+
+def test_chat_stream_emits_sse_events(client, mock_gateway):
+    client.post("/api/bots", json={"id": "ala", "name": "Ala"})
+    r = client.post("/api/bots/ala/chat?stream=1", json={"message": "czesc"})
+
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+
+    events = _sse_events(r.text)
+    kinds = [name for name, _ in events]
+    assert kinds == ["working", "delta", "delta", "delta", "usage", "done"]
+
+    payloads = dict(zip(kinds, [p for _, p in events]))
+    assert "".join(p["text"] for name, p in events if name == "delta") == mock_llm.REPLY
+    assert payloads["usage"] == {"input": 1, "output": 3}
+    assert payloads["done"]["reply"] == mock_llm.REPLY
+    assert payloads["done"]["session_id"] == "slafy-ala"
+    assert payloads["done"]["finish_reason"] == "stop"
+
+    sent = mock_llm.requests_seen[-1]
+    assert sent["stream"] is True  # non-stream wysyła False — patrz test wyżej
+
+
+def test_chat_stream_reports_gateway_failure_as_error_event(client, monkeypatch):
+    """Padnięty gateway = event `error` w strumieniu. Nagłówki poszły już przy
+    pierwszym bajcie, więc 500 bez ciała byłoby dla klienta niemym rozłączeniem."""
+    client.post("/api/bots", json={"id": "ala", "name": "Ala"})
+
+    def boom(bot_id, message):
+        raise RuntimeError("gateway padl")
+        yield  # pragma: no cover — czyni z `boom` generator
+
+    monkeypatch.setattr(app_module.gateway, "chat_stream", boom)
+    r = client.post("/api/bots/ala/chat?stream=1", json={"message": "czesc"})
+
+    assert r.status_code == 200
+    assert _sse_events(r.text) == [("error", {"message": "RuntimeError: gateway padl"})]
+
+
+def test_chat_stream_for_missing_bot_is_404(client, mock_gateway):
+    assert client.post("/api/bots/niema/chat?stream=1", json={"message": "hej"}).status_code == 404

@@ -9,14 +9,19 @@ gateway odpala dopiero gate fazy 1 (Task 5).
 historii (czy druga wiadomość widzi poprzednią wymianę).
 """
 
+import json
 import socket  # noqa: F401  # (uvicorn sam bierze wolny port przez port=0)
 import threading
 import time
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 
 REPLY = "mock: odpowiedz testowa"
+
+# Na ile kawałków mock tnie `REPLY` w trybie stream — test skleja je z powrotem.
+STREAM_DELTAS = ["mock: ", "odpowiedz ", "testowa"]
 
 app = FastAPI()
 
@@ -31,6 +36,8 @@ async def completions(request: Request, profile: str = ""):
     gdzie każda trasa jest rejestrowana też jako `/p/{profile}<path>`."""
     body = await request.json()
     requests_seen.append(body)
+    if body.get("stream"):  # multibot (F2): wariant SSE, kształt jak api_server.py:4405-4590
+        return StreamingResponse(_sse_chunks(body), media_type="text/event-stream")
     return {
         "id": "chatcmpl-mock",
         "object": "chat.completion",
@@ -45,6 +52,33 @@ async def completions(request: Request, profile: str = ""):
         ],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     }
+
+
+def _sse_chunks(body: dict):
+    """Ramki SSE dokładnie w kolejności prawdziwego `api_server`: rola, deltas,
+    tool-progress osobnym eventem, ramka finiszowa z `usage`, `[DONE]`."""
+    model = body.get("model", "hermes-agent")
+    base = {"id": "chatcmpl-mock", "object": "chat.completion.chunk", "created": 0, "model": model}
+
+    def frame(payload: dict, event: str | None = None) -> str:
+        head = f"event: {event}\n" if event else ""
+        return f"{head}data: {json.dumps(payload)}\n\n"
+
+    yield frame({**base, "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]})
+    yield frame(
+        {"toolCallId": "call-1", "status": "running", "name": "search"},
+        event="hermes.tool.progress",
+    )
+    for piece in STREAM_DELTAS:
+        yield frame({**base, "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]})
+    yield frame(
+        {
+            **base,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 3, "total_tokens": 4},
+        }
+    )
+    yield "data: [DONE]\n\n"
 
 
 def start(timeout: float = 10.0):
