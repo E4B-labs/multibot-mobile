@@ -43,7 +43,17 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
         run: python -m playwright install chromium --with-deps
-      - name: Run pytest
+      # linux pod xvfb: sesje przeglądarek bota są headed (take-over),
+      # bez X serwera chromium pada na "The platform failed to initialize"
+      - name: Run pytest (linux)
+        if: runner.os == 'Linux'
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
+          SLAFY_DATA_DIR: ${{ runner.temp }}/slafy-data
+          HERMES_HOME: ${{ runner.temp }}/slafy-data
+        run: xvfb-run --auto-servernum python -m pytest -q --basetemp="${{ runner.temp }}/pytest"
+      - name: Run pytest (windows)
+        if: runner.os == 'Windows'
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
           SLAFY_DATA_DIR: ${{ runner.temp }}/slafy-data
