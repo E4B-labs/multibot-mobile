@@ -8,6 +8,7 @@ import {
   MAUS_COLOR_NAMES,
 } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
+import { EngineProviderCard } from "./EngineProvider"; // multibot: BYOK silnika slafy
 import { cn } from "@/lib/cn";
 
 function Field({
@@ -157,6 +158,12 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             </div>
             <ModelPicker bot={bot} />
           </div>
+
+          {/* multibot: BYOK silnika slafy — karta tylko dla botów jeżdżących na
+              driverze slafy; reszta floty widzi stockowy panel. Klucz per bot.id
+              wymusza remount + świeży GET przy przełączeniu bota. */}
+          {state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
+            "slafy" && <EngineProviderCard key={bot.id} bot={bot} />}
 
           <div className="rounded-xl bg-card p-4">
             <div className="text-[15px] font-medium text-ink">Computer</div>
