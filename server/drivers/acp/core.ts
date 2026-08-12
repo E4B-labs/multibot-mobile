@@ -26,7 +26,8 @@ import type {
   SendTurnInput,
 } from "../../contracts.ts";
 import { newEventId, newId } from "../../contracts.ts";
-import { augmentedPath } from "../../env-path.ts";
+import { augmentedPath, resolveCliSpawn } from "../../env-path.ts";
+import { killTree } from "../../kill-tree.ts";
 import { appendNative } from "../native.ts";
 
 export interface AcpConfig {
@@ -150,10 +151,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         const env = childEnv();
         const mcpServers = acpMcpServers(turn);
 
-        const child = spawn(config.cli, support.spawnArgs(config, turn), {
+        const cli = resolveCliSpawn(config.cli, support.spawnArgs(config, turn)); // multibot
+        const child = spawn(cli.command, cli.args, {
           cwd,
           env,
           stdio: ["pipe", "pipe", "pipe"],
+          windowsVerbatimArguments: cli.windowsVerbatimArguments,
           detached: true,
         });
 
@@ -188,15 +191,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             send({ jsonrpc: "2.0", id, method, params });
           });
 
-        const stop = () => {
-          try {
-            process.kill(-child.pid!, "SIGTERM");
-          } catch {
-            try {
-              child.kill("SIGTERM");
-            } catch {}
-          }
-        };
+        const stop = () => killTree(child); // multibot: process groups are POSIX-only
 
         const settle = (ok: boolean, stopReason: string | null) => {
           if (state.settled) return;
@@ -469,8 +464,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       const snapshot = async (): Promise<ProviderSnapshot> => {
         const env = childEnv();
         const version = await new Promise<string | null>((resolve) => {
-          execFile(config.cli, ["--version"], { timeout: 8000, env }, (err, stdout) =>
-            resolve(err ? null : stdout.trim()),
+          const cli = resolveCliSpawn(config.cli, ["--version"]); // multibot
+          execFile(
+            cli.command,
+            cli.args,
+            { timeout: 8000, env, windowsVerbatimArguments: cli.windowsVerbatimArguments },
+            (err, stdout) => resolve(err ? null : stdout.trim()),
           );
         });
         if (!version) return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };
