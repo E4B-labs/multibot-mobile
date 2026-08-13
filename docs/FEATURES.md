@@ -35,8 +35,9 @@ engine receives `provider=custom`, `base_url`, and `model` at turn start.
 CLI bots keep their native driver. Memory and Skills use a provider-neutral
 workspace shadow profile, so they are available from the same bot header while
 the provider conversation remains native. Routines are harness-owned and work
-across drivers. Bot-to-bot delegation is automatic where the provider exposes
-MCP; drivers without MCP support remain targetable but cannot call peers yet.
+across drivers. Bot-to-bot delegation is always enabled: MCP-capable providers
+get live peer tools; Codex/API providers use explicit `@bot` delegation and
+receive the peer reply in their prompt.
 
 ## Platform matrix
 

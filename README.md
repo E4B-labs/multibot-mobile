@@ -198,8 +198,8 @@ authenticated remote access, PWA install, groups, routines, memory, skills,
 onboarding, and one-command server installers.
 
 Known limits stay explicit: group rooms currently use shared engine transport
-for CLI shadows; engine-only Memory/Skills are not fabricated for CLI bots;
-native store apps and arbitrary MCP OAuth are separate work.
+for CLI shadows; native peer tools are unavailable to Codex/API providers (use
+`@bot` delegation); native store apps and arbitrary MCP OAuth are separate work.
 
 ## License
 
