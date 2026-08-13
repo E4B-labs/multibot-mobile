@@ -16,7 +16,10 @@
 import { spawn, execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { newEventId, newId } from "../../contracts.js";
-import { augmentedPath } from "../../env-path.js";
+import { augmentedPath, resolveCliSpawn } from "../../env-path.js";
+import { killTree } from "../../kill-tree.js";
+// multibot (F7): własne serwery MCP użytkownika, wspólne dla wszystkich driverów.
+import { connectors as customConnectors } from "../../mcp-connectors.js";
 import { appendNative } from "../native.js";
 const INIT_TIMEOUT = 20_000;
 const NEW_SESSION_TIMEOUT = 30_000;
@@ -81,6 +84,20 @@ export function createAcpDriver(support) {
                         env: Object.entries(agents.env).map(([name, value]) => ({ name, value: String(value) })),
                     });
                 }
+                // multibot (F7): własne konektory MCP użytkownika — tylko stdio, patrz
+                // komentarz wyżej (HTTP/SSE to EXTRA transport ACP, nie baseline).
+                // Wiążą się przy `session/new`, więc konektor dodany w trakcie sesji
+                // dołącza dopiero do następnej.
+                for (const c of customConnectors()) {
+                    if (c.transport.type !== "stdio")
+                        continue;
+                    servers.push({
+                        name: c.id,
+                        command: c.transport.command,
+                        args: c.transport.args ?? [],
+                        env: Object.entries(c.transport.env ?? {}).map(([name, value]) => ({ name, value: String(value) })),
+                    });
+                }
                 return servers;
             };
             const sendTurn = async (turn) => {
@@ -91,10 +108,12 @@ export function createAcpDriver(support) {
                 const cwd = turn.cwd ?? config.workspace ?? homedir();
                 const env = childEnv();
                 const mcpServers = acpMcpServers(turn);
-                const child = spawn(config.cli, support.spawnArgs(config, turn), {
+                const cli = resolveCliSpawn(config.cli, support.spawnArgs(config, turn)); // multibot
+                const child = spawn(cli.command, cli.args, {
                     cwd,
                     env,
                     stdio: ["pipe", "pipe", "pipe"],
+                    windowsVerbatimArguments: cli.windowsVerbatimArguments,
                     detached: true,
                 });
                 const state = { settled: false, promptSent: false, text: "" };
@@ -123,17 +142,7 @@ export function createAcpDriver(support) {
                     rpcPending.set(id, { resolve, reject, timer });
                     send({ jsonrpc: "2.0", id, method, params });
                 });
-                const stop = () => {
-                    try {
-                        process.kill(-child.pid, "SIGTERM");
-                    }
-                    catch {
-                        try {
-                            child.kill("SIGTERM");
-                        }
-                        catch { }
-                    }
-                };
+                const stop = () => killTree(child); // multibot: process groups are POSIX-only
                 const settle = (ok, stopReason) => {
                     if (state.settled)
                         return;
@@ -416,7 +425,8 @@ export function createAcpDriver(support) {
             const snapshot = async () => {
                 const env = childEnv();
                 const version = await new Promise((resolve) => {
-                    execFile(config.cli, ["--version"], { timeout: 8000, env }, (err, stdout) => resolve(err ? null : stdout.trim()));
+                    const cli = resolveCliSpawn(config.cli, ["--version"]); // multibot
+                    execFile(cli.command, cli.args, { timeout: 8000, env, windowsVerbatimArguments: cli.windowsVerbatimArguments }, (err, stdout) => resolve(err ? null : stdout.trim()));
                 });
                 if (!version)
                     return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };

@@ -16,7 +16,10 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "../config.js";
-import { augmentedPath } from "../env-path.js";
+import { augmentedPath, resolveCliSpawn } from "../env-path.js";
+// multibot (F7): wspólny montaż mcpServers (Composio + własne konektory).
+import { mcpServers as buildMcpServers } from "../mcp-servers.js";
+import { killTree } from "../kill-tree.js";
 import { newEventId, newId } from "../contracts.js";
 import { appendNative } from "./native.js";
 const DRIVER_KIND = "claudeAgent";
@@ -55,8 +58,14 @@ function askSummary(ask) {
     const text = JSON.stringify(input);
     return text === "{}" ? (ask.tool ?? "tool") : text.slice(0, 200);
 }
-function permissionSocketPath(threadId) {
+export function permissionSocketPath(threadId) {
     const tag = threadId.replace(/[^\w-]/g, "").slice(0, 8);
+    // multibot: Windows has no unix sockets — net.createServer binds a named
+    // pipe instead, same API on both ends. The pipe namespace is global and
+    // flat (DATA_DIR does not isolate it), so the pid keeps concurrent
+    // harnesses off each other's names.
+    if (process.platform === "win32")
+        return `\\\\.\\pipe\\omb-perm-${process.pid}-${tag}`;
     return join(DATA_DIR, `perm-${tag}.sock`);
 }
 function createPermissionBroker(opts) {
@@ -106,7 +115,11 @@ function createPermissionBroker(opts) {
             }
         });
     });
-    server.on("error", () => { });
+    // multibot: a broker that never came up used to be silent — every
+    // approval then timed out into a deny nobody could explain. Say so.
+    server.on("error", (e) => {
+        console.error(`permission broker unavailable on ${opts.socketPath}: ${e.message}`);
+    });
     server.listen(opts.socketPath);
     return {
         answer(askId, behavior, message) {
@@ -208,16 +221,10 @@ export const ClaudeDriver = {
                 args.push("--append-system-prompt", turn.system);
             // integrations → MCP servers; pre-allow their tools (a headless
             // acceptEdits run silently denies anything unlisted)
-            const mcpServers = {};
-            const allowed = [];
-            if (turn.integrations?.composio?.key) {
-                mcpServers.composio = {
-                    type: "http",
-                    url: turn.integrations.composio.url || "https://connect.composio.dev/mcp",
-                    headers: { "x-consumer-api-key": turn.integrations.composio.key },
-                };
-                allowed.push("mcp__composio");
-            }
+            // multibot (F7): Composio i własne konektory użytkownika montuje wspólny
+            // helper — ten sam, z którego korzystają pozostałe drivery.
+            const mcpServers = buildMcpServers(turn.integrations);
+            const allowed = Object.keys(mcpServers).map((name) => `mcp__${name}`);
             if (turn.integrations?.computer) {
                 mcpServers.computer = {
                     command: process.execPath,
@@ -284,11 +291,14 @@ export const ClaudeDriver = {
             delete env.ANTHROPIC_API_KEY;
             delete env.CLAUDECODE;
             delete env.CLAUDE_CODE_ENTRYPOINT;
-            const child = spawn(config.cli, args, {
+            // multibot: resolve npm shims / shebang scripts to a real spawn
+            const cli = resolveCliSpawn(config.cli, args);
+            const child = spawn(cli.command, cli.args, {
                 cwd: turn.cwd ?? homedir(),
                 env,
                 stdio: ["pipe", "pipe", "pipe"],
-                detached: true, // own process group: killing -pid reaps child MCP servers
+                windowsVerbatimArguments: cli.windowsVerbatimArguments,
+                detached: true, // own process group, so killTree reaps child MCP servers (-pid on POSIX, taskkill /T on win32)
             });
             let settled = false;
             const settle = (ok, stopReason, cost = null) => {
@@ -408,17 +418,7 @@ export const ClaudeDriver = {
                     settle(false, "exit_before_result");
                 }
             });
-            const stop = () => {
-                try {
-                    process.kill(-child.pid, "SIGTERM");
-                }
-                catch {
-                    try {
-                        child.kill("SIGTERM");
-                    }
-                    catch { }
-                }
-            };
+            const stop = () => killTree(child); // multibot: process groups are POSIX-only
             active.set(threadId, { stop, turnId, broker });
             emit({ ...base(threadId, turnId), type: "turn.started" });
             // prompt over stdin as a stream-json message — never argv (ARG_MAX)
@@ -430,7 +430,12 @@ export const ClaudeDriver = {
         };
         const snapshot = async () => {
             const version = await new Promise((resolve) => {
-                execFile(config.cli, ["--version"], { timeout: 8000, env: { ...process.env, PATH: augmentedPath() } }, (err, stdout) => resolve(err ? null : stdout.trim()));
+                const cli = resolveCliSpawn(config.cli, ["--version"]); // multibot
+                execFile(cli.command, cli.args, {
+                    timeout: 8000,
+                    env: { ...process.env, PATH: augmentedPath() },
+                    windowsVerbatimArguments: cli.windowsVerbatimArguments,
+                }, (err, stdout) => resolve(err ? null : stdout.trim()));
             });
             if (!version)
                 return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };
@@ -469,7 +474,13 @@ export const ClaudeDriver = {
                 },
             },
             generateText: (prompt) => new Promise((resolve, reject) => {
-                execFile(config.cli, ["-p", prompt, "--model", "claude-haiku-4-5", "--output-format", "text"], { timeout: 60_000, env: { ...process.env, PATH: augmentedPath() } }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim())));
+                // multibot
+                const cli = resolveCliSpawn(config.cli, ["-p", prompt, "--model", "claude-haiku-4-5", "--output-format", "text"]);
+                execFile(cli.command, cli.args, {
+                    timeout: 60_000,
+                    env: { ...process.env, PATH: augmentedPath() },
+                    windowsVerbatimArguments: cli.windowsVerbatimArguments,
+                }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim())));
             }),
             dispose: async () => {
                 for (const { stop } of active.values())

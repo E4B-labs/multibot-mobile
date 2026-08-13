@@ -1,4 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences, utilityProcess } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startCua, stopCua, registerCuaIpc } from "./cua.mjs";
@@ -20,6 +21,12 @@ const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 // our API shape, not just a 200).
 let serverProc = null;
 let serverReady = true;
+// multibot: runtime silnika (Python + Hermes + przeglądarka Playwrighta) NIE
+// jedzie w instalatorze — dociąga go scripts/provision-engine.mjs do userData
+// przy pierwszym starcie. Ten sam układ katalogów zna server/engine/supervisor.ts.
+const ENGINE_RUNTIME = path.join(app.getPath("userData"), "engine-runtime");
+const ENGINE_DATA = path.join(app.getPath("userData"), "engine-data");
+
 async function startServerOn(port) {
   const entry = path.join(process.resourcesPath, "server", "index.js");
   const proc = utilityProcess.fork(entry, [], {
@@ -27,6 +34,12 @@ async function startServerOn(port) {
       ...process.env,
       OMB_STATIC_DIR: path.join(process.resourcesPath, "ui"),
       OMB_PORT: String(port),
+      // Silnik dziedziczy to przez spawn w supervisorze. PLAYWRIGHT_BROWSERS_PATH
+      // musi tu być: domyślny katalog przeglądarek leży na dysku systemowym,
+      // a provisioner instaluje je pod userData.
+      OMB_ENGINE_RUNTIME: ENGINE_RUNTIME,
+      SLAFY_DATA_DIR: process.env.SLAFY_DATA_DIR ?? ENGINE_DATA,
+      PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? path.join(ENGINE_RUNTIME, "browsers"),
     },
     stdio: "inherit",
   });
@@ -56,6 +69,22 @@ async function startServerOn(port) {
     proc.kill();
   } catch {}
   return null;
+}
+
+// Pierwszy start: ~350 MB pobierania i kilka minut instalacji. Leci w tle i
+// NIE blokuje okna — silnik i tak podnosi się leniwie (supervisor spawnuje go
+// dopiero przy pierwszym zapytaniu), a do tego czasu reszta apki działa.
+// Nieudany provisioning nie może wywrócić startu: silnik zgłosi się jako
+// "unavailable", użytkownikowi zostaje ENGINE_URL albo kolejny start.
+function provisionEngineRuntime() {
+  if (fs.existsSync(path.join(ENGINE_RUNTIME, ".provisioned"))) return;
+  const script = path.join(process.resourcesPath, "provision-engine.mjs");
+  const proc = utilityProcess.fork(
+    script,
+    ["--target", ENGINE_RUNTIME, "--requirements", path.join(process.resourcesPath, "engine", "requirements.txt")],
+    { stdio: "inherit" },
+  );
+  proc.once("exit", (code) => console.log(`[engine] provisioning exit ${code}`));
 }
 
 async function startServerPackaged() {
@@ -185,6 +214,7 @@ app.whenReady().then(async () => {
   // connection descriptor on first render. Never blocks window creation on
   // failure — computer use degrades to "unavailable", the rest still works.
   startCua().catch((e) => console.error("[cua] start failed:", e));
+  if (app.isPackaged) provisionEngineRuntime();
   if (app.isPackaged) serverReady = await startServerPackaged();
   const win = createWindow();
   // in-app auto-update (packaged only) — checks GitHub releases, downloads on

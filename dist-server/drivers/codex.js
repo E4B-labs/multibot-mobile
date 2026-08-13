@@ -12,7 +12,8 @@
 import { spawn, execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { newEventId, newId } from "../contracts.js";
-import { augmentedPath } from "../env-path.js";
+import { augmentedPath, resolveCliSpawn } from "../env-path.js";
+import { killTree } from "../kill-tree.js";
 import { appendNative } from "./native.js";
 const DRIVER_KIND = "codex";
 // catalog ported from upstream packages/contracts/src/model.ts
@@ -63,10 +64,12 @@ export const CodexDriver = {
             // the CLI owns its own ChatGPT login; a leaked API key silently flips
             // billing to pay-as-you-go (agentcal)
             delete env.OPENAI_API_KEY;
-            const child = spawn(config.cli, ["app-server"], {
+            const cli = resolveCliSpawn(config.cli, ["app-server"]); // multibot
+            const child = spawn(cli.command, cli.args, {
                 cwd: turn.cwd ?? homedir(),
                 env,
                 stdio: ["pipe", "pipe", "pipe"],
+                windowsVerbatimArguments: cli.windowsVerbatimArguments,
                 detached: true,
             });
             const state = { settled: false, lastText: "", sawStreamDelta: false };
@@ -85,17 +88,7 @@ export const CodexDriver = {
                 rpcPending.set(id, { resolve, reject });
                 send({ jsonrpc: "2.0", id, method, params });
             });
-            const stop = () => {
-                try {
-                    process.kill(-child.pid, "SIGTERM");
-                }
-                catch {
-                    try {
-                        child.kill("SIGTERM");
-                    }
-                    catch { }
-                }
-            };
+            const stop = () => killTree(child); // multibot: process groups are POSIX-only
             const settle = (ok, stopReason) => {
                 if (state.settled)
                     return;
@@ -350,7 +343,12 @@ export const CodexDriver = {
         };
         const snapshot = async () => {
             const version = await new Promise((resolve) => {
-                execFile(config.cli, ["--version"], { timeout: 8000, env: { ...process.env, PATH: augmentedPath() } }, (err, stdout) => resolve(err ? null : stdout.trim()));
+                const cli = resolveCliSpawn(config.cli, ["--version"]); // multibot
+                execFile(cli.command, cli.args, {
+                    timeout: 8000,
+                    env: { ...process.env, PATH: augmentedPath() },
+                    windowsVerbatimArguments: cli.windowsVerbatimArguments,
+                }, (err, stdout) => resolve(err ? null : stdout.trim()));
             });
             if (!version)
                 return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };

@@ -8,6 +8,9 @@
 //   2. silnik już odpowiada na /health → reattach, zero spawnu.
 //   3. nie odpowiada → spawn DETACHED i czekanie na /health.
 //
+// Sam interpreter (ścieżka 3) też ma kolejność: venv repo (dev) przed runtimem
+// dociągniętym do userData przez scripts/provision-engine.mjs (spakowana apka).
+//
 // DETACHED jest wymogiem, nie optymalizacją: rutyny botów (harmonogramy, webhooki)
 // mają chodzić dalej po zamknięciu okna aplikacji, więc proces silnika NIE może
 // wisieć na cyklu życia harnessu. Stąd `detached` + `stdio: "ignore"` + `unref()`
@@ -30,6 +33,25 @@ export function venvPython(engineDir = ENGINE_DIR): string {
     : join(engineDir, ".venv", "bin", "python");
 }
 
+/** Python runtime'u dociąganego przy pierwszym starcie spakowanej apki
+ * (scripts/provision-engine.mjs). Katalog podaje electron w `OMB_ENGINE_RUNTIME`
+ * — układ jak w provisionerze: `<runtime>/python/`. */
+export function runtimePython(runtimeDir = process.env.OMB_ENGINE_RUNTIME): string | null {
+  if (!runtimeDir) return null;
+  return process.platform === "win32"
+    ? join(runtimeDir, "python", "python.exe")
+    : join(runtimeDir, "python", "bin", "python3");
+}
+
+/** Interpreter, którym da się odpalić silnik, albo `null`. Venv repo idzie
+ * pierwszy: gdy ktoś odpala apkę z drzewa dev, jego venv wygrywa z runtimem. */
+export function enginePython(): string | null {
+  const venv = venvPython();
+  if (existsSync(venv)) return venv;
+  const runtime = runtimePython();
+  return runtime && existsSync(runtime) ? runtime : null;
+}
+
 /** Adres silnika BEZ podnoszenia go — dla nasłuchów, które mają czekać, aż
  * silnik pojawi się sam (attach-sync, WS uwagi), a nie go zapalać. */
 export function engineBaseUrl(): string {
@@ -48,11 +70,13 @@ async function healthy(baseUrl: string, timeoutMs = 1_500): Promise<boolean> {
 export class EngineUnavailableError extends Error {}
 
 function spawnEngine(baseUrl: string) {
-  const python = venvPython();
-  if (!existsSync(python)) {
+  const python = enginePython();
+  if (!python) {
     throw new EngineUnavailableError(
-      `engine venv missing at ${python} — create it with: cd engine && uv venv .venv --python 3.12 && ` +
-        `uv pip install --python ${process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python"} -r requirements.txt`,
+      `no engine python — dev: cd engine && uv venv .venv --python 3.12 && ` +
+        `uv pip install --python ${process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python"} -r requirements.txt` +
+        `; spakowana apka: runtime dociąga się sam przy pierwszym starcie ` +
+        `(node scripts/provision-engine.mjs --target <dir>)`,
     );
   }
   const port = new URL(baseUrl).port || "8700";

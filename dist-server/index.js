@@ -11,9 +11,16 @@ import * as box from "./box.js";
 import * as composio from "./composio.js";
 import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE_DIR } from "./config.js";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.js";
+// multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
+import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.js";
+import { watchEngineAttention } from "./engine/attention.js";
+import { engineComputer } from "./engine/computer-mcp.js";
+import { mountEngineProxy } from "./engine/proxy.js";
 import { EventBus } from "./harness/bus.js";
+// multibot (F7): własne serwery MCP użytkownika obok Composio
+import * as mcpConnectors from "./mcp-connectors.js";
 import { ProviderRegistry } from "./harness/registry.js";
-import { mentionedBots, Store } from "./store.js";
+import { chainDepth, mentionedBots, Store } from "./store.js";
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
 const MIME = {
@@ -40,6 +47,12 @@ const COMMS_TOKEN = randomBytes(24).toString("hex");
 // a peer invoked via ask_bot runs at depth 1 and gets NO agents tool, so
 // A→B is allowed but B→C (and A→B→A loops) never start.
 const MAX_COMMS_DEPTH = 1;
+// multibot (F9): głębokość tury, która TERAZ trwa u danego bota — druga (i
+// wiarygodniejsza) połowa `chainDepth` w `store.ts`. Upstream ufa `depth` z env
+// proxy, co działa, dopóki proxy startuje raz na turę (claude/ACP); bot silnika
+// ma agents zamontowane na stałe w profilu (`drivers/slafy.ts`, `syncAgents`),
+// więc tam deklaracja zamarza na 0.
+const activeCommsDepth = new Map();
 // proxy entry: .ts in dev (node type-strips), .js in the packaged dist-server
 const agentsProxyPath = (() => {
     const ts = join(dirname(fileURLToPath(import.meta.url)), "drivers", "agents-proxy.ts");
@@ -205,6 +218,7 @@ bus.subscribe((event) => {
             if (frame)
                 pushMessage({ role: "bot", kind: "screen", png: frame.png, mime: frame.mime });
             store.patchBot(bot.id, { busy: false, unread: true });
+            activeCommsDepth.delete(bot.id); // multibot (F9): tura skończona — licznik też
             broadcast({ kind: "bot", bot: store.bot(bot.id) });
             break;
         }
@@ -252,14 +266,24 @@ function stopScreenPoller(botId) {
     screenPollers.delete(botId);
     return entry.last;
 }
+// multibot: where Electron's app.getPath("userData") lands, per platform —
+// the hardcoded macOS path found nothing anywhere else, and threw the
+// non-ENOENT errors into the same silent catch.
+function userDataRoot() {
+    if (process.platform === "win32")
+        return process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+    if (process.platform === "darwin")
+        return join(homedir(), "Library", "Application Support");
+    return process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
+}
 // Local computer-use contract written by Electron main on startup
-// (~/Library/Application Support/OpenMausBot/cua-connection.json). Read
-// fresh each turn — Electron may restart or permissions may change.
+// (<userData>/cua-connection.json). Read fresh each turn — Electron may
+// restart or permissions may change.
 function readCuaConnection() {
     // new name first; pre-rename desktop builds used the old directory
     for (const dir of ["OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"]) {
         try {
-            const p = join(homedir(), "Library", "Application Support", dir, "cua-connection.json");
+            const p = join(userDataRoot(), dir, "cua-connection.json");
             const conn = JSON.parse(readFileSync(p, "utf8"));
             if (!conn || conn.mode === "unavailable" || !conn.mcpCommand)
                 continue;
@@ -298,18 +322,31 @@ async function startTurn(botId, text, opts) {
     ]
         .filter(Boolean)
         .join(" ");
+    // multibot (D7): kolejna tura usera JEST odpowiedzią na to, na co bot czekał
+    if (bot.needsAttention != null)
+        store.patchBot(bot.id, { needsAttention: null });
     // busy flips immediately so the composer locks; the dispatch itself runs
     // in the background — box provisioning can take ~90s and must never
     // hang the HTTP request
     store.patchBot(bot.id, { busy: true, unread: false });
+    activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
     broadcast({ kind: "bot", bot: store.bot(bot.id) });
     void (async () => {
         try {
             const integrations = {};
             if (cfg.composio?.key)
                 integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
-            const wants = bot.computer; // 'cloud' | 'local' | 'off' | undefined(auto)
-            if (wants !== "off" && wants !== "local" && box.boxConfigured(cfg)) {
+            const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'off' | undefined(auto)
+            // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
+            // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
+            // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
+            // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
+            if (wants === "playwright" && instance.driverKind !== "slafy") {
+                const mcp = await engineComputer(bot.threadId);
+                if (mcp)
+                    integrations.localComputer = mcp;
+            }
+            if (wants !== "off" && wants !== "local" && wants !== "playwright" && box.boxConfigured(cfg)) {
                 let b = await box.findBox(cfg, bot.id).catch(() => null);
                 // the Computer driver runs ON the box — provision it on first use
                 if (!b && instance.driverKind === "boxAgent") {
@@ -323,7 +360,7 @@ async function startTurn(botId, text, opts) {
             // local computer (this Mac) via the Electron-hosted cua-driver: the
             // Electron main process owns the daemon (TCC attribution) and writes
             // its spawn contract to cua-connection.json; the harness only reads it
-            if (!integrations.computer && wants !== "off" && wants !== "cloud") {
+            if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright") {
                 const cua = readCuaConnection();
                 if (cua)
                     integrations.localComputer = cua;
@@ -355,9 +392,14 @@ async function startTurn(botId, text, opts) {
                 system: persona +
                     (integrations.computer && instance.driverKind !== "boxAgent"
                         ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
-                        : integrations.localComputer
-                            ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
-                            : "") +
+                        : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
+                            // użytkownika — opis pulpitu wysyłałby agenta po narzędzia, których
+                            // ten serwer MCP nie ma (a11y, exec).
+                            wants === "playwright" && integrations.localComputer
+                                ? " You have your own browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text."
+                                : integrations.localComputer
+                                    ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
+                                    : "") +
                     (integrations.agents
                         ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
                         : "") +
@@ -380,6 +422,7 @@ async function startTurn(botId, text, opts) {
             });
             broadcast({ kind: "message", threadId: bot.threadId, message: failure });
             store.patchBot(bot.id, { busy: false });
+            activeCommsDepth.delete(bot.id); // multibot (F9): tura padła — licznik też
             broadcast({ kind: "bot", bot: store.bot(bot.id) });
         }
     })();
@@ -443,7 +486,18 @@ const server = createServer(async (req, res) => {
                 const self = url.searchParams.get("self");
                 const bots = store.bots
                     .filter((b) => b.id !== self && !b.hidden)
-                    .map((b) => ({ id: b.id, name: b.name, model: b.modelSelection.model, busy: !!b.busy }));
+                    .map((b) => ({
+                    id: b.id,
+                    name: b.name,
+                    model: b.modelSelection.model,
+                    busy: !!b.busy,
+                    // multibot (F9): delegacja PO OPISIE. Bez tego pola wołający wybiera
+                    // adresata wyłącznie po nazwie — a nazwa nie mówi, czym bot się
+                    // zajmuje. To ta sama persona (`title`/`description` z BotRecord),
+                    // którą bot dostaje w swoim `system`, więc flota opisuje się floci
+                    // dokładnie tak, jak opisał ją użytkownik.
+                    description: [b.title, b.description].filter(Boolean).join(" — "),
+                }));
                 return json(res, 200, { bots });
             }
             if (method === "POST" && path === "/api/internal/ask-bot") {
@@ -451,7 +505,10 @@ const server = createServer(async (req, res) => {
                 const fromBotId = String(body.fromBotId ?? "");
                 const toBotId = String(body.toBotId ?? "");
                 const message = String(body.message ?? "").trim();
-                const depth = Number(body.depth ?? 0) || 0;
+                // multibot (F9): głębokość bierzemy z WIĘKSZEJ z dwóch — deklaracji proxy
+                // i tury, która u wołającego trwa. Proxy bota silnika deklaruje 0 na
+                // zawsze (env zamrożony w profilu), więc bez mapy łańcuch nie miałby dna.
+                const depth = chainDepth(body.depth, activeCommsDepth.get(fromBotId));
                 if (!toBotId || !message)
                     return json(res, 400, { error: "toBotId and message required" });
                 if (toBotId === fromBotId)
@@ -634,7 +691,32 @@ const server = createServer(async (req, res) => {
         // ── connectors (Composio) ──
         if (method === "GET" && path === "/api/connectors/catalog") {
             const { cards, source } = await composio.listToolkits(cfg);
-            return json(res, 200, { configured: Boolean(cfg.composio?.key), source, cards });
+            // multibot (F7): własne serwery MCP użytkownika doklejone do katalogu
+            // Composio; `source` per karta mówi UI, którą trasą je odłączyć.
+            const tagged = [
+                ...cards.map((c) => ({ ...c, source: "composio" })),
+                ...mcpConnectors.connectorCards(cfg).map((c) => ({ ...c, source: "custom" })),
+            ];
+            return json(res, 200, { configured: Boolean(cfg.composio?.key), source, cards: tagged });
+        }
+        // multibot (F7): rejestr własnych konektorów. Osobna ścieżka `/custom/`,
+        // żeby nie mieszać się z `DELETE /api/connectors/:slug` Composio.
+        m = path.match(/^\/api\/connectors\/custom\/([\w-]+)$/);
+        if (m && (method === "PUT" || method === "POST")) {
+            const body = await readBody(req);
+            try {
+                const connector = mcpConnectors.saveConnector(m[1], body);
+                Object.assign(cfg, loadConfig());
+                return json(res, 200, { connector });
+            }
+            catch (e) {
+                return json(res, 400, { error: e instanceof Error ? e.message : String(e) });
+            }
+        }
+        if (m && method === "DELETE") {
+            mcpConnectors.removeConnector(m[1]);
+            Object.assign(cfg, loadConfig());
+            return json(res, 200, { ok: true });
         }
         if (method === "GET" && path === "/api/connectors") {
             const services = (url.searchParams.get("services") ?? "").split(",").filter(Boolean);
@@ -702,6 +784,26 @@ const server = createServer(async (req, res) => {
         const status = e?.status ?? 500;
         return json(res, status, { error: e instanceof Error ? e.message : String(e) });
     }
+});
+// ── multibot: silnik — generyczny proxy `/api/engine/*` + pipe WS ──────
+// Wszystkie trasy silnika (łącznie z przelotką BYOK z F2, pod tym samym URL-em)
+// obsługuje `server/engine/proxy.ts`; montuje się opakowaniem listenera, więc
+// handler wyżej zostaje nietknięty.
+mountEngineProxy(server);
+// ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
+// Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);
+// harness zamienia to na `needsAttention` w store i rozsyła jak każdą inną
+// zmianę bota. Gaśnie przy następnej turze usera — patrz `startTurn`.
+watchEngineAttention({
+    engineBotIds: () => store.bots.map((b) => engineBotIdFor(b.threadId)),
+    onAttention: (engineBotId, reason) => {
+        const threadId = threadIdOfEngineBot(engineBotId);
+        const bot = threadId ? store.botByThread(threadId) : null;
+        if (!bot || (bot.needsAttention ?? null) === reason)
+            return;
+        store.patchBot(bot.id, { needsAttention: reason });
+        broadcast({ kind: "bot", bot: store.bot(bot.id) });
+    },
 });
 server.listen(PORT, "127.0.0.1", () => {
     console.log(`openmausbot server on http://127.0.0.1:${PORT}`);

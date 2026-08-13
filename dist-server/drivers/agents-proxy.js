@@ -21,7 +21,7 @@ const DEPTH = Number(process.env.OMB_TURN_DEPTH ?? "0") || 0;
 const TOOLS = [
     {
         name: "list_bots",
-        description: "List the other bots (agents) in this OpenMausBot workspace you can message, with their model and whether they're busy. Call this before ask_bot to discover who's available.",
+        description: "List the other bots (agents) in this OpenMausBot workspace you can message, with what each one does, its model and whether it's busy. Call this before ask_bot to discover who's available and pick the bot whose description matches the task.",
         inputSchema: { type: "object", properties: {} },
     },
     {
@@ -57,7 +57,10 @@ async function callTool(name, args) {
         const bots = r.bots ?? [];
         if (!bots.length)
             return { text: "No other bots in this workspace yet." };
-        const lines = bots.map((b) => `- ${b.name} (id: ${b.id}, model: ${b.model}${b.busy ? ", busy" : ""})`);
+        // multibot (F9): opis bota w linijce — adresata wybiera się po tym, czym się
+        // zajmuje, nie po nazwie. Bez opisu delegacja sprowadza się do zgadywania.
+        const lines = bots.map((b) => `- ${b.name} (id: ${b.id}, model: ${b.model}${b.busy ? ", busy" : ""})` +
+            (b.description ? ` — ${b.description}` : ""));
         return { text: `Other bots you can message with ask_bot:\n${lines.join("\n")}` };
     }
     if (name === "ask_bot") {

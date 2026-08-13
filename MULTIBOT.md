@@ -40,6 +40,38 @@ Dev z lokalnym klonem Hermesa zamiast pinu: `uv pip install -e <ścieżka-klona>
 `ENGINE_URL` w env = harness używa zewnętrznego silnika (Termux/serwer),
 niczego nie spawnuje.
 
+## Instalacja (Windows)
+
+```sh
+pnpm package:win     # → release/OpenMausBot-<wersja>-x64-setup.exe (NSIS, x64)
+```
+
+Instalator per-user (bez UAC, bez podpisu — SmartScreen pokaże ostrzeżenie).
+Wozi UI, harness i **kod** silnika; nie wozi Pythona.
+
+Runtime silnika dociąga się **przy pierwszym starcie**, w tle, do katalogu
+userData apki (`%APPDATA%\openmausbot\engine-runtime` — nazwa z `name` w
+package.json, bo paczka nie ustawia `productName`) przez
+`scripts/provision-engine.mjs`:
+python-build-standalone 3.12.13 → `requirements.txt` → hermes-agent na SHA
+z `requirements.txt` (editable) → chromium Playwrighta. Razem **~350 MB
+pobierania, ~1,3 GB na dysku, ~3 min** na przyzwoitym łączu (chromium to ponad
+połowa tego miejsca). Okno apki startuje
+od razu — silnik podnosi się leniwie, więc do końca pobierania czat czeka,
+a reszta UI działa. Nieudany provisioning nie wywraca apki: kolejny start
+wznawia od miejsca, w którym padł (każdy krok jest idempotentny).
+
+Ręcznie, do wskazanego katalogu:
+
+```sh
+pnpm provision:engine --target D:\ścieżka\runtime
+```
+
+Zamiast dociągania: `ENGINE_URL=http://<host>:8700` w env — harness używa
+silnika zewnętrznego (Docker/VPS niżej) i nie pobiera ani nie spawnuje niczego.
+Interpreter silnika wybiera `server/engine/supervisor.ts` w kolejności:
+`ENGINE_URL` → `engine/.venv` (dev) → `OMB_ENGINE_RUNTIME` (spakowana apka).
+
 ## VPS / Docker (self-host silnika)
 
 ```sh

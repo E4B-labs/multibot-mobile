@@ -20,6 +20,16 @@ const COLORS = [
     "teal",
     "coral",
 ];
+// multibot (F9): głębokość łańcucha ask_bot. Wołający DEKLARUJE ją w ciele
+// żądania (proxy dostaje ją w env przy spawnie), ale deklaracja bywa nieaktualna:
+// bot silnika ma agents zamontowane na stałe w profilu, więc jego `OMB_TURN_DEPTH`
+// zamarza na 0 i każdy hop resetowałby licznik — A→B→A→… bez dna. Harness zna
+// prawdziwą głębokość tury, która u wołającego TERAZ trwa, i to ona wygrywa.
+/** Głębokość łańcucha dla żądania ask_bot: większa z deklarowanej i faktycznej.
+ * `activeDepth` = `commsDepth` tury trwającej u wołającego (undefined = nie ma). */
+export function chainDepth(claimed, activeDepth) {
+    return Math.max(Number(claimed ?? 0) || 0, activeDepth ?? 0);
+}
 /** Resolve @mentions in a message against a bot roster: `@` must start a
  * word, names match case-insensitively, longest name wins (so "@New Bot 2"
  * never half-matches "New Bot"), hidden bots skipped, results deduped.

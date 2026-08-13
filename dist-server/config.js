@@ -46,7 +46,10 @@ export function saveConfig(patch) {
     catch {
         /* first write */
     }
-    for (const key of ["xai", "composio", "box", "profile"]) {
+    // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
+    // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
+    // wpis (JSON.stringify pomija takie pole).
+    for (const key of ["xai", "composio", "box", "profile", "mcpConnectors"]) {
         if (patch[key] && typeof patch[key] === "object") {
             disk[key] = { ...disk[key], ...patch[key] };
         }
@@ -68,6 +71,9 @@ export function instanceConfigs(cfg) {
     const map = cfg.instances && Object.keys(cfg.instances).length
         ? cfg.instances
         : {
+            // multibot: silnik slafy w domyślnej flocie — sidecar podnosi się sam
+            // przy pierwszej turze; bez venvu instancja jest po prostu unavailable.
+            slafy: { driver: "slafy" },
             grok: { driver: "grokAgent" },
             gemini: { driver: "geminiAgent" },
             claude: { driver: "claudeAgent" },
