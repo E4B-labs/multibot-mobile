@@ -16,15 +16,19 @@ import { deviceInfo } from "./device.js";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.js";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
 import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.js";
+import { ensureEngine } from "./engine/supervisor.js";
+import { findExistingEngineProfile, importExistingEngineProfile } from "./engine/bootstrap.js";
 import { watchEngineAttention } from "./engine/attention.js";
-import { engineComputer } from "./engine/computer-mcp.js";
+import { configureEngineComputer, engineComputer } from "./engine/computer-mcp.js";
 import { mountEngineProxy } from "./engine/proxy.js";
 import { EventBus } from "./harness/bus.js";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
 import * as mcpConnectors from "./mcp-connectors.js";
 import { ProviderRegistry } from "./harness/registry.js";
+import { HarnessRoutines } from "./routines.js";
 import { jobProgress, SetupJobs } from "./setup-jobs.js";
 import { chainDepth, mentionedBots, Store } from "./store.js";
+import { registerWindowsServerAutostart } from "./windows-autostart.js";
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,12 +40,31 @@ const MIME = {
     ".html": "text/html",
     ".js": "text/javascript",
     ".css": "text/css",
+    ".webmanifest": "application/manifest+json",
+    ".wasm": "application/wasm",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".webp": "image/webp",
     ".ico": "image/x-icon",
     ".json": "application/json",
     ".woff2": "font/woff2",
 };
+// multibot (G5): browser must revalidate install metadata and worker code;
+// Vite's fingerprinted assets are safe to retain for the app-shell cache.
+function staticHeaders(file) {
+    const name = file.toLowerCase().replace(/\\/g, "/");
+    const installMetadata = name.endsWith("/index.html") || name.endsWith(".webmanifest") || /\/(?:sw|service-worker)\.js$/.test(name);
+    return {
+        "content-type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
+        "cache-control": installMetadata
+            ? "no-cache"
+            : name.includes("/assets/")
+                ? "public, max-age=31536000, immutable"
+                : "public, max-age=3600",
+        "x-content-type-options": "nosniff",
+        ...(/\/(?:sw|service-worker)\.js$/.test(name) ? { "service-worker-allowed": "/" } : {}),
+    };
+}
 ensureDirs();
 const cfg = loadConfig();
 const access = ensureAccessToken(cfg);
@@ -116,12 +139,13 @@ function askBotAndWait(targetBotId, message, depth) {
         startTurn(targetBotId, message, { commsDepth: depth + 1 }).catch((err) => finish(`(couldn't start that bot: ${err instanceof Error ? err.message : String(err)})`));
     });
 }
-// default selection for new bots: first available instance, claude preferred
+// default selection for new bots: embedded engine first, then CLI fallback.
 async function defaultSelection(described) {
     const fleet = described ?? (await registry.describe());
     const enabled = fleet.filter((d) => d.enabled !== false);
     const available = enabled.filter((d) => d.snapshot.state === "available");
-    const pick = available.find((d) => d.driverKind === "claudeAgent") ??
+    const pick = available.find((d) => d.driverKind === "slafy") ??
+        available.find((d) => d.driverKind === "claudeAgent") ??
         available[0] ??
         enabled.find((d) => d.driverKind === "claudeAgent") ??
         enabled[0] ??
@@ -135,7 +159,32 @@ bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
 // Repair before the first API response, preferring a named custom model.
 store.migrateOrphanedSelections(bootFleet);
+const existingEngineProfile = findExistingEngineProfile(ROOT);
+const hadHarnessBots = store.bots.length > 0;
 store.seedIfEmpty();
+// First launch with an existing engine profile: preserve its SOUL, memory,
+// routines and skills by copying it to deterministic thread identity before
+// any UI turn can create a blank profile. A seeded "Milind" placeholder is
+// also eligible, so a Termux Hermes home discovered after first boot migrates
+// without deleting the user's harness data.
+const seededPlaceholder = store.bots.length === 1 && store.bots[0]?.name === "Milind" && store.bots[0]?.modelSelection.instanceId === "claude";
+if (existingEngineProfile && (!hadHarnessBots || seededPlaceholder) && store.bots.length === 1) {
+    const first = store.bots[0];
+    store.patchBot(first.id, {
+        name: existingEngineProfile.name,
+        ...(existingEngineProfile.title !== undefined ? { title: existingEngineProfile.title } : {}),
+        ...(existingEngineProfile.description !== undefined ? { description: existingEngineProfile.description } : {}),
+        modelSelection: { instanceId: "local", model: bootFleet.find((d) => d.instanceId === "local")?.models.default || "hermes-agent" },
+    });
+    try {
+        const baseUrl = await ensureEngine();
+        await importExistingEngineProfile(baseUrl, existingEngineProfile, engineBotIdFor(first.threadId));
+        console.log(`[multibot] imported existing engine profile "${existingEngineProfile.name}" into first bot`);
+    }
+    catch (error) {
+        console.warn(`[multibot] existing profile import deferred: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
 // ── SSE fan-out to clients ─────────────────────────────────────────────
 const sseClients = new Set();
 function broadcast(payload) {
@@ -355,17 +404,21 @@ async function startTurn(botId, text, opts) {
             const integrations = {};
             if (cfg.composio?.key)
                 integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
-            const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'off' | undefined(auto)
+            const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'shared' | 'off' | undefined(auto)
             // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
             // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
             // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
             // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
-            if (wants === "playwright" && instance.driverKind !== "slafy") {
-                const mcp = await engineComputer(bot.threadId);
+            if ((wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
+                const mcp = await engineComputer(bot.threadId, undefined, wants === "shared" ? "shared" : "own");
                 if (mcp)
                     integrations.localComputer = mcp;
             }
-            if (wants !== "off" && wants !== "local" && wants !== "playwright" && box.boxConfigured(cfg)) {
+            else if ((wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
+                // Native browser tools still run inside this bot's engine profile.
+                await configureEngineComputer(bot.threadId, wants === "shared" ? "shared" : "own");
+            }
+            if (wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
                 let b = await box.findBox(cfg, bot.id).catch(() => null);
                 // the Computer driver runs ON the box — provision it on first use
                 if (!b && instance.driverKind === "boxAgent") {
@@ -379,7 +432,7 @@ async function startTurn(botId, text, opts) {
             // local computer (this Mac) via the Electron-hosted cua-driver: the
             // Electron main process owns the daemon (TCC attribution) and writes
             // its spawn contract to cua-connection.json; the harness only reads it
-            if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright") {
+            if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
                 const cua = readCuaConnection();
                 if (cua)
                     integrations.localComputer = cua;
@@ -414,8 +467,8 @@ async function startTurn(botId, text, opts) {
                         : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
                             // użytkownika — opis pulpitu wysyłałby agenta po narzędzia, których
                             // ten serwer MCP nie ma (a11y, exec).
-                            wants === "playwright" && integrations.localComputer
-                                ? " You have your own browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text."
+                            (wants === "playwright" || wants === "shared") && integrations.localComputer
+                                ? ` You have ${wants === "shared" ? "the fleet's shared" : "your own"} browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text.`
                                 : integrations.localComputer
                                     ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
                                     : "") +
@@ -471,6 +524,28 @@ async function reloadProviders() {
 // multibot (G3): jobs outlive onboarding panel mounts and persist their output
 // across harness restarts. Global events let any open panel update live.
 const setupJobs = new SetupJobs(join(DATA_DIR, "setup-jobs.json"), (job) => broadcast({ kind: "setup.job", job }));
+// multibot: routines for every driver. The selected instance is resolved by
+// startTurn at execution time, so changing model never strands a schedule.
+const harnessRoutines = new HarnessRoutines(join(DATA_DIR, "routines.json"), async (routine) => {
+    await startTurn(routine.botId, `[Routine: ${routine.name}]\n\n${routine.prompt}`);
+});
+function routineView(botId, routine) {
+    const bot = store.bot(botId);
+    const driverKind = bot ? registry.get(bot.modelSelection.instanceId)?.driverKind ?? null : null;
+    return {
+        ...routine,
+        execution: {
+            driverKind,
+            limitations: driverKind && driverKind !== "slafy"
+                ? [
+                    "The selected command-line tool must stay installed and signed in on the server.",
+                    "A busy bot is not interrupted; the routine records an error and waits for its next run.",
+                    "Interactive CLI approvals may wait until a user reconnects.",
+                ]
+                : [],
+        },
+    };
+}
 // multibot (G1): custom-model config stays write-only for API keys. Helpers
 // return only display metadata consumed by app settings and model picker.
 const RESERVED_INSTANCE_IDS = new Set([
@@ -544,7 +619,8 @@ function provisionJob() {
 // ── HTTP plumbing ─────────────────────────────────────────────────────
 function json(res, status, body) {
     const data = JSON.stringify(body);
-    res.writeHead(status, { "content-type": "application/json" });
+    // API data is never part of the PWA app-shell cache.
+    res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(data);
 }
 function readBody(req) {
@@ -655,6 +731,32 @@ const server = createServer(async (req, res) => {
             });
             return;
         }
+        // multibot: import profile and create matching harness bot in one request.
+        // The engine identity is deterministic, so Memory/Routines/Skills resolve
+        // to the copied profile immediately after import.
+        if (method === "POST" && path === "/api/profiles/import") {
+            const body = await readBody(req);
+            const source = String(body.source ?? "").trim();
+            const name = String(body.name ?? "").trim();
+            if (!source)
+                return json(res, 400, { error: "profile source required" });
+            const bot = store.createBot();
+            store.patchBot(bot.id, {
+                ...(name ? { name } : {}),
+                modelSelection: { instanceId: "local", model: "hermes-agent" },
+            });
+            try {
+                const baseUrl = await ensureEngine();
+                await importExistingEngineProfile(baseUrl, { source, id: name || "imported", name: name || "Imported profile" }, engineBotIdFor(bot.threadId));
+            }
+            catch (error) {
+                store.deleteBot(bot.id);
+                return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+            }
+            const created = { ...store.bot(bot.id), messages: store.messagesFor(bot.threadId) };
+            broadcast({ kind: "bot", bot: created });
+            return json(res, 201, { bot: created });
+        }
         // ── bots ──
         if (method === "GET" && path === "/api/bots") {
             return json(res, 200, {
@@ -666,17 +768,21 @@ const server = createServer(async (req, res) => {
             store.patchBot(bot.id, { modelSelection: await defaultSelection() });
             return json(res, 201, { bot: { ...store.bot(bot.id), messages: store.messagesFor(bot.threadId) } });
         }
-        let m = path.match(/^\/api\/bots\/([\w-]+)$/);
+        let m;
+        m = path.match(/^\/api\/bots\/([\w-]+)$/);
         if (m && method === "PATCH") {
             const body = await readBody(req);
             const patch = {};
-            for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "pinned", "hidden"]) {
+            for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "mascotShape", "pinned", "hidden"]) {
                 if (body[key] !== undefined)
                     patch[key] = body[key];
             }
             const bot = store.patchBot(m[1], patch);
             if (!bot)
                 return json(res, 404, { error: "no such bot" });
+            if (body.computer === "playwright" || body.computer === "shared") {
+                await configureEngineComputer(bot.threadId, body.computer === "shared" ? "shared" : "own").catch(() => { });
+            }
             broadcast({ kind: "bot", bot });
             return json(res, 200, { bot });
         }
@@ -688,6 +794,7 @@ const server = createServer(async (req, res) => {
             // a running turn dies with its bot
             await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => { });
             stopScreenPoller(bot.id);
+            harnessRoutines.deleteBot(bot.id);
             store.deleteBot(bot.id);
             for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
                 try {
@@ -751,11 +858,81 @@ const server = createServer(async (req, res) => {
             await instance?.adapter.interruptTurn(bot.threadId);
             return json(res, 200, { ok: true });
         }
+        // ── multibot: driver-neutral routines ──────────────────────────────
+        m = path.match(/^\/api\/bots\/([\w-]+)\/routines$/);
+        if (m && method === "GET") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            return json(res, 200, harnessRoutines.list(m[1]).map((routine) => routineView(m[1], routine)));
+        }
+        if (m && method === "POST") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            const body = await readBody(req);
+            try {
+                const routine = harnessRoutines.create(m[1], {
+                    name: body.name,
+                    prompt: body.prompt,
+                    schedule: body.schedule,
+                });
+                return json(res, 201, routineView(m[1], routine));
+            }
+            catch (error) {
+                return json(res, 422, { error: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        m = path.match(/^\/api\/bots\/([\w-]+)\/routines\/([\w-]+)$/);
+        if (m && method === "PATCH") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            const body = await readBody(req);
+            const patch = {};
+            for (const key of ["name", "prompt", "schedule", "enabled"]) {
+                if (body[key] !== undefined)
+                    patch[key] = body[key];
+            }
+            try {
+                const routine = harnessRoutines.update(m[1], m[2], patch);
+                return routine
+                    ? json(res, 200, routineView(m[1], routine))
+                    : json(res, 404, { error: "no such routine" });
+            }
+            catch (error) {
+                return json(res, 422, { error: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        if (m && method === "DELETE") {
+            return harnessRoutines.delete(m[1], m[2])
+                ? json(res, 200, { ok: true })
+                : json(res, 404, { error: "no such routine" });
+        }
+        m = path.match(/^\/api\/bots\/([\w-]+)\/routines\/([\w-]+)\/(run|webhook)$/);
+        if (m && method === "POST") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            if (m[3] === "webhook") {
+                return json(res, 409, {
+                    error: "Webhook triggers remain available for engine-native routines; command-line routines support schedules and Run now.",
+                });
+            }
+            const routine = await harnessRoutines.runNow(m[1], m[2]);
+            if (!routine)
+                return json(res, 404, { error: "no such routine" });
+            const run = routine.last_runs[0];
+            if (run?.status === "error")
+                return json(res, 409, { error: run.error, routine: routineView(m[1], routine) });
+            return json(res, 200, routineView(m[1], routine));
+        }
         // identity handshake for the packaged app's port fallback: the forked
         // child proves it is OURS by echoing its pid (a stray dev server has
         // the same API shape but a different pid)
         if (method === "GET" && path === "/api/health") {
-            return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
+            return json(res, 200, {
+                app: "openmausbot",
+                pid: process.pid,
+                static: Boolean(STATIC_DIR),
+                service: process.env.OMB_SERVER_SERVICE === "1",
+            });
         }
         // ── multibot (G2): authenticated token reveal/check/rotation ────────
         if (method === "GET" && path === "/api/auth/check") {
@@ -780,6 +957,12 @@ const server = createServer(async (req, res) => {
             return json(res, 200, await deviceInfo());
         }
         if (method === "POST" && path === "/api/provision") {
+            const body = await readBody(req);
+            // Packaged Electron passes its trusted absolute executable path. Only an
+            // explicit onboarding 24/7 choice installs per-user autostart.
+            if (body?.server === true && process.env.OMB_PACKAGED_EXE) {
+                await registerWindowsServerAutostart(process.env.OMB_PACKAGED_EXE);
+            }
             const job = provisionJob();
             return json(res, 202, { id: job.id, job });
         }
@@ -1032,14 +1215,14 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: "not found" });
             try {
                 const data = readFileSync(file);
-                res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+                res.writeHead(200, staticHeaders(file));
                 return res.end(method === "HEAD" ? undefined : data);
             }
             catch {
                 // SPA fallback
                 try {
                     const data = readFileSync(join(STATIC_DIR, "index.html"));
-                    res.writeHead(200, { "content-type": "text/html" });
+                    res.writeHead(200, staticHeaders(join(STATIC_DIR, "index.html")));
                     return res.end(method === "HEAD" ? undefined : data);
                 }
                 catch {
@@ -1085,6 +1268,7 @@ server.listen(PORT, HOST, () => {
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
+        harnessRoutines.stop();
         void registry.disposeAll().finally(() => process.exit(0));
     });
 }

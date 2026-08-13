@@ -17,6 +17,28 @@ import { engineBotIdFor } from "../drivers/slafy.js";
 import { engineBaseUrl, ensureEngine, venvPython } from "./supervisor.js";
 /** repo root: server/engine/ → server/ → repo */
 const ENGINE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "engine");
+/** Ensure engine-side bot exists and persist which browser profile it uses.
+ * Slafy-native bots need this too; their browser tools do not ride this MCP. */
+export async function configureEngineComputer(threadId, mode) {
+    const baseUrl = await ensureEngine();
+    const botId = engineBotIdFor(threadId);
+    const created = await fetch(`${baseUrl}/api/bots`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: botId, name: botId }),
+        signal: AbortSignal.timeout(30_000),
+    });
+    if (!created.ok && created.status !== 409)
+        throw new Error(`engine computer bot -> HTTP ${created.status}`);
+    const configured = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/computer/mode`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode }),
+        signal: AbortSignal.timeout(30_000),
+    });
+    if (!configured.ok)
+        throw new Error(`engine computer mode -> HTTP ${configured.status}`);
+}
 /** Kontrakt spawnu serwera MCP komputera dla wątku — bez sprawdzania, czy silnik
  * stoi (to robi `engineComputer`). Wydzielone, żeby dało się je sprawdzić bez sieci. */
 export function computerMcpSpawn(threadId, engineDir = ENGINE_DIR) {
@@ -38,12 +60,12 @@ export function computerMcpSpawn(threadId, engineDir = ENGINE_DIR) {
  * nadzorcą. `null` degraduje turę do bota bez komputera, dokładnie jak brak
  * `cua-connection.json` na ścieżce lokalnego CUA — tura nie może się wywrócić.
  */
-export async function engineComputer(threadId, engineDir = ENGINE_DIR) {
+export async function engineComputer(threadId, engineDir = ENGINE_DIR, mode = "own") {
     const spawn = computerMcpSpawn(threadId, engineDir);
     if (!existsSync(spawn.command))
         return null;
     try {
-        await ensureEngine();
+        await configureEngineComputer(threadId, mode);
     }
     catch {
         return null;

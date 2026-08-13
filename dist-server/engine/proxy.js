@@ -21,6 +21,8 @@ const HOP_BY_HOP = ["connection", "keep-alive", "transfer-encoding", "upgrade", 
  * ruszać frontend.
  */
 function rewrite(pathname, method) {
+    if (/^\/webhooks\/[^/]+$/.test(pathname))
+        return { path: pathname, method };
     const byok = pathname.match(/^\/api\/engine\/provider\/([^/]+)$/);
     if (byok)
         return { path: `/api/bots/${byok[1]}/provider`, method: method === "GET" ? "GET" : "PUT" };
@@ -28,7 +30,7 @@ function rewrite(pathname, method) {
 }
 function fail(res, status, error) {
     if (!res.headersSent)
-        res.writeHead(status, { "content-type": "application/json" });
+        res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify({ error }));
 }
 async function proxyHttp(req, res) {
@@ -50,6 +52,8 @@ async function proxyHttp(req, res) {
         const out = { ...up.headers };
         for (const h of HOP_BY_HOP)
             delete out[h];
+        // PWA caches shell only; every engine response stays network-owned.
+        out["cache-control"] = "no-store";
         res.writeHead(up.statusCode ?? 502, out);
         up.pipe(res);
     });
@@ -129,7 +133,12 @@ async function pipeWs(req, socket, head, path) {
 export function mountEngineProxy(server) {
     const app = server.listeners("request")[0];
     server.removeAllListeners("request");
-    server.on("request", (req, res) => (req.url ?? "").startsWith(`${PREFIX}/`) ? void proxyHttp(req, res) : app(req, res));
+    server.on("request", (req, res) => {
+        const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+        return path.startsWith(`${PREFIX}/`) || (req.method === "POST" && /^\/webhooks\/[^/]+$/.test(path))
+            ? void proxyHttp(req, res)
+            : app(req, res);
+    });
     server.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
         if (!url.pathname.startsWith(`${PREFIX}/`))

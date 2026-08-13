@@ -4,6 +4,7 @@ import { CodexDriver } from "./codex.js";
 import { GrokDriver } from "./grok.js";
 import { GrokAgentDriver } from "./acp/grok.js";
 import { GeminiAgentDriver } from "./acp/gemini.js";
+// multibot (G3): official ACP stdio integrations.
 import { KimiAgentDriver } from "./acp/kimi.js";
 import { QwenAgentDriver } from "./acp/qwen.js";
 // multibot: driver silnika slafy (sidecar Pythona) — patrz drivers/slafy.ts

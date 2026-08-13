@@ -1,0 +1,102 @@
+// multibot: bridge an existing engine profile into first harness bot.
+// Profile contents stay in engine data; harness only receives neutral metadata.
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+const PROFILE_MARKERS = ["bot.json", "SOUL.md", "config.yaml", "profile.yaml"];
+function profileMeta(source, id = "") {
+    const dir = resolve(source);
+    if (!existsSync(dir))
+        return null;
+    if (!PROFILE_MARKERS.some((name) => existsSync(join(dir, name))))
+        return null;
+    let meta = {};
+    try {
+        meta = JSON.parse(readFileSync(join(dir, "bot.json"), "utf8"));
+    }
+    catch {
+        /* SOUL/config-only profiles are valid; name falls back to directory. */
+    }
+    const profileId = id || String(meta.id ?? dir.split(/[\\/]/).pop() ?? "profile");
+    const fallbackName = profileId.startsWith(".") ? "My bot" : profileId;
+    return {
+        source: dir,
+        id: profileId,
+        name: typeof meta.name === "string" && meta.name.trim() ? meta.name.trim() : fallbackName,
+        ...(typeof meta.title === "string" && meta.title ? { title: meta.title } : {}),
+        ...(typeof meta.description === "string" && meta.description ? { description: meta.description } : {}),
+    };
+}
+function profileFromRoot(root) {
+    const profiles = join(root, "profiles");
+    if (!existsSync(profiles))
+        return null;
+    const names = readdirSync(profiles, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("mb-"))
+        .map((entry) => entry.name)
+        .sort();
+    for (const name of names) {
+        const found = profileMeta(join(profiles, name), name);
+        if (found)
+            return found;
+    }
+    return null;
+}
+/** Find first real profile without reading any secret content. */
+export function findExistingEngineProfile(root) {
+    const explicit = process.env.SLAFY_IMPORT_SOURCE?.trim();
+    if (explicit)
+        return profileFromRoot(explicit) ?? profileMeta(explicit);
+    const candidates = [
+        root,
+        process.env.SLAFY_DATA_DIR,
+        join(root, "engine-data"),
+        // Historical dev layout used sibling `slafy-bot-data`; keep migration
+        // automatic on normal 8799 startup, while random-port test servers stay
+        // isolated from a developer's real profile.
+        ...(process.env.OMB_PORT === undefined || process.env.OMB_PORT === "8799"
+            ? [join(root, "..", "slafy-bot-data")]
+            : []),
+        join(homedir(), ".openmausbot", "engine-data"),
+        // Hermes Agent's native Termux home is the user's existing profile.
+        // Import metadata only; secrets stay inside the profile copy.
+        ...(process.env.OMB_PORT === undefined || process.env.OMB_PORT === "8799" ? [join(homedir(), ".hermes")] : []),
+    ].filter((value) => Boolean(value));
+    const seen = new Set();
+    for (const candidate of candidates) {
+        const normalized = resolve(candidate);
+        if (seen.has(normalized))
+            continue;
+        seen.add(normalized);
+        // Data roots also contain config.yaml/SOUL.md at top level. Never import
+        // that root as a bot; inspect its profiles directory first.
+        if (existsSync(join(normalized, "profiles"))) {
+            const nested = profileFromRoot(normalized);
+            if (nested)
+                return nested;
+            continue;
+        }
+        const direct = profileMeta(normalized);
+        if (direct)
+            return direct;
+    }
+    return null;
+}
+/** Copy profile into deterministic `mb-<threadId>` engine identity. */
+export async function importExistingEngineProfile(baseUrl, profile, engineBotId) {
+    const response = await fetch(`${baseUrl}/api/import`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            source: profile.source,
+            bot_id: engineBotId,
+            name: profile.name,
+        }),
+        signal: AbortSignal.timeout(60_000),
+    });
+    // Restart/second launch: target already exists and is the desired identity.
+    if (response.ok || response.status === 409)
+        return;
+    const body = await response.text().catch(() => "");
+    throw new Error(`engine profile import failed (${response.status}): ${body.slice(0, 200)}`);
+}
