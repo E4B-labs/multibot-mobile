@@ -235,14 +235,14 @@ function GroupsSection({
   // dopisuje do listy lokalnie.
   useEffect(() => {
     let alive = true;
-    authFetch("/api/engine/groups")
+    authFetch("/api/groups")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((gs: EngineGroup[]) => alive && setGroups(gs))
       .catch(() => alive && setGroups([]));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [state.workspaceVersion]);
 
   const toggle = (engineBotId: string) =>
     setPicked((cur) => {
@@ -257,21 +257,8 @@ function GroupsSection({
     setBusy(true);
     setError(null);
     try {
-      // Shadowy silnika wstają leniwie — bez tego POST grupy odbiłby się 422.
-      for (const bot of bots) {
-        const engineBotId = `mb-${bot.threadId}`;
-        if (!picked.has(engineBotId)) continue;
-        const res = await authFetch("/api/engine/bots", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: engineBotId, name: bot.name }),
-        });
-        if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
-      }
-      // Kolejność `bot_ids` = kolejność floty; pierwszy bot to owner pokoju
-      // (engine groups.py: fallback routingu rundy).
       const bot_ids = bots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
-      const res = await authFetch("/api/engine/groups", {
+      const res = await authFetch("/api/groups", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: name.trim(), bot_ids }),
@@ -295,12 +282,7 @@ function GroupsSection({
   };
 
   return (
-    <div className="border-t border-hairline/40 px-2 pb-1 pt-2">
-      <div className="flex items-center justify-between px-3 pb-1">
-        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-          {polish ? "Grupy" : "Groups"}
-        </span>
-      </div>
+    <div className="border-b border-hairline/40 px-2 pb-2 pt-1">
 
       {(groups ?? []).map((g) => (
         <button
@@ -311,7 +293,12 @@ function GroupsSection({
             state.groupOpen?.id === g.id ? "bg-raised" : "hover:bg-raised/50",
           )}
         >
-          <Users size={16} className="shrink-0 text-ink-secondary" />
+          <span className="flex -space-x-2 shrink-0">
+            {g.bot_ids.slice(0, 3).map((engineId) => {
+              const member = bots.find((b) => `mb-${b.threadId}` === engineId);
+              return member ? <MausAvatar key={engineId} color={member.color} shape={member.mascotShape} state={stateForBot(member)} size={24} animated={false} /> : <Users key={engineId} size={18} className="text-ink-secondary" />;
+            })}
+          </span>
           <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{g.name || g.id}</span>
           <span className="shrink-0 text-[12px] text-ink-secondary">{g.bot_ids.length}</span>
         </button>
@@ -489,23 +476,21 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Bot list */}
+      {/* Unified conversation list: group rows sit with bots, above plugins. */}
       <div className="flex-1 overflow-y-auto px-2">
+        {groupBots.length > 0 && (
+          <GroupsSection
+            bots={groupBots}
+            createOpen={groupCreateOpen}
+            onCreateOpenChange={setGroupCreateOpen}
+          />
+        )}
         <div className="flex flex-col gap-0.5">
           {visibleBots.map((b) => (
             <BotListItem key={b.id} bot={b} onMenu={setMenu} />
           ))}
         </div>
       </div>
-
-      {/* multibot: F9-FE — grupy dostępne dla całej floty */}
-      {groupBots.length > 0 && (
-        <GroupsSection
-          bots={groupBots}
-          createOpen={groupCreateOpen}
-          onCreateOpenChange={setGroupCreateOpen}
-        />
-      )}
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">

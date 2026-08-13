@@ -2,7 +2,8 @@
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
@@ -39,6 +40,7 @@ import { EventBus } from "./harness/bus.ts";
 import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { HarnessRoutines, type HarnessRoutine } from "./routines.ts";
+import { GroupStore } from "./group-store.ts";
 import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 import { registerWindowsServerAutostart } from "./windows-autostart.ts";
@@ -88,6 +90,7 @@ const cfg = loadConfig();
 const access = ensureAccessToken(cfg);
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
+const groupStore = new GroupStore();
 
 const bus = new EventBus();
 bus.attach(registry.instances());
@@ -536,6 +539,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     : "Ask for approval before consequential actions.";
   const workspaceContext = [
     "Shared MultiBot workspace context:",
+    "Use MultiBot management tools for durable changes: get_my_profile/update_my_profile, remember/recall, skills, routines, create_agent, groups, read_file/write_file/run_command. Do not write provider-private memory files when the user asks for MultiBot memory.",
     sharedPolicy,
     sharedFacts && `Memory facts:\n${sharedFacts}`,
     sharedMemory && `Memory notes:\n${sharedMemory}`,
@@ -550,6 +554,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
   store.patchBot(bot.id, { busy: true, unread: false });
   setTurnPolicy(bot.threadId, {
     autonomy: workspace.autonomy(bot.id).autonomy,
+    access: workspace.access(bot.id).access,
     permissions: workspace.permissions(bot.id),
   });
   activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
@@ -599,7 +604,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // still be the TARGET of ask_bot regardless of its driver.
       if (
         commsDepth < MAX_COMMS_DEPTH &&
-        canUseIntegration(bot.threadId, "delegation") &&
+        (canUseIntegration(bot.threadId, "delegation") || workspace.access(bot.id).access === "read-only") &&
         instance.adapter.capabilities.agentsMcp === true &&
         store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0
       ) {
@@ -880,6 +885,117 @@ const server = createServer(async (req, res) => {
           }));
         return json(res, 200, { bots });
       }
+      if (method === "POST" && path === "/api/internal/agent-action") {
+        const body = await readBody(req);
+        const fromBotId = String(body.fromBotId ?? "");
+        const action = String(body.action ?? "");
+        const caller = store.bot(fromBotId);
+        if (!caller) return json(res, 404, { error: "no such caller bot" });
+        const access = workspace.access(fromBotId).access;
+        const readOnlyActions = new Set(["profile.get", "memory.list", "memory.graph", "memory.markdown.get", "skills.list", "routines.list", "groups.list", "file.read"]);
+        if (access === "read-only" && !readOnlyActions.has(action)) return json(res, 403, { error: "read-only access" });
+        const requireFull = () => {
+          if (access !== "full") throw Object.assign(new Error("Full Access required for this action"), { status: 403 });
+        };
+        const bot = () => store.bot(fromBotId)!;
+        switch (action) {
+          case "profile.get": return json(res, 200, bot());
+          case "profile.update": {
+            requireFull();
+            const patch: Record<string, unknown> = {};
+            for (const key of ["name", "title", "description", "notifications", "computer", "color", "mascotExpression", "mascotShape", "modelSelection"] as const) {
+              if (body[key] !== undefined) patch[key] = body[key];
+            }
+            const updated = store.patchBot(fromBotId, patch);
+            broadcast({ kind: "bot", bot: updated });
+            return json(res, 200, updated);
+          }
+          case "memory.list": return json(res, 200, workspace.facts(fromBotId, String(body.query ?? "")));
+          case "memory.graph": return json(res, 200, workspace.graph(fromBotId));
+          case "memory.markdown.get": return json(res, 200, workspace.markdown(fromBotId));
+          case "memory.add": { requireFull(); const fact = workspace.addFact(fromBotId, body); broadcast({ kind: "workspace", botId: fromBotId, resource: "memory" }); return json(res, 201, fact); }
+          case "memory.markdown.set": { requireFull(); const markdown = workspace.putMarkdown(fromBotId, body.content); broadcast({ kind: "workspace", botId: fromBotId, resource: "memory" }); return json(res, 200, markdown); }
+          case "skills.list": return json(res, 200, workspace.skills(fromBotId));
+          case "skills.create": { requireFull(); const skill = workspace.addSkill(fromBotId, body); broadcast({ kind: "workspace", botId: fromBotId, resource: "skills" }); return json(res, 201, skill); }
+          case "skills.update": { requireFull(); const skill = workspace.patchSkill(fromBotId, String(body.name), body); broadcast({ kind: "workspace", botId: fromBotId, resource: "skills" }); return json(res, 200, skill ?? { error: "no such skill" }); }
+          case "skills.delete": { requireFull(); const ok = workspace.deleteSkill(fromBotId, String(body.name)); broadcast({ kind: "workspace", botId: fromBotId, resource: "skills" }); return json(res, 200, { ok }); }
+          case "routines.list": return json(res, 200, harnessRoutines.list(fromBotId).map((routine) => routineView(fromBotId, routine)));
+          case "routines.create": { requireFull(); const routine = harnessRoutines.create(fromBotId, body); broadcast({ kind: "workspace", botId: fromBotId, resource: "routines" }); return json(res, 201, routineView(fromBotId, routine)); }
+          case "routines.run": { requireFull(); const routine = await harnessRoutines.runNow(fromBotId, String(body.id)); broadcast({ kind: "workspace", botId: fromBotId, resource: "routines" }); return json(res, 200, routine ? routineView(fromBotId, routine) : { error: "no such routine" }); }
+          case "routines.delete": { requireFull(); const ok = harnessRoutines.delete(fromBotId, String(body.id)); broadcast({ kind: "workspace", botId: fromBotId, resource: "routines" }); return json(res, 200, { ok }); }
+          case "agent.create": {
+            requireFull();
+            const created = store.createBot();
+            const selection = await defaultSelection();
+            const updated = store.patchBot(created.id, { name: String(body.name ?? created.name), title: String(body.title ?? ""), description: String(body.description ?? ""), modelSelection: selection });
+            if (access === "full") workspace.setAccess(created.id, "full");
+            broadcast({ kind: "bot", bot: updated });
+            return json(res, 201, updated);
+          }
+          case "agent.update": {
+            requireFull();
+            const target = store.bot(String(body.botId ?? ""));
+            if (!target) return json(res, 404, { error: "no such target bot" });
+            const updated = store.patchBot(target.id, { ...(body.patch as Record<string, unknown> ?? {}) });
+            broadcast({ kind: "bot", bot: updated });
+            return json(res, 200, updated);
+          }
+          case "groups.list": {
+            return json(res, 200, groupStore.list());
+          }
+          case "groups.create": {
+            requireFull();
+            const base = await ensureEngine();
+            const botIds: string[] = Array.isArray(body.bot_ids) ? (body.bot_ids as unknown[]).map(String) : [];
+            const engineIds = botIds.map((id) => engineBotIdFor(store.bot(id)?.threadId ?? id));
+            for (const id of engineIds) await fetch(`${base}/api/bots`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, name: store.botByThread(threadIdOfEngineBot(id) ?? "")?.name ?? id }) });
+            const created = await fetch(`${base}/api/groups`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: String(body.name ?? "Group"), bot_ids: engineIds }) });
+            const payload = await created.json() as { id?: string };
+            if (!created.ok) return json(res, created.status, payload);
+            return json(res, 201, groupStore.upsert({ id: String(payload.id), name: String(body.name ?? "Group"), bot_ids: engineIds }));
+          }
+          case "groups.send": {
+            requireFull();
+            const group = groupStore.get(String(body.groupId));
+            if (!group) return json(res, 404, { error: "no such group" });
+            const message = String(body.message ?? "").trim();
+            if (!message) return json(res, 422, { error: "message required" });
+            groupStore.append(group.id, { from: "you", text: message });
+            const turns: Array<{ bot_id: string; reply: string }> = [];
+            for (const engineId of group.bot_ids) {
+              const bot = store.botByThread(threadIdOfEngineBot(engineId) ?? "");
+              if (!bot) continue;
+              const reply = await askBotAndWait(bot.id, `[Group room] ${message}`, 0);
+              turns.push({ bot_id: bot.id, reply });
+              groupStore.append(group.id, { from: bot.id, text: reply });
+            }
+            return json(res, 200, { turns, owner: turns[0]?.bot_id ?? null, messages: groupStore.get(group.id)?.messages ?? [] });
+          }
+          case "file.read": {
+            const file = resolve(String(body.path ?? ""));
+            if (access !== "full" && file !== ROOT && !file.startsWith(`${ROOT}${sep}`)) {
+              return json(res, 403, { error: "read-only access is limited to current workspace" });
+            }
+            return json(res, 200, { path: file, content: readFileSync(file, "utf8") });
+          }
+          case "file.write": {
+            requireFull();
+            const file = resolve(String(body.path ?? ""));
+            mkdirSync(dirname(file), { recursive: true });
+            writeFileSync(file, String(body.content ?? ""));
+            return json(res, 200, { path: file, ok: true });
+          }
+          case "terminal.run": {
+            requireFull();
+            const command = String(body.command ?? "").trim();
+            const args = Array.isArray(body.args) ? body.args.map(String) : [];
+            if (!command) return json(res, 422, { error: "command required" });
+            const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolveRun) => execFile(command, args, { cwd: String(body.cwd ?? ROOT), timeout: 120_000, maxBuffer: 2_000_000 }, (error, stdout, stderr) => resolveRun({ code: error ? (error as any).code ?? 1 : 0, stdout, stderr })));
+            return json(res, 200, result);
+          }
+          default: return json(res, 404, { error: `unknown agent action: ${action}` });
+        }
+      }
       if (method === "POST" && path === "/api/internal/ask-bot") {
         const body = await readBody(req);
         const fromBotId = String(body.fromBotId ?? "");
@@ -975,6 +1091,48 @@ const server = createServer(async (req, res) => {
       });
     }
     let m: RegExpMatchArray | null;
+    // multibot: durable group rooms. Engine owns execution; harness owns the
+    // user-facing roster and transcript so groups survive reload/restart.
+    if (method === "GET" && path === "/api/groups") {
+      const local = groupStore.list();
+      if (local.length) return json(res, 200, local);
+      try {
+        const remote = await fetch(`${await ensureEngine()}/api/groups`);
+        if (remote.ok) {
+          const groups = await remote.json() as Array<{ id: string; name: string; bot_ids: string[] }>;
+          for (const group of groups) groupStore.upsert(group);
+        }
+      } catch {}
+      return json(res, 200, groupStore.list());
+    }
+    if (method === "POST" && path === "/api/groups") {
+      const body = await readBody(req);
+      const name = String(body.name ?? "Group").trim();
+      const rawIds: string[] = Array.isArray(body.bot_ids) ? (body.bot_ids as unknown[]).map(String) : [];
+      const botIds = rawIds.map((id) => store.bot(id)?.id ?? (id.startsWith("mb-") ? store.botByThread(id.slice(3))?.id : undefined)).filter((id): id is string => !!id);
+      if (!name || !botIds.length) return json(res, 422, { error: "group needs at least one bot" });
+      try {
+        const base = await ensureEngine();
+        const engineIds = botIds.map((id) => engineBotIdFor(store.bot(id)!.threadId));
+        for (const id of engineIds) {
+          const bot = store.botByThread(threadIdOfEngineBot(id) ?? "");
+          await fetch(`${base}/api/bots`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, name: bot?.name ?? id }) });
+        }
+        const created = await fetch(`${base}/api/groups`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, bot_ids: engineIds }) });
+        const payload = await created.json().catch(() => ({})) as { id?: string };
+        if (!created.ok) return json(res, created.status, payload);
+        const group = groupStore.upsert({ id: String(payload.id), name, bot_ids: engineIds });
+        broadcast({ kind: "group", group });
+        return json(res, 201, group);
+      } catch (error) {
+        return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    m = path.match(/^\/api\/groups\/([\w-]+)$/);
+    if (m && method === "GET") {
+      const group = groupStore.get(m[1]);
+      return group ? json(res, 200, group) : json(res, 404, { error: "no such group" });
+    }
     // multibot: mixed-provider group rooms. Engine stores membership/shadow
     // ids; harness owns actual turns so Claude/Codex/ACP bots answer through
     // their selected provider instead of being silently replaced by engine.
@@ -988,15 +1146,21 @@ const server = createServer(async (req, res) => {
         const groupResponse = await fetch(`${base}/api/groups/${encodeURIComponent(m[1])}`);
         if (!groupResponse.ok) return json(res, groupResponse.status === 404 ? 404 : 502, { error: "no such group" });
         const group = await groupResponse.json() as { bot_ids?: unknown[] };
+        const durable = groupStore.get(m[1]) ?? groupStore.upsert({ id: m[1], name: String((group as { name?: unknown }).name ?? "Group"), bot_ids: (group.bot_ids ?? []).map(String) });
+        groupStore.append(m[1], { from: "you", text: message });
         const turns: Array<{ bot_id: string; reply: string }> = [];
         for (const rawId of group.bot_ids ?? []) {
           const engineId = String(rawId);
           const threadId = engineId.startsWith("mb-") ? engineId.slice(3) : engineId;
           const bot = store.botByThread(threadId);
           if (!bot) continue;
-          turns.push({ bot_id: bot.id, reply: await askBotAndWait(bot.id, `[Group room] ${message}`, 0) });
+          const reply = await askBotAndWait(bot.id, `[Group room] ${message}`, 0);
+          turns.push({ bot_id: bot.id, reply });
+          if (durable) groupStore.append(m[1], { from: bot.id, text: reply });
         }
-        return json(res, 200, { turns, owner: turns[0]?.bot_id ?? null });
+        const current = groupStore.get(m[1]);
+        if (current) broadcast({ kind: "group", group: current });
+        return json(res, 200, { turns, owner: turns[0]?.bot_id ?? null, messages: current?.messages ?? [] });
       } catch (error) {
         return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -1106,17 +1270,20 @@ const server = createServer(async (req, res) => {
       if (method === "GET" && !m[2]) return json(res, 200, workspace.facts(m[1], url.searchParams.get("q") ?? ""));
       if (method === "POST" && !m[2]) {
         const body = await readBody(req);
-        return json(res, 201, workspace.addFact(m[1], body));
+        const fact = workspace.addFact(m[1], body);
+        broadcast({ kind: "workspace", botId: m[1], resource: "memory" });
+        return json(res, 201, fact);
       }
       if (method === "PATCH" && m[2]) {
         const body = await readBody(req);
         const fact = workspace.patchFact(m[1], m[2], body);
+        if (fact) broadcast({ kind: "workspace", botId: m[1], resource: "memory" });
         return fact ? json(res, 200, fact) : json(res, 404, { error: "no such fact" });
       }
       if (method === "DELETE" && m[2]) {
-        return workspace.deleteFact(m[1], m[2])
-          ? json(res, 200, { ok: true })
-          : json(res, 404, { error: "no such fact" });
+        const ok = workspace.deleteFact(m[1], m[2]);
+        if (ok) broadcast({ kind: "workspace", botId: m[1], resource: "memory" });
+        return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such fact" });
       }
       return json(res, 405, { error: "method not allowed" });
     }
@@ -1127,7 +1294,9 @@ const server = createServer(async (req, res) => {
       if (method === "GET") return json(res, 200, workspace.markdown(m[1]));
       if (method === "PUT" || method === "PATCH") {
         const body = await readBody(req);
-        return json(res, 200, workspace.putMarkdown(m[1], body.content));
+        const markdown = workspace.putMarkdown(m[1], body.content);
+        broadcast({ kind: "workspace", botId: m[1], resource: "memory" });
+        return json(res, 200, markdown);
       }
       return json(res, 405, { error: "method not allowed" });
     }
@@ -1145,28 +1314,38 @@ const server = createServer(async (req, res) => {
       if (method === "GET" && !name) return json(res, 200, workspace.skills(m[1]));
       if (method === "POST" && !name) {
         const body = await readBody(req);
-        return json(res, 201, workspace.addSkill(m[1], body));
+        const skill = workspace.addSkill(m[1], body);
+        broadcast({ kind: "workspace", botId: m[1], resource: "skills" });
+        return json(res, 201, skill);
       }
       if (method === "PATCH" && name) {
         const body = await readBody(req);
         const skill = workspace.patchSkill(m[1], name, body);
+        if (skill) broadcast({ kind: "workspace", botId: m[1], resource: "skills" });
         return skill ? json(res, 200, skill) : json(res, 404, { error: "no such skill" });
       }
       if (method === "DELETE" && name) {
-        return workspace.deleteSkill(m[1], name)
-          ? json(res, 200, { ok: true })
-          : json(res, 404, { error: "no such skill" });
+        const ok = workspace.deleteSkill(m[1], name);
+        if (ok) broadcast({ kind: "workspace", botId: m[1], resource: "skills" });
+        return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such skill" });
       }
       return json(res, 405, { error: "method not allowed" });
     }
 
-    m = path.match(/^\/api\/bots\/([\w-]+)\/(autonomy|permissions|usage)$/);
+    m = path.match(/^\/api\/bots\/([\w-]+)\/(access|autonomy|permissions|usage)$/);
     if (m) {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
       if (m[2] === "usage") {
         return method === "GET"
           ? json(res, 200, workspace.usage(m[1]))
           : json(res, 405, { error: "method not allowed" });
+      }
+      if (m[2] === "access") {
+        if (method === "GET") return json(res, 200, workspace.access(m[1]));
+        if (method === "PATCH") {
+          const body = await readBody(req);
+          return json(res, 200, workspace.setAccess(m[1], body.access));
+        }
       }
       if (m[2] === "autonomy") {
         if (method === "GET") return json(res, 200, workspace.autonomy(m[1]));
@@ -1200,6 +1379,7 @@ const server = createServer(async (req, res) => {
           prompt: body.prompt,
           schedule: body.schedule,
         });
+        broadcast({ kind: "workspace", botId: m[1], resource: "routines" });
         return json(res, 201, routineView(m[1], routine));
       } catch (error) {
         return json(res, 422, { error: error instanceof Error ? error.message : String(error) });
@@ -1215,6 +1395,7 @@ const server = createServer(async (req, res) => {
       }
       try {
         const routine = harnessRoutines.update(m[1], m[2], patch);
+        if (routine) broadcast({ kind: "workspace", botId: m[1], resource: "routines" });
         return routine
           ? json(res, 200, routineView(m[1], routine))
           : json(res, 404, { error: "no such routine" });
@@ -1223,9 +1404,9 @@ const server = createServer(async (req, res) => {
       }
     }
     if (m && method === "DELETE") {
-      return harnessRoutines.delete(m[1], m[2])
-        ? json(res, 200, { ok: true })
-        : json(res, 404, { error: "no such routine" });
+      const ok = harnessRoutines.delete(m[1], m[2]);
+      if (ok) broadcast({ kind: "workspace", botId: m[1], resource: "routines" });
+      return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such routine" });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/routines\/([\w-]+)\/(run|webhook)$/);
     if (m && method === "POST") {

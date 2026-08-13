@@ -14,7 +14,7 @@
 // ponytail: transkrypt w module-level Map (życie = sesja apki, przeżywa
 // zamknięcie/otwarcie panelu); upgrade = transkrypt grupy po stronie silnika,
 // gdy pokój ma pamiętać po restarcie apki.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Send, Users, X } from "lucide-react";
 import { useStore, formatTime, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -37,6 +37,7 @@ async function api(path: string, init?: RequestInit): Promise<any> {
 interface GroupChatOut {
   turns: Array<{ bot_id: string; reply: string }>;
   owner: string;
+  messages?: Entry[];
 }
 
 /** `from`: "you" albo id bota silnika (`mb-<threadId>`). */
@@ -50,10 +51,18 @@ const transcripts = new Map<string, Entry[]>();
 
 export function GroupPanel({ group }: { group: EngineGroup }) {
   const { state, dispatch } = useStore();
-  const [entries, setEntries] = useState<Entry[]>(() => transcripts.get(group.id) ?? []);
+  const [entries, setEntries] = useState<Entry[]>(() => group.messages ?? transcripts.get(group.id) ?? []);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api(`/api/groups/${group.id}`)
+      .then((saved: { messages?: Entry[] }) => alive && setEntries(saved.messages ?? []))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [group.id]);
 
   // Ten sam wzorzec id co EngineUsage/RoutinesPanel: `mb-<threadId>` z
   // decodeConfig w server/drivers/slafy.ts — odwracalny, więc nazwa bota apki
@@ -84,9 +93,9 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
       method: "POST",
       body: JSON.stringify({ message }),
     })
-      .then((out: GroupChatOut) =>
-        push(out.turns.map((t) => ({ from: t.bot_id, text: t.reply, at: Date.now() }))),
-      )
+      .then((out: GroupChatOut) => out.messages
+        ? setEntries(out.messages)
+        : push(out.turns.map((t) => ({ from: t.bot_id, text: t.reply, at: Date.now() }))))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusy(false));
   };

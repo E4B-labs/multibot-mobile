@@ -104,6 +104,7 @@ export interface EngineGroup {
   id: string;
   name: string;
   bot_ids: string[];
+  messages?: Array<{ id: string; from: "you" | string; text: string; at: number }>;
 }
 
 interface AppState {
@@ -129,6 +130,7 @@ interface AppState {
   /** bots whose cloud computer is being provisioned */
   provisioning: Record<string, boolean>;
   connected: boolean;
+  workspaceVersion: number;
   error: string | null;
   mascotMotion: {
     botId: string;
@@ -160,6 +162,7 @@ type Action =
   | { type: "setModel"; botId: string; selection: ModelSelection }
   | { type: "interrupt"; botId: string }
   | { type: "connected"; value: boolean }
+  | { type: "workspaceChanged"; botId: string; resource: string }
   | { type: "error"; message: string | null }
   | { type: "toggleSettings"; open?: boolean }
   | { type: "togglePlugins"; open?: boolean }
@@ -222,6 +225,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case "instances":
       return { ...state, instances: action.instances };
+    case "workspaceChanged":
+      return { ...state, workspaceVersion: state.workspaceVersion + 1 };
     case "configStatus":
       return { ...state, config: action.config };
     case "select":
@@ -480,6 +485,7 @@ const initialState: AppState = {
   screens: {},
   provisioning: {},
   connected: false,
+  workspaceVersion: 0,
   error: null,
   mascotMotion: null,
 };
@@ -687,6 +693,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       switch (frame.kind) {
         case "message":
           rawDispatch({ type: "messageAdded", threadId: frame.threadId, message: frame.message });
+          break;
+        case "workspace":
+          rawDispatch({ type: "workspaceChanged", botId: frame.botId, resource: frame.resource });
+          break;
+        case "group":
+          rawDispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
           break;
         case "message.patch":
           rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message });

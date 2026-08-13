@@ -43,6 +43,16 @@ describe("driver-neutral workspace", () => {
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  it("maps every bot to one of three access profiles", () => {
+    const { store } = make();
+    expect(store.access("bot")).toEqual({ access: "approval" });
+    expect(store.setAccess("bot", "read-only")).toEqual({ access: "read-only" });
+    expect(store.permissions("bot").terminal).toBe(false);
+    expect(store.setAccess("bot", "full")).toEqual({ access: "full" });
+    expect(store.permissions("bot").terminal).toBe(true);
+    expect(store.autonomy("bot")).toEqual({ autonomy: "autonomous" });
+  });
+
   it("normalizes usage and deletes scoped records", () => {
     const { store } = make();
     store.recordTokens("bot", 12, 5);

@@ -33,6 +33,7 @@ interface BotWorkspace {
   markdown: string;
   skills: WorkspaceSkill[];
   autonomy: "approval" | "autonomous";
+  access?: "read-only" | "approval" | "full";
   permissions: Record<string, boolean>;
   usage: WorkspaceUsage;
 }
@@ -52,9 +53,19 @@ const empty = (): BotWorkspace => ({
   markdown: "",
   skills: [],
   autonomy: "approval",
+  access: "approval",
   permissions: { ...DEFAULT_PERMISSIONS },
   usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 },
 });
+
+export type AccessProfile = "read-only" | "approval" | "full";
+
+function normalizedAccess(workspace: BotWorkspace): AccessProfile {
+  if (workspace.access === "read-only" || workspace.access === "approval" || workspace.access === "full") {
+    return workspace.access;
+  }
+  return workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
+}
 
 function privateMode(path: string, mode: number): void {
   if (process.platform !== "win32" && existsSync(path)) chmodSync(path, mode);
@@ -208,13 +219,34 @@ export class WorkspaceStore {
     if (value !== "approval" && value !== "autonomous") {
       throw Object.assign(new Error("autonomy must be approval or autonomous"), { status: 422 });
     }
-    this.get(botId).autonomy = value;
+    const workspace = this.get(botId);
+    workspace.autonomy = value;
+    workspace.access = value === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
     this.save();
     return { autonomy: value };
   }
 
   permissions(botId: string): Record<string, boolean> {
     return { ...this.get(botId).permissions };
+  }
+
+  access(botId: string): { access: AccessProfile } {
+    return { access: normalizedAccess(this.get(botId)) };
+  }
+
+  setAccess(botId: string, value: unknown): { access: AccessProfile } {
+    if (value !== "read-only" && value !== "approval" && value !== "full") {
+      throw Object.assign(new Error("access must be read-only, approval or full"), { status: 422 });
+    }
+    const access = value as AccessProfile;
+    const workspace = this.get(botId);
+    workspace.access = access;
+    workspace.autonomy = access === "full" ? "autonomous" : "approval";
+    workspace.permissions = access === "read-only"
+      ? { ...DEFAULT_PERMISSIONS, browser: false, delegation: false, file: false, integrations: false, terminal: false }
+      : { ...DEFAULT_PERMISSIONS };
+    this.save();
+    return { access };
   }
 
   setPermissions(botId: string, patch: unknown): Record<string, boolean> {
@@ -228,6 +260,7 @@ export class WorkspaceStore {
       }
       workspace.permissions[key] = enabled;
     }
+    workspace.access = workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
     this.save();
     return { ...workspace.permissions };
   }

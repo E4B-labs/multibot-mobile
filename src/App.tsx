@@ -108,10 +108,10 @@ function Shell() {
       {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {/* multibot: routines are harness-owned and available for every driver. */}
-      {state.routinesOpen && bot && <RoutinesPanel key={bot.id} bot={bot} />}
+      {state.routinesOpen && bot && <RoutinesPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
       {/* multibot: workspace memory/skills are provider-neutral shadow profiles. */}
-      {state.memoryOpen && bot && <MemoryPanel key={bot.id} bot={bot} />}
-      {state.skillsOpen && bot && <SkillsPanel key={bot.id} bot={bot} />}
+      {state.memoryOpen && bot && <MemoryPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
+      {state.skillsOpen && bot && <SkillsPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
       {/* multibot: F9-FE — pokój grupowy; otwierany wyłącznie z sekcji Groups
           (widocznej tylko przy botach slafy), klucz per grupę = świeży mount */}
       {state.groupOpen && <GroupPanel key={state.groupOpen.id} group={state.groupOpen} />}

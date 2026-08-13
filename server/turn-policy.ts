@@ -3,13 +3,14 @@
 // upstream transport types while still making tool decisions fail closed.
 export interface TurnPolicy {
   autonomy: "approval" | "autonomous";
+  access?: "read-only" | "approval" | "full";
   permissions: Record<string, boolean>;
 }
 
 const active = new Map<string, TurnPolicy>();
 
 export function setTurnPolicy(threadId: string, policy: TurnPolicy): void {
-  active.set(threadId, { autonomy: policy.autonomy, permissions: { ...policy.permissions } });
+  active.set(threadId, { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } });
 }
 
 export function clearTurnPolicy(threadId: string): void {
@@ -18,7 +19,7 @@ export function clearTurnPolicy(threadId: string): void {
 
 export function turnPolicy(threadId: string): TurnPolicy | undefined {
   const policy = active.get(threadId);
-  return policy ? { autonomy: policy.autonomy, permissions: { ...policy.permissions } } : undefined;
+  return policy ? { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } } : undefined;
 }
 
 export function toolsetFor(tool: string): string {
@@ -35,12 +36,13 @@ export function toolsetFor(tool: string): string {
 export function toolAllowed(threadId: string, tool: string): boolean {
   const policy = active.get(threadId);
   if (!policy) return true;
+  if (policy.access === "read-only" && ["browser", "delegation", "file", "integrations", "terminal"].includes(toolsetFor(tool))) return false;
   return policy.permissions[toolsetFor(tool)] !== false;
 }
 
 export function autoApproveAllowed(threadId: string, tool: string): boolean {
   const policy = active.get(threadId);
-  return policy?.autonomy === "autonomous" && toolAllowed(threadId, tool);
+  return (policy?.access === "full" || policy?.autonomy === "autonomous") && toolAllowed(threadId, tool);
 }
 
 export function canUseIntegration(threadId: string, kind: "browser" | "delegation" | "integrations"): boolean {

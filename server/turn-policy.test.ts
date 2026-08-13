@@ -10,7 +10,7 @@ import {
 } from "./turn-policy.ts";
 
 describe("turn policy", () => {
-  afterEach(() => clearTurnPolicy("thread"));
+  afterEach(() => { clearTurnPolicy("thread"); clearTurnPolicy("readonly"); });
 
   it("maps provider tool names to durable toolsets", () => {
     expect(toolsetFor("Bash")).toBe("terminal");
@@ -29,6 +29,14 @@ describe("turn policy", () => {
     expect(canUseIntegration("thread", "browser")).toBe(false);
     expect(canUseIntegration("thread", "delegation")).toBe(false);
     expect(canUseIntegration("thread", "integrations")).toBe(false);
+  });
+
+  it("read-only profile blocks host-changing toolsets", () => {
+    setTurnPolicy("readonly", { autonomy: "approval", access: "read-only", permissions: { browser: true, file: true, terminal: true, delegation: true, integrations: true } });
+    expect(toolAllowed("readonly", "Read")).toBe(false);
+    expect(toolAllowed("readonly", "Bash")).toBe(false);
+    expect(toolAllowed("readonly", "mcp__agents__ask_bot")).toBe(false);
+    expect(toolAllowed("readonly", "memory.recall")).toBe(true);
   });
 
   it("auto-approves allowed tools only in autonomous mode", () => {
