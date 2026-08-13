@@ -7,6 +7,9 @@ import { startSpeech, stopSpeech } from "./speech.mjs";
 import { startUpdater, registerUpdaterIpc } from "./updater.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// multibot (G6): Task Scheduler starts packaged app without a window. Electron
+// supplies Node + bundled harness/UI, so clean Windows needs no Node or pnpm.
+const SERVER_ONLY = process.argv.includes("--server-only");
 // 127.0.0.1 explicitly — vite binds IPv4; a bare "localhost" here can
 // resolve to ::1 and paint a black window
 const DEV_URL = process.env.ELECTRON_START_URL ?? "http://127.0.0.1:5199";
@@ -33,6 +36,7 @@ async function startServerOn(port) {
     env: {
       ...process.env,
       OMB_STATIC_DIR: path.join(process.resourcesPath, "ui"),
+      OMB_HOST: "127.0.0.1", // Tailscale Serve terminates HTTPS on loopback.
       OMB_PORT: String(port),
       // Silnik dziedziczy to przez spawn w supervisorze. PLAYWRIGHT_BROWSERS_PATH
       // musi tu być: domyślny katalog przeglądarek leży na dysku systemowym,
@@ -86,6 +90,19 @@ async function startServerPackaged() {
     await new Promise((r) => setTimeout(r, 2500));
   }
   return false;
+}
+
+function provisionEngineRuntime() {
+  if (fs.existsSync(path.join(ENGINE_RUNTIME, ".provisioned"))) return Promise.resolve();
+  const script = path.join(process.resourcesPath, "provision-engine.mjs");
+  const proc = utilityProcess.fork(
+    script,
+    ["--target", ENGINE_RUNTIME, "--requirements", path.join(process.resourcesPath, "engine", "requirements.txt")],
+    { stdio: "inherit" },
+  );
+  return new Promise((resolve, reject) => {
+    proc.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(`provisioning exit ${code}`))));
+  });
 }
 
 const ERROR_PAGE =
@@ -178,6 +195,23 @@ ipcMain.handle("speech:start", (event) => {
 ipcMain.handle("speech:stop", () => stopSpeech());
 
 app.whenReady().then(async () => {
+  if (SERVER_ONLY) {
+    if (!app.isPackaged) {
+      console.error("--server-only requires packaged app");
+      return app.exit(1);
+    }
+    // Explicit server install may take minutes on first boot; no GUI or UAC.
+    try {
+      await provisionEngineRuntime();
+    } catch (e) {
+      console.error("[engine] provisioning failed:", e);
+      app.exit(1);
+      return;
+    }
+    serverReady = await startServerPackaged();
+    if (!serverReady) app.exit(1);
+    return;
+  }
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
   // getDisplayMedia in the renderer → this handler → ScreenCaptureKit, all
   // inside the app's own processes — the one capture path macOS reliably
@@ -211,7 +245,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (!SERVER_ONLY && process.platform !== "darwin") app.quit();
 });
 
 // EMBEDDING.md lifecycle rule: defer the first quit until the embedded

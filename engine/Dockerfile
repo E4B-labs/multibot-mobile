@@ -1,6 +1,6 @@
-# Silnik Multibota na VPS/NAS: docker build -t multibot-engine engine/
-#   docker run -d -p 8700:8700 -v multibot-data:/data multibot-engine
-# Harness/UI laczy sie przez ENGINE_URL=http://<host>:8700 (zero spawnu).
+# Deprecated engine-only image. Do not publish port 8700: it has no auth layer.
+# Production Docker deployment uses ../Dockerfile.selfhost, which serves only
+# authenticated harness and keeps this engine on 127.0.0.1 in same container.
 # xvfb: sesje przegladarek botow sa headed (take-over), bez X pada
 # "The platform failed to initialize".
 FROM python:3.12-slim
@@ -17,5 +17,4 @@ RUN python -m playwright install chromium --with-deps
 COPY server ./server
 ENV SLAFY_DATA_DIR=/data HERMES_HOME=/data
 VOLUME /data
-EXPOSE 8700
-CMD ["xvfb-run", "--auto-servernum", "python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8700"]
+CMD ["xvfb-run", "--auto-servernum", "python", "-m", "uvicorn", "server.app:app", "--host", "127.0.0.1", "--port", "8700"]
