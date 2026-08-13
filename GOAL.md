@@ -14,9 +14,22 @@ zweryfikuj w kodzie każdy fakt z sekcji "Krytyczne pliki" (numery linii mogły 
 przesunąć — szukaj po kontekście, nie po numerze). Pracuj subagentami: backend na
 Opusie, frontend na Fable. Subagenty NIE commitują — commituje integrator po
 przejściu gate'u. Po każdej fazie: pełny pytest silnika + vitest harnessa + typecheck
-+ build, potem commit i push na main. Nie pytaj o zgodę na rzeczy opisane w planie.
-Zatrzymaj się tylko wtedy, gdy plan jest sprzeczny z tym, co widzisz w kodzie —
-wtedy opisz sprzeczność i zaproponuj rozstrzygnięcie.
++ build, potem commit i push na main.
+
+JEDŹ BEZ PRZERWY OD G1 DO G7. Zamknięty gate to sygnał do natychmiastowego startu
+następnej fazy w tej samej turze, nie do zatrzymania się i czekania. Nie pytaj o
+zgodę, nie proponuj "czy mam kontynuować", nie kończ tury zdaniem o tym, co
+zamierzasz zrobić — po prostu to zrób. Właściciel jest niedostępny; pytanie blokuje
+pracę na godziny. Skończone fazy raportuj jednym akapitem i od razu lecisz dalej.
+
+Nie przerywaj z powodu: długiego kontekstu (po kompaktacji czytasz GOAL.md
+ponownie i wracasz do fazy, na której stanąłeś — commity w git log mówią, gdzie
+jesteś), błędu narzędzia (ponów albo obejdź), padniętego testu (napraw przyczynę),
+czerwonego CI (napraw i wypchnij), ani zmęczenia planem.
+
+Zatrzymaj się WYŁĄCZNIE gdy: plan jest sprzeczny z kodem (opisz sprzeczność i
+rozstrzygnij sam, jeśli rozstrzygnięcie jest oczywiste), trzeba skasować cudze
+dane, albo skan sekretów blokuje push. Wtedy powiedz krótko i czekaj.
 ```
 
 ---
@@ -384,7 +397,20 @@ Numery linii mogą się przesunąć — szukaj po kontekście.
 
 ---
 
-## 9. Definicja ukończenia
+## 9. Jak prowadzić pętlę
+
+Runda jest długa i przeżyje wiele kompaktacji kontekstu. Żeby nie zgubić miejsca:
+
+- **Stan trzyma `git log`, nie pamięć.** Ostatni commit `feat: G<n> …` mówi, która faza jest zamknięta. Po utracie kontekstu: przeczytaj `GOAL.md`, zobacz `git log --oneline -15`, wróć do pierwszej niezamkniętej fazy.
+- **Jeden commit na zamknięty gate**, wiadomość zaczyna się od numeru fazy (`feat: G1 — …`). Bez tego następna sesja nie wie, gdzie stoi.
+- **Faza nie zamyka się bez zielonych testów.** Czerwony test to praca do wykonania w tej fazie, nie powód do przejścia dalej ani do zatrzymania pętli.
+- **Subagenty puszczaj równolegle, gdy nie dotykają tych samych plików** (typowo: backend w `server/` i `engine/`, frontend w `src/`). Gdy muszą tknąć ten sam plik — po kolei.
+- **Nie kończ tury na zapowiedzi.** Zdanie „teraz zrobię X" bez wywołania narzędzia marnuje cykl. Albo robisz X, albo raportujesz zamkniętą fazę i zaczynasz następną.
+- **Raport po fazie** to jeden akapit: co działa, co zweryfikowane liczbowo, co świadomie odłożone. Bez pytań na końcu.
+
+---
+
+## 10. Definicja ukończenia
 
 Na czystym urządzeniu: jedna komenda stawia serwer, który chodzi po restarcie.
 Właściciel wchodzi z telefonu i z komputera na jeden adres, loguje się tokenem,
