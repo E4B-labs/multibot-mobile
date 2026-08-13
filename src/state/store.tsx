@@ -229,9 +229,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, workspaceVersion: state.workspaceVersion + 1 };
     case "configStatus":
       return { ...state, config: action.config };
+    // multibot: selecting a bot leaves group conversation mode.
     case "select":
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, groupOpen: null }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
