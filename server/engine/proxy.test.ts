@@ -305,6 +305,12 @@ describe("duplicate = fresh engine identity (D3)", () => {
 
     await api("POST", `/api/bots/${copy.id}/messages`, { text: "kopia" });
     await waitFor(async () => engine.createdBots.includes(`mb-${patched.threadId}`) || null, "the copy's engine bot");
+    // ensureBot kończy się przed POST-em tury — na wolnym runnerze asercja
+    // potrafiła wyprzedzić request czatu, stąd osobne czekanie na turę
+    await waitFor(
+      async () => engine.chats.some((c) => c.botId === `mb-${patched.threadId}`) || null,
+      "the copy's turn to reach the engine",
+    );
     // dwa boty silnika, każdy dostał wyłącznie swoją turę
     expect(engine.chats.filter((c) => c.botId === `mb-${patched.threadId}`).map((c) => c.message)).toEqual(["kopia"]);
     expect(engine.chats.filter((c) => c.botId === `mb-${source.threadId}`).map((c) => c.message)).toEqual(["pierwsza"]);
