@@ -46,7 +46,7 @@ receive the peer reply in their prompt.
 | Windows | yes | yes | yes | per-user packaged task |
 | macOS | yes | yes | yes | desktop/server mode |
 | Linux/VPS | yes | yes | yes, headless by default | systemd user service or Docker |
-| Android/Termux | yes | yes | no Playwright browser | `termux-services` + Termux:Boot |
+| Android/Termux | yes | yes | headless Chromium via CDP; no Android desktop window | `termux-services` + Termux:Boot |
 
 ## Known limits
 
@@ -56,8 +56,9 @@ receive the peer reply in their prompt.
 - A group currently uses the shared engine room transport. A CLI participant is
   represented by a durable engine shadow; native mixed-driver group turns are a
   separate follow-up.
-- Termux omits browser MCP dependencies because Android has no Playwright path;
-  chat, workspace memory, routines, and skills remain available.
+- Termux uses native X11 Chromium through CDP because Playwright's bundled
+  desktop browser has no Android build. The PWA can still show and control the
+  headless browser remotely; an Android desktop window needs Termux:X11.
 - Native iOS/Android store apps, OAuth for arbitrary MCP servers, and automatic
   Windows updates are intentionally outside this release.
 

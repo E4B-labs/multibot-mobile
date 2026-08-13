@@ -104,9 +104,11 @@ bash scripts/install-termux.sh
 ```
 
 Chat, workspace memory, routines, skills, and PWA shell work on Termux. The
-Playwright browser computer is unavailable on Android. CLI installation is
-automatic after selection; each provider login stays interactive in its own
-terminal (OAuth/subscription credentials never pass through MultiBot).
+installer adds Termux:X11 Chromium and exposes its headless CDP browser as the
+bot computer; live view and takeover still work remotely from the PWA. CLI
+installation is automatic after selection; each provider login stays
+interactive in its own terminal (OAuth/subscription credentials never pass
+through MultiBot).
 
 From another device on the same Tailscale network, open the phone server after
 replacing `<PHONE_IP>` with its Tailscale address:

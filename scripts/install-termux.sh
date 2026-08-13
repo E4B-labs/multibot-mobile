@@ -28,10 +28,13 @@ fi
 say "prepare engine and build harness"
 run python -m venv --system-site-packages "$ROOT/engine/.venv"
 run "$ROOT/engine/.venv/bin/pip" install --upgrade pip
-# Termux has no Playwright support; browser MCP is intentionally omitted on Android.
+# Termux can run the Termux X11 Chromium package headlessly. Playwright's
+# bundled browser is not portable to Android, so use system Chromium instead.
 engine_deps=(aiohttp fastapi uvicorn httpx numpy edge-tts python-multipart)
 if [[ -z "${TERMUX_VERSION:-}" ]]; then
   engine_deps+=("mcp==1.28.1" "starlette==1.3.1")
+else
+  run pkg install -y x11-repo chromium
 fi
 run "$ROOT/engine/.venv/bin/pip" install --ignore-requires-python "${engine_deps[@]}"
 if [[ ! -d "$ROOT/engine/hermes-agent/.git" ]]; then
@@ -51,6 +54,13 @@ run pnpm --dir "$ROOT" build
 run pnpm --dir "$ROOT" build:server
 if (( ! DRY_RUN )); then chmod +x "$ROOT/scripts/start-multibot.sh"; fi
 
+if [[ -n "${TERMUX_VERSION:-}" && "$DRY_RUN" -ne 1 ]]; then
+  # Playwright Python normally downloads its own desktop Chromium. Android
+  # uses Termux's native build instead; provider launches it via this path.
+  export PLAYWRIGHT_BROWSERS_PATH=0
+  export SLAFY_BROWSER_EXECUTABLE_PATH="${SLAFY_BROWSER_EXECUTABLE_PATH:-$PREFIX/lib/chromium/chrome}"
+fi
+
 SERVICE_DIR="$PREFIX/var/service/multibot"
 BOOT_DIR="$HOME/.termux/boot"
 if (( DRY_RUN )); then
@@ -61,6 +71,7 @@ else
 #!$PREFIX/bin/bash
 exec env HOME="$HOME" OMB_HOST=0.0.0.0 OMB_PORT=8799 \\
   SLAFY_DATA_DIR="$HOME/.openmausbot/engine-data" HERMES_HOME="$HOME/.openmausbot" \\
+  ${SLAFY_BROWSER_EXECUTABLE_PATH:+SLAFY_BROWSER_EXECUTABLE_PATH="$SLAFY_BROWSER_EXECUTABLE_PATH"} \\
   "$ROOT/scripts/start-multibot.sh"
 EOF
   chmod +x "$SERVICE_DIR/run"

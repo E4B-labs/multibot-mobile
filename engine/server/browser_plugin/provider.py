@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -102,6 +103,12 @@ def _headless() -> bool:
     return os.environ.get("SLAFY_BROWSER_HEADLESS", "").strip().lower() in ("1", "true", "yes")
 
 
+def _executable_path() -> str | None:
+    """Use native Termux Chromium; desktop Playwright keeps auto-discovery."""
+    value = os.environ.get("SLAFY_BROWSER_EXECUTABLE_PATH", "").strip()
+    return value if value else None
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -161,13 +168,44 @@ def _run_context(
     box: dict,
 ) -> None:
     """Ciało wątku sesji: podnieś kontekst, zaparkuj, zamknij na sygnał."""
-    from playwright.sync_api import sync_playwright
-
+    executable = _executable_path()
     try:
+        if executable and importlib.util.find_spec("playwright") is None:
+            # Android/Termux has native Chromium but no Playwright wheel.
+            # CDP is the existing abstraction used by computer.py, so launch
+            # Chromium directly and keep the same persistent-profile contract.
+            args = [
+                executable,
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--remote-debugging-address=127.0.0.1",
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={user_dir}",
+            ]
+            if headless:
+                args.append("--headless=new")
+            args.append("about:blank")
+            proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                _wait_for_cdp(port, time.time() + _LAUNCH_TIMEOUT)
+                ready.set()
+                stop.wait()
+            finally:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            return
+
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as pw:
             ctx = pw.chromium.launch_persistent_context(
                 str(user_dir),
                 headless=headless,
+                executable_path=executable,
                 args=[f"--remote-debugging-port={port}"],
             )
             try:
@@ -250,7 +288,10 @@ class SlafyBrowserProvider(BrowserProvider):
         return "Slafy (local persistent)"
 
     def is_available(self) -> bool:
-        return importlib.util.find_spec("playwright") is not None
+        executable = _executable_path()
+        return (importlib.util.find_spec("playwright") is not None and not executable) or bool(
+            executable and Path(executable).is_file()
+        )
 
     def create_session(self, task_id: str) -> dict:
         home = _hermes_home()
