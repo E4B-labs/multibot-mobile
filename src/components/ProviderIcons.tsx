@@ -36,6 +36,34 @@ export function ComputerMark({ size = 16, className }: IconProps) {
   return <Monitor size={size} className={cn("text-ink-secondary", className)} />;
 }
 
+function BadgeMark({ label, tone, size = 16, className }: IconProps & { label: string; tone: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("inline-flex items-center justify-center rounded-full text-[9px] font-bold leading-none", tone, className)}
+      style={{ width: size, height: size }}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function GeminiMark(props: IconProps) {
+  return <BadgeMark {...props} label="✦" tone="bg-blue-500 text-white" />;
+}
+
+export function KimiMark(props: IconProps) {
+  return <BadgeMark {...props} label="K" tone="bg-cyan-500 text-white" />;
+}
+
+export function QwenMark(props: IconProps) {
+  return <BadgeMark {...props} label="Q" tone="bg-violet-500 text-white" />;
+}
+
+export function LocalMark(props: IconProps) {
+  return <BadgeMark {...props} label="L" tone="bg-emerald-500 text-white" />;
+}
+
 export function ProviderMark({ driverKind, size, className }: IconProps & { driverKind: string }) {
   switch (driverKind) {
     case "grok":
@@ -45,8 +73,16 @@ export function ProviderMark({ driverKind, size, className }: IconProps & { driv
       return <ClaudeMark size={size} className={className} />;
     case "codex":
       return <CodexMark size={size} className={className} />;
+    case "geminiAgent":
+      return <GeminiMark size={size} className={className} />;
+    case "kimiAgent":
+      return <KimiMark size={size} className={className} />;
+    case "qwenAgent":
+      return <QwenMark size={size} className={className} />;
     case "boxAgent":
       return <ComputerMark size={size} className={className} />;
+    case "slafy":
+      return <LocalMark size={size} className={className} />;
     default:
       return <span className="text-[11px] font-semibold text-ink-secondary">{driverKind.slice(0, 2).toUpperCase()}</span>;
   }

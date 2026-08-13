@@ -19,6 +19,8 @@ say "install Termux packages (no root)"
 run pkg update -y
 run pkg install -y nodejs-lts python python-pip python-ensurepip-wheels \
   python-cryptography python-numpy git termux-services rust binutils clang
+# maturin-backed Android wheels (for example rpds-py) need explicit API level.
+export ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-24}"
 if ! command -v pnpm >/dev/null; then
   if (( DRY_RUN )); then say "install pnpm@10.33.0 globally"; else npm install -g pnpm@10.33.0; fi
 fi
@@ -26,17 +28,28 @@ fi
 say "prepare engine and build harness"
 run python -m venv --system-site-packages "$ROOT/engine/.venv"
 run "$ROOT/engine/.venv/bin/pip" install --upgrade pip
-# Termux has no Playwright support; browser tools remain unavailable on Android.
-run "$ROOT/engine/.venv/bin/pip" install --ignore-requires-python \
-  aiohttp fastapi uvicorn httpx "mcp==1.28.1" "starlette==1.3.1" numpy edge-tts python-multipart
+# Termux has no Playwright support; browser MCP is intentionally omitted on Android.
+engine_deps=(aiohttp fastapi uvicorn httpx numpy edge-tts python-multipart)
+if [[ -z "${TERMUX_VERSION:-}" ]]; then
+  engine_deps+=("mcp==1.28.1" "starlette==1.3.1")
+fi
+run "$ROOT/engine/.venv/bin/pip" install --ignore-requires-python "${engine_deps[@]}"
 if [[ ! -d "$ROOT/engine/hermes-agent/.git" ]]; then
   run git clone --filter=blob:none https://github.com/NousResearch/hermes-agent "$ROOT/engine/hermes-agent"
   run git -C "$ROOT/engine/hermes-agent" checkout 17688f9
 fi
-run "$ROOT/engine/.venv/bin/pip" install -e "$ROOT/engine/hermes-agent"
+# `uvicorn[standard]` pulls watchfiles, whose Rust Android build is optional
+# for this headless service. Keep plain uvicorn on Termux.
+if [[ -n "${TERMUX_VERSION:-}" && "$DRY_RUN" -ne 1 ]]; then
+  sed -i 's/uvicorn\[standard\]/uvicorn/g' "$ROOT/engine/hermes-agent/pyproject.toml"
+fi
+# Termux currently ships CPython 3.14 while this pinned Hermes build declares
+# <3.14; its runtime is pure Python, so install while preserving the warning.
+run "$ROOT/engine/.venv/bin/pip" install --ignore-requires-python -e "$ROOT/engine/hermes-agent"
 run pnpm --dir "$ROOT" install --frozen-lockfile
 run pnpm --dir "$ROOT" build
 run pnpm --dir "$ROOT" build:server
+if (( ! DRY_RUN )); then chmod +x "$ROOT/scripts/start-multibot.sh"; fi
 
 SERVICE_DIR="$PREFIX/var/service/multibot"
 BOOT_DIR="$HOME/.termux/boot"

@@ -13,9 +13,9 @@ data directories so existing installations keep working.
 | Provider picker | Claude Code, Codex, Grok, Gemini, Kimi Code, Qwen Code, computer agent, and named custom models; a custom model accepts API key, base URL, and model id | `src/components/ModelPicker.tsx`, `server/config.ts` |
 | Custom models | Stored in the local config; keys are write-only in API responses; built-in CLI entries remain when custom entries are added | `server/index.ts`, `server/drivers/slafy.ts` |
 | Chat runtime | Streaming replies, tool activity, interruptions, approvals, questions, files, screenshots, transcript persistence | `server/index.ts`, `server/harness/`, `src/components/ChatView.tsx` |
-| Memory | Facts, graph, markdown view, search, and per-bot memory for engine-backed profiles | `engine/server/memory.py`, `src/components/MemoryPanel.tsx` |
+| Memory | Facts, graph, markdown view, search, and per-bot workspace shadow profile for every provider | `engine/server/memory.py`, `src/components/MemoryPanel.tsx` |
 | Routines | Cron and manual runs for every selected driver; engine-backed routines also expose webhook controls; CLI routines show their execution limits | `server/routines.ts`, `engine/server/app.py`, `src/components/RoutinesPanel.tsx` |
-| Skills | List, enable, edit, delete, and teach-a-task flow for engine-backed profiles | `engine/server/app.py`, `src/components/SkillsPanel.tsx` |
+| Skills | Shared list, enable, edit, delete, and teach-a-task flow; teaching requires a browser-capable profile | `engine/server/app.py`, `src/components/SkillsPanel.tsx` |
 | Groups | Create from the top `+` menu, select bots, open a shared room; selected CLI bots use durable engine shadow ids for group transport | `src/components/Sidebar.tsx`, `src/components/GroupPanel.tsx`, `engine/server/groups.py` |
 | Computers | One persistent browser per bot plus one shared browser profile; live preview, navigation, input takeover, screenshots, and explicit busy handling | `engine/server/computer.py`, `src/components/ComputerPanel.tsx` |
 | Approvals | Allow/deny cards, per-bot permissions, tool allowlists, attention state for login/CAPTCHA questions | `engine/server/approvals.py`, `src/components/OptionCard.tsx` |
@@ -32,10 +32,11 @@ data directories so existing installations keep working.
 name shown to users. A custom model is a named instance using that driver; the
 engine receives `provider=custom`, `base_url`, and `model` at turn start.
 
-CLI bots keep their native driver. Memory and Skills are engine APIs, so the UI
-shows them only where the selected runtime can provide them. Routines are
-harness-owned and therefore work across drivers, with an explicit limitation
-message where a CLI cannot expose engine-only controls.
+CLI bots keep their native driver. Memory and Skills use a provider-neutral
+workspace shadow profile, so they are available from the same bot header while
+the provider conversation remains native. Routines are harness-owned and work
+across drivers. Bot-to-bot delegation is automatic where the provider exposes
+MCP; drivers without MCP support remain targetable but cannot call peers yet.
 
 ## Platform matrix
 
@@ -54,8 +55,8 @@ message where a CLI cannot expose engine-only controls.
 - A group currently uses the shared engine room transport. A CLI participant is
   represented by a durable engine shadow; native mixed-driver group turns are a
   separate follow-up.
-- Memory and Skills are not silently fabricated for Claude/Codex CLI bots. The
-  UI explains when an engine-only operation is unavailable.
+- Termux omits browser MCP dependencies because Android has no Playwright path;
+  chat, workspace memory, routines, and skills remain available.
 - Native iOS/Android store apps, OAuth for arbitrary MCP servers, and automatic
   Windows updates are intentionally outside this release.
 

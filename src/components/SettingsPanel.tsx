@@ -1,6 +1,6 @@
-import { Brain, CalendarClock, ChevronLeft, MessagesSquare, Wand2, X } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useStore, formatTime, type Bot } from "@/state/store";
+import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
   stateForBot,
@@ -102,98 +102,6 @@ function EngineUsage({ bot }: { bot: Bot }) {
   );
 }
 
-// multibot: F9-FE — podgląd wątków inter-bot (read-only), karta jak EngineUsage.
-// Jeden GET przy otwarciu panelu (mount; karta keyowana bot.id), zero pollingu:
-//   GET /api/engine/bots/mb-<threadId>/interbot → [{id, bots: [a, b],
-//     messages: [{from, content, ts}]}] (engine/server/interbot.py — jeden
-//     wątek na PARĘ botów, A→B i B→A w tej samej rozmowie).
-// 404 = bot silnika jeszcze nie istnieje = zero wątków, nie błąd; błąd sieci /
-// 5xx = "Engine offline" konwencją EngineUsage. Trasy zapisu nie ma — podgląd.
-interface InterbotThread {
-  id: string;
-  bots: string[];
-  messages: Array<{ from: string; content: string; ts: string }>;
-}
-
-function InterbotCard({ bot }: { bot: Bot }) {
-  const { state } = useStore();
-  const engineBotId = `mb-${bot.threadId}`;
-  const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
-  const [threads, setThreads] = useState<InterbotThread[]>([]);
-
-  useEffect(() => {
-    authFetch(`/api/engine/bots/${engineBotId}/interbot`)
-      .then((res) => {
-        if (res.status === 404) return []; // brak bota = brak wątków
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<InterbotThread[]>;
-      })
-      .then((ts) => {
-        setThreads(ts);
-        setStatus("ready");
-      })
-      .catch(() => setStatus("offline"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // `mb-<threadId>` jest odwracalne (server/drivers/slafy.ts), więc nazwa bota
-  // apki wychodzi z samego id; id spoza floty zostaje jak jest.
-  const nameOf = (id: string) => {
-    const threadId = id.startsWith("mb-") ? id.slice(3) : id;
-    return state.bots.find((b) => b.threadId === threadId)?.name ?? id;
-  };
-
-  return (
-    <div className="rounded-xl bg-card p-4">
-      <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
-        <MessagesSquare size={16} className="text-ink-secondary" />
-        Bot-to-bot
-      </div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Conversations this bot had with other bots — read-only
-      </div>
-      {status === "offline" ? (
-        <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
-          <span className="size-1.5 rounded-full bg-raised-hover" />
-          Service offline
-        </div>
-      ) : status === "ready" && threads.length === 0 ? (
-        <div className="mt-3 text-[13px] text-ink-secondary">No bot-to-bot conversations yet</div>
-      ) : status === "ready" ? (
-        <div className="mt-3 flex flex-col gap-2">
-          {threads.map((t) => {
-            const last = t.messages[t.messages.length - 1];
-            const ts = last ? Date.parse(last.ts) : NaN;
-            return (
-              <div key={t.id} className="rounded-lg bg-inset p-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  {/* UI-SPEC §5: "● BotA ✕ ● BotB" — nazwy zamiast kropek */}
-                  <span className="min-w-0 truncate text-[13px] font-medium text-ink">
-                    {t.bots.map(nameOf).join(" ✕ ")}
-                  </span>
-                  {Number.isFinite(ts) && (
-                    <span className="shrink-0 text-[11px] text-ink-secondary">
-                      {formatTime(ts)}
-                    </span>
-                  )}
-                </div>
-                {last && (
-                  <div className="mt-1 truncate text-[12px] text-ink-secondary" title={last.content}>
-                    {nameOf(last.from)}: {last.content}
-                  </div>
-                )}
-                <div className="mt-0.5 text-[11px] text-ink-secondary">
-                  {t.messages.length} message{t.messages.length === 1 ? "" : "s"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const patch = (
@@ -203,8 +111,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
-  const instance = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
-  const isEngineBot = instance?.driverKind === "slafy";
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -327,77 +233,10 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <ModelPicker bot={bot} />
           </div>
 
-          {/* multibot: service-only controls remain for bots routed through local
-              runtime; model credentials live in App Settings. */}
-          {isEngineBot && (
-            <>
-              <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
-              <EngineUsage key={`f10-${bot.id}`} bot={bot} />
-              {/* multibot: F9-FE — podgląd wątków inter-bot, ta sama zasada klucza */}
-              <InterbotCard key={`f9-${bot.id}`} bot={bot} />
-              {/* multibot: F8 — wejścia do paneli pamięci i skilli; panele żyją
-                  w prawym slocie (Shell), więc karta tylko przełącza flagę. */}
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
-                  <Brain size={16} className="text-ink-secondary" />
-                  Memory
-                </div>
-                <div className="mt-0.5 text-[13px] text-ink-secondary">
-                  Facts this bot has learned, its long-term notes, and how they connect.
-                </div>
-                <button
-                  onClick={() => dispatch({ type: "toggleMemory", open: true })}
-                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-                >
-                  View Memory
-                </button>
-              </div>
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
-                  <Wand2 size={16} className="text-ink-secondary" />
-                  Skills
-                </div>
-                <div className="mt-0.5 text-[13px] text-ink-secondary">
-                  Reusable playbooks shared by every bot — teach new ones by demonstration.
-                </div>
-                <button
-                  onClick={() => dispatch({ type: "toggleSkills", open: true })}
-                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-                >
-                  Manage Skills
-                </button>
-              </div>
-            </>
-          )}
-
-          <div className="rounded-xl bg-card p-4">
-            <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
-              <CalendarClock size={16} className="text-ink-secondary" />
-              Routines
-            </div>
-            <div className="mt-0.5 text-[13px] text-ink-secondary">
-              Recurring tasks this bot runs in the background.
-            </div>
-            <button
-              onClick={() => dispatch({ type: "toggleRoutines", open: true })}
-              className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-            >
-              Manage Routines
-            </button>
-          </div>
-
-          {!isEngineBot && (
-            <div className="rounded-xl bg-card p-4">
-              <div className="text-[15px] font-medium text-ink">Memory and skills</div>
-              <div className="mt-1 text-[13px] text-ink-secondary">
-                {instance?.displayName ?? "This command-line bot"} exposes chat and routines. Memory
-                and Skills require the local profile runtime.
-              </div>
-              <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
-                Unavailable for this CLI
-              </div>
-            </div>
-          )}
+          {/* multibot: workspace controls apply to every provider. Bot-to-bot
+              delegation is automatic; no per-bot switch exists. */}
+          <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
+          <EngineUsage key={`usage-${bot.id}`} bot={bot} />
 
           <div className="rounded-xl bg-card p-4">
             <div className="text-[15px] font-medium text-ink">Computer</div>

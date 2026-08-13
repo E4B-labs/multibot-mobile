@@ -23,6 +23,7 @@ workspace from desktop, phone, or any browser through the authenticated PWA.
 | Bot fleet | Named bots in one roster; pin, hide, duplicate, rename, and delete them like chats |
 | Provider choice | Claude Code, Codex, Grok, Gemini, Kimi Code, Qwen Code, and custom OpenAI-compatible endpoints |
 | Custom models | Enter key, base URL, and model id once; the model appears in the top picker |
+| Language | English/Polish selector in App Settings, persisted per browser |
 | Agent work | Streaming replies, tools, approvals, questions, files, screenshots, and interruptions |
 | Memory | Engine-backed facts, graph, markdown view, and retrieval per bot |
 | Routines | Cron/manual runs for every selected driver; engine routines also support webhooks |
@@ -102,8 +103,10 @@ cd multibot
 bash scripts/install-termux.sh
 ```
 
-Chat, memory, routines, skills, and PWA work on Termux. The Playwright browser
-computer is unavailable on Android.
+Chat, workspace memory, routines, skills, and PWA shell work on Termux. The
+Playwright browser computer is unavailable on Android. CLI installation is
+automatic after selection; each provider login stays interactive in its own
+terminal (OAuth/subscription credentials never pass through MultiBot).
 
 ### Remote HTTPS
 

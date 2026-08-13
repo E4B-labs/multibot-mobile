@@ -9,6 +9,7 @@
 //     ZAWSZE, niezależnie od trybu.
 // Allowlista "always" (permissions.allowlist) NIE ma w silniku trasy HTTP (ani
 // GET, ani DELETE wpisu) — sekcja niżej to notka do czasu, aż backend ją wystawi.
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -54,6 +55,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
   const [autonomy, setAutonomy] = useState<Autonomy>("approval");
   const [perms, setPerms] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   // karta jest keyowana bot.id w SettingsPanel, więc mount = jeden bot
   useEffect(() => {
@@ -131,31 +133,44 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
         </div>
       ) : status === "loading" ? null : (
         <>
-          <SectionLabel>Tool rules</SectionLabel>
-          <div className="text-[13px] text-ink-secondary">
-            Disabled tools are refused in every mode
-          </div>
-          <div className="mt-1 flex flex-col">
-            {Object.entries(perms).map(([toolset, enabled]) => (
-              <div
-                key={toolset}
-                className="flex items-center justify-between border-b border-hairline/40 py-2 last:border-b-0"
-              >
-                <span className="text-[13px] text-ink">{toolset.replace(/_/g, " ")}</span>
-                <Switch
-                  on={enabled}
-                  onClick={() => toggleToolset(toolset)}
-                  label={`Allow ${toolset}`}
-                />
+          <button
+            type="button"
+            onClick={() => setRulesOpen((open) => !open)}
+            aria-expanded={rulesOpen}
+            className="mt-4 flex w-full items-center justify-between text-left"
+          >
+            <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
+              Tool rules
+            </span>
+            <ChevronDown size={15} className={cn("text-ink-secondary transition-transform", rulesOpen && "rotate-180")} />
+          </button>
+          {rulesOpen && (
+            <div className="mt-1">
+              <div className="text-[13px] text-ink-secondary">
+                Disabled tools are refused in every mode
               </div>
-            ))}
-          </div>
-
-          <SectionLabel>Always allowed</SectionLabel>
-          <div className="text-[13px] text-ink-secondary">
-            Tools you approve with &ldquo;Always&rdquo; are enforced, but the service
-            doesn&rsquo;t expose the list yet
-          </div>
+              <div className="mt-1 flex flex-col">
+                {Object.entries(perms).map(([toolset, enabled]) => (
+                  <div
+                    key={toolset}
+                    className="flex items-center justify-between border-b border-hairline/40 py-2 last:border-b-0"
+                  >
+                    <span className="text-[13px] text-ink">{toolset.replace(/_/g, " ")}</span>
+                    <Switch
+                      on={enabled}
+                      onClick={() => toggleToolset(toolset)}
+                      label={`Allow ${toolset}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <SectionLabel>Always allowed</SectionLabel>
+              <div className="text-[13px] text-ink-secondary">
+                Tools you approve with &ldquo;Always&rdquo; are enforced, but the service
+                doesn&rsquo;t expose the list yet
+              </div>
+            </div>
+          )}
         </>
       )}
 

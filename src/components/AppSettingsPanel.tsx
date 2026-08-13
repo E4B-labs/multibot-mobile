@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { authFetch, setAuthToken } from "@/lib/auth";
 // multibot: F11 — status silnika dla EngineStatusRow
 import { engineOnline } from "@/lib/engineStatus";
+import { languageLabel, setLanguage, useLanguage, type Language } from "@/lib/language";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -643,6 +644,7 @@ function UpdatesRow() {
 
 export function AppSettingsPanel() {
   const { dispatch } = useStore();
+  const language = useLanguage();
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -658,6 +660,21 @@ export function AppSettingsPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
+        <div className="mt-2 flex items-center justify-between gap-4 rounded-xl bg-card p-4">
+          <div>
+            <div className="text-[15px] font-medium text-ink">Language</div>
+            <div className="mt-0.5 text-[13px] text-ink-secondary">Choose app language.</div>
+          </div>
+          <select
+            value={language}
+            onChange={(event) => setLanguage(event.target.value as Language)}
+            className="rounded-lg border border-hairline/40 bg-inset px-2.5 py-2 text-[13px] text-ink focus:outline-none"
+            aria-label="Language"
+          >
+            <option value="en">{languageLabel("en")}</option>
+            <option value="pl">{languageLabel("pl")}</option>
+          </select>
+        </div>
         <div className="mt-2 rounded-xl bg-card p-4">
           <div className="text-[15px] font-medium text-ink">Profile</div>
           <div className="mt-0.5 text-[13px] text-ink-secondary">Shown in the sidebar. Saved as you go.</div>

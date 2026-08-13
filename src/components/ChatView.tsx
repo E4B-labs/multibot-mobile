@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Check, Loader2, Monitor, Square, X } from "lucide-react";
+import { ArrowDown, Brain, CalendarClock, Check, Loader2, Monitor, Square, Wand2, X } from "lucide-react";
 import { useStore, formatTime, type Bot, type Message } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
@@ -193,6 +193,39 @@ export function ChatView({ bot }: { bot: Bot }) {
             title="Bot's computer"
           >
             <Monitor size={18} />
+          </button>
+          <button
+            onClick={() => dispatch({ type: "toggleMemory" })}
+            className={cn(
+              "rounded-md p-1.5 hover:bg-raised",
+              state.memoryOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+            )}
+            title="Bot memory"
+            aria-label="Bot memory"
+          >
+            <Brain size={18} />
+          </button>
+          <button
+            onClick={() => dispatch({ type: "toggleRoutines" })}
+            className={cn(
+              "rounded-md p-1.5 hover:bg-raised",
+              state.routinesOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+            )}
+            title="Bot routines"
+            aria-label="Bot routines"
+          >
+            <CalendarClock size={18} />
+          </button>
+          <button
+            onClick={() => dispatch({ type: "toggleSkills" })}
+            className={cn(
+              "rounded-md p-1.5 hover:bg-raised",
+              state.skillsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+            )}
+            title="Bot skills"
+            aria-label="Bot skills"
+          >
+            <Wand2 size={18} />
           </button>
         </div>
       </div>

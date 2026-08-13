@@ -20,8 +20,11 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
 import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const language = useLanguage();
+  const polish = language === "pl";
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,7 +35,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     setAuthToken(token);
     try {
       const response = await authFetch("/api/instances");
-      if (!response.ok) throw new Error(response.status === 401 ? "Invalid access token" : "Server unavailable");
+      if (!response.ok) throw new Error(response.status === 401 ? (polish ? "Nieprawidłowy token dostępu" : "Invalid access token") : polish ? "Serwer niedostępny" : "Server unavailable");
       onLogin();
     } catch (e) {
       clearAuthToken();
@@ -50,15 +53,15 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         }}
         className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl"
       >
-        <h1 className="text-[18px] font-semibold">Sign in</h1>
-        <p className="mt-1 text-[13px] text-ink-secondary">Enter access token for this Multibot server.</p>
+        <h1 className="text-[18px] font-semibold">{polish ? "Zaloguj się" : "Sign in"}</h1>
+        <p className="mt-1 text-[13px] text-ink-secondary">{polish ? "Wpisz token dostępu do tego serwera MultiBot." : "Enter access token for this Multibot server."}</p>
         <input
           autoFocus
           type="password"
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          placeholder="Access token"
-          aria-label="Access token"
+          placeholder={polish ? "Token dostępu" : "Access token"}
+          aria-label={polish ? "Token dostępu" : "Access token"}
           autoComplete="current-password"
           className="mt-4 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink outline-none focus:border-hairline"
         />
@@ -67,7 +70,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           disabled={busy || !token.trim()}
           className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50"
         >
-          {busy ? "Checking…" : "Sign in"}
+          {busy ? (polish ? "Sprawdzanie…" : "Checking…") : polish ? "Zaloguj się" : "Sign in"}
         </button>
         {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
       </form>
@@ -78,8 +81,6 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 function Shell() {
   const { state } = useStore();
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
-  const slafyBot =
-    bot && state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
@@ -107,9 +108,9 @@ function Shell() {
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {/* multibot: routines are harness-owned and available for every driver. */}
       {state.routinesOpen && bot && <RoutinesPanel key={bot.id} bot={bot} />}
-      {/* multibot: F8 — pamięć i skille, ten sam gate i ta sama zasada klucza */}
-      {state.memoryOpen && slafyBot && <MemoryPanel key={bot.id} bot={bot} />}
-      {state.skillsOpen && slafyBot && <SkillsPanel key={bot.id} bot={bot} />}
+      {/* multibot: workspace memory/skills are provider-neutral shadow profiles. */}
+      {state.memoryOpen && bot && <MemoryPanel key={bot.id} bot={bot} />}
+      {state.skillsOpen && bot && <SkillsPanel key={bot.id} bot={bot} />}
       {/* multibot: F9-FE — pokój grupowy; otwierany wyłącznie z sekcji Groups
           (widocznej tylko przy botach slafy), klucz per grupę = świeży mount */}
       {state.groupOpen && <GroupPanel key={state.groupOpen.id} group={state.groupOpen} />}
