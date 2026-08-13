@@ -4,7 +4,7 @@
 // scripted session. Failure modes are toggled by env var, mirroring how
 // the real thing misbehaves:
 //
-//   FAKE_CLAUDE_MODE   happy (default) | exit-early | hang | malformed
+//   FAKE_CLAUDE_MODE   happy (default) | persistent | exit-early | hang | malformed
 //                      | stream (partial-message text deltas before the
 //                        whole-message frame, plus subagent noise to drop)
 //   FAKE_CLAUDE_DUMP   path to write {argv, env, prompt} as JSON, so the
@@ -24,11 +24,13 @@ const argAfter = (flag: string): string | null => {
 const out = (obj: unknown) => process.stdout.write(JSON.stringify(obj) + "\n");
 
 let stdin = "";
-process.stdin.on("data", (c) => (stdin += c));
-process.stdin.on("end", () => {
+let initialized = false;
+let turns = 0;
+const handlePrompt = (raw: string) => {
+  turns += 1;
   let prompt: unknown = null;
   try {
-    prompt = JSON.parse(stdin.split("\n").find((l) => l.trim()) ?? "null");
+    prompt = JSON.parse(raw);
   } catch {
     /* leave null — the test will see it */
   }
@@ -45,7 +47,10 @@ process.stdin.on("end", () => {
     process.exit(3);
   }
 
-  out({ type: "system", subtype: "init", session_id: sessionId, model });
+  if (!initialized) {
+    initialized = true;
+    out({ type: "system", subtype: "init", session_id: sessionId, model });
+  }
 
   if (mode === "hang") {
     // stay alive until killed — lets tests exercise interrupt + the
@@ -83,5 +88,15 @@ process.stdin.on("end", () => {
   });
   out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu-1", is_error: false }] } });
   out({ type: "result", is_error: false, stop_reason: "end_turn", total_cost_usd: 0.01 });
-  process.exit(0);
+  if (mode !== "persistent") process.exit(0);
+};
+
+process.stdin.on("data", (c) => {
+  stdin += c;
+  let nl;
+  while ((nl = stdin.indexOf("\n")) !== -1) {
+    const line = stdin.slice(0, nl).trim();
+    stdin = stdin.slice(nl + 1);
+    if (line) handlePrompt(line);
+  }
 });

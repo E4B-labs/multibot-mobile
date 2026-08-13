@@ -93,17 +93,19 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(usage).toMatchObject({ input: 12, output: 5 }); // input + cache_read
     const done = recorder.events.at(-1)!;
     expect(done).toMatchObject({ type: "turn.completed", ok: true, cost: 0.01 });
-    expect(instance.adapter.hasSession("t-happy")).toBe(false);
+    // Workers stay warm after a completed turn; process-exiting fakes are
+    // removed on the following close event.
+    expect(instance.adapter.hasSession("t-happy")).toBe(true);
   });
 
-  it("maps legacy pinned model IDs to Claude Code aliases", async () => {
+  it("passes canonical model IDs to Claude Code", async () => {
     await create();
     const dump = join(scratch, "legacy-model.json");
     process.env.FAKE_CLAUDE_DUMP = dump;
     await instance.adapter.sendTurn({ threadId: "t-legacy-model", text: "hi", model: "claude-sonnet-5" });
     await recorder.until((e) => e.type === "turn.completed");
     const seen = JSON.parse(readFileSync(dump, "utf8"));
-    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("sonnet");
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("claude-sonnet-5");
   });
 
   it("forwards selected reasoning effort to Claude Code", async () => {
@@ -119,7 +121,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     await recorder.until((e) => e.type === "turn.completed");
     const seen = JSON.parse(readFileSync(dump, "utf8"));
     expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("max");
-    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("opus");
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("claude-opus-5");
   });
 
   it("streams partial-message text deltas without re-emitting the whole message", async () => {
@@ -145,7 +147,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     await create();
     const dump = join(scratch, "dump.json");
     process.env.FAKE_CLAUDE_DUMP = dump;
-    process.env.ANTHROPIC_API_KEY = "sk-should-not-leak";
+    process.env.ANTHROPIC_API_KEY = "placeholder-key-not-forwarded";
 
     await instance.adapter.sendTurn({ threadId: "t-hygiene", text: "the secret prompt", system: "You are Testy." });
     await recorder.until((e) => e.type === "turn.completed");
@@ -157,7 +159,7 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(seen.argv).toContain("--session-id");
     expect(seen.argv).toContain("--effort");
     expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("low");
-    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("sonnet");
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("claude-sonnet-5");
     expect(seen.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(seen.env.CLAUDECODE).toBeUndefined();
     expect(seen.env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
@@ -251,6 +253,20 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(instance.adapter.hasSession("t-busy")).toBe(true);
     await instance.adapter.interruptTurn("t-busy");
     await recorder.until((e) => e.type === "turn.completed");
+  });
+
+  it("keeps one Claude worker alive for the next turn", async () => {
+    await create("persistent");
+    await instance.adapter.sendTurn({ threadId: "t-persistent", text: "one" });
+    await recorder.until((e) => e.type === "turn.completed");
+    expect(instance.adapter.hasSession("t-persistent")).toBe(true);
+
+    await instance.adapter.sendTurn({ threadId: "t-persistent", text: "two" });
+    const done = await recorder.until(
+      (e) => e.type === "turn.completed" && recorder.events.filter((x) => x.type === "turn.completed").length === 2,
+    );
+    expect(done).toMatchObject({ ok: true });
+    expect(recorder.events.filter((e) => e.type === "session.started")).toHaveLength(1);
   });
 
   it("interrupt kills the turn and settles it as failed, not hung", async () => {
