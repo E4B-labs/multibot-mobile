@@ -2,7 +2,7 @@
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
@@ -18,10 +18,13 @@ import {
   instanceConfigs,
   loadConfig,
   saveConfig,
+  DATA_DIR,
   EVENTS_DIR,
   NATIVE_DIR,
 } from "./config.ts";
 import type { RuntimeEvent } from "./contracts.ts";
+import { CLI_TOOLS, installCommandText } from "./cli-tools.ts";
+import { deviceInfo } from "./device.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
@@ -33,6 +36,7 @@ import { EventBus } from "./harness/bus.ts";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
 import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
+import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
@@ -493,6 +497,12 @@ async function reloadProviders() {
   }
 }
 
+// multibot (G3): jobs outlive onboarding panel mounts and persist their output
+// across harness restarts. Global events let any open panel update live.
+const setupJobs = new SetupJobs(join(DATA_DIR, "setup-jobs.json"), (job) =>
+  broadcast({ kind: "setup.job", job }),
+);
+
 // multibot (G1): custom-model config stays write-only for API keys. Helpers
 // return only display metadata consumed by app settings and model picker.
 const RESERVED_INSTANCE_IDS = new Set([
@@ -531,16 +541,41 @@ function validBaseUrl(value: string): boolean {
 
 async function cliToolsStatus() {
   const described = await registry.describe();
-  return BUILT_IN_CLI_IDS.map((id) => {
-    const instance = described.find((item) => item.instanceId === id);
+  return CLI_TOOLS.map((tool) => {
+    const instance = described.find((item) => item.instanceId === tool.id);
     return {
-      id,
-      driverKind: DEFAULT_INSTANCE_CONFIGS[id].driver,
-      displayName: instance?.displayName ?? id,
-      enabled: cfg.instances?.[id]?.enabled !== false,
+      id: tool.id,
+      driverKind: tool.driverKind,
+      displayName: instance?.displayName ?? tool.displayName,
+      enabled: cfg.instances?.[tool.id]?.enabled !== false,
       detected: instance?.snapshot.state === "available",
       reason: instance?.snapshot.reason,
+      version: instance?.snapshot.version ?? undefined,
+      installCommand: installCommandText(tool.install),
     };
+  });
+}
+
+function provisionJob() {
+  const target = process.env.OMB_ENGINE_RUNTIME || join(DATA_DIR, "engine-runtime");
+  const scriptInRepo = join(ROOT, "scripts", "provision-engine.mjs");
+  const script = existsSync(scriptInRepo) ? scriptInRepo : join(ROOT, "provision-engine.mjs");
+  const temp = join(target, "tmp");
+  mkdirSync(temp, { recursive: true });
+  return setupJobs.start({
+    key: "engine-provision",
+    kind: "provision",
+    title: "Install bot server",
+    command: process.execPath,
+    args: [script, "--target", target, "--requirements", join(ROOT, "engine", "requirements.txt")],
+    cwd: ROOT,
+    env: {
+      TMP: temp,
+      TEMP: temp,
+      OMB_ENGINE_RUNTIME: target,
+      PLAYWRIGHT_BROWSERS_PATH: join(target, "browsers"),
+      ELECTRON_RUN_AS_NODE: "1",
+    },
   });
 }
 
@@ -769,6 +804,53 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { instances: await registry.describe() });
     }
 
+    // ── multibot (G3): device scan + background setup progress ─────────
+    if (method === "GET" && path === "/api/device") {
+      return json(res, 200, await deviceInfo());
+    }
+    if (method === "POST" && path === "/api/provision") {
+      const job = provisionJob();
+      return json(res, 202, { id: job.id, job });
+    }
+    m = path.match(/^\/api\/progress\/([\w-]+)$/);
+    if (m && method === "GET") {
+      const job = setupJobs.get(m[1]);
+      if (!job) return json(res, 404, { error: "no such setup job" });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      const send = (next: typeof job) => res.write(`data: ${JSON.stringify(jobProgress(next))}\n\n`);
+      let unsubscribe = () => {};
+      const keepalive = setInterval(() => res.write(": keepalive\n\n"), 25_000);
+      let ended = false;
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
+        clearInterval(keepalive);
+        unsubscribe();
+      };
+      unsubscribe = setupJobs.subscribe(job.id, (next) => {
+        if (ended) return;
+        send(next);
+        if (next.status !== "running") {
+          cleanup();
+          res.end();
+        }
+      });
+      req.on("close", cleanup);
+      // Subscribe before re-reading: a fast installer can otherwise finish
+      // between the initial GET and listener registration, leaving SSE open.
+      const current = setupJobs.get(job.id)!;
+      send(current);
+      if (current.status !== "running") {
+        cleanup();
+        return res.end();
+      }
+      return;
+    }
+
     // ── multibot (G1): named custom models + persistent CLI allow switches ──
     if (method === "GET" && path === "/api/models/custom") {
       return json(res, 200, { models: customModelsStatus() });
@@ -827,6 +909,25 @@ const server = createServer(async (req, res) => {
     }
     if (method === "GET" && path === "/api/cli-tools") {
       return json(res, 200, { tools: await cliToolsStatus() });
+    }
+    m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/install$/);
+    if (m && method === "POST") {
+      const toolId = m[1];
+      const tool = CLI_TOOLS.find((item) => item.id === toolId);
+      if (!tool) return json(res, 404, { error: "no such command-line tool" });
+      if (!tool.install) return json(res, 409, { error: "automatic install unavailable; use official CLI instructions" });
+      const temp = join(DATA_DIR, "tmp");
+      mkdirSync(temp, { recursive: true });
+      const job = setupJobs.start({
+        key: `cli-install:${tool.id}`,
+        kind: "cli-install",
+        title: `Install ${tool.displayName}`,
+        command: tool.install.command,
+        args: tool.install.args,
+        cwd: DATA_DIR,
+        env: { TMP: temp, TEMP: temp },
+      });
+      return json(res, 202, { id: job.id, job });
     }
     m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)$/);
     if (m && method === "PUT") {

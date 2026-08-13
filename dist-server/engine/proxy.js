@@ -60,10 +60,15 @@ async function proxyHttp(req, res) {
 }
 /** Surowa odpowiedź 101 odtworzona z `rawHeaders` — wielkość liter i kolejność
  * zostają, bo `Sec-WebSocket-Accept` przechodzi przez klienta bez zmian. */
-function raw101(res) {
+function raw101(res, protocol) {
     const lines = [`HTTP/1.1 ${res.statusCode} ${res.statusMessage}`];
-    for (let i = 0; i < res.rawHeaders.length; i += 2)
+    for (let i = 0; i < res.rawHeaders.length; i += 2) {
+        if (protocol && res.rawHeaders[i].toLowerCase() === "sec-websocket-protocol")
+            continue;
         lines.push(`${res.rawHeaders[i]}: ${res.rawHeaders[i + 1]}`);
+    }
+    if (protocol)
+        lines.push(`Sec-WebSocket-Protocol: ${protocol}`);
     return lines.join("\r\n") + "\r\n\r\n";
 }
 function bail(socket, status, why) {
@@ -84,15 +89,21 @@ async function pipeWs(req, socket, head, path) {
         return bail(socket, 503, "Engine Unavailable");
     }
     const target = new URL(baseUrl);
+    const protocol = req.headers["sec-websocket-protocol"] === "multibot-auth" ? "multibot-auth" : undefined;
+    const headers = { ...req.headers, host: target.host };
+    // Auth token arrived as a browser WS subprotocol. Engine never sees it (or
+    // even the marker); proxy completes that negotiation itself.
+    if (protocol)
+        delete headers["sec-websocket-protocol"];
     const upstream = httpRequest({
         hostname: target.hostname,
         port: target.port,
         method: "GET",
         path,
-        headers: { ...req.headers, host: target.host },
+        headers,
     });
     upstream.on("upgrade", (upRes, upSocket, upHead) => {
-        socket.write(raw101(upRes));
+        socket.write(raw101(upRes, protocol));
         if (upHead?.length)
             socket.write(upHead);
         if (head?.length)

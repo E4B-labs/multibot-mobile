@@ -40,6 +40,25 @@ beforeAll(async () => {
     join(home, ".openmausbot", "config.json"),
     JSON.stringify({ auth: { token: TOKEN }, instances: { ghost: { driver: "not-a-real-driver", displayName: "Ghost" } } }),
   );
+  // Seed a terminal setup job so progress endpoint is covered without
+  // launching real provisioning or package installation in this test.
+  writeFileSync(
+    join(home, ".openmausbot", "setup-jobs.json"),
+    JSON.stringify([
+      {
+        id: "done-job",
+        key: "test",
+        kind: "provision",
+        title: "Install bot server",
+        command: "test-only",
+        status: "succeeded",
+        output: ["browser ready"],
+        createdAt: 1,
+        finishedAt: 2,
+        exitCode: 0,
+      },
+    ]),
+  );
 
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
@@ -110,7 +129,7 @@ describe("harness HTTP API", () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);
     expect(body.instances.map((instance: { instanceId: string }) => instance.instanceId)).toEqual(
-      expect.arrayContaining(["grok", "gemini", "claude", "codex", "computer", "ghost"]),
+      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "computer", "ghost"]),
     );
     expect(body.instances.some((instance: { instanceId: string }) => instance.instanceId === "slafy")).toBe(false);
     const ghost = body.instances.find((instance: { instanceId: string }) => instance.instanceId === "ghost");
@@ -180,6 +199,48 @@ describe("harness HTTP API", () => {
     expect(instance.snapshot).toMatchObject({ state: "unavailable", reason: "disabled in settings" });
     expect((await api("PUT", "/api/cli-tools/codex", { enabled: true })).status).toBe(200);
     expect((await api("PUT", "/api/cli-tools/unknown", { enabled: true })).status).toBe(404);
+  });
+
+  it("reports device capabilities for onboarding", async () => {
+    const { status, body } = await api("GET", "/api/device");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      platform: process.platform,
+      arch: process.arch,
+      python: expect.any(Boolean),
+      docker: expect.any(Boolean),
+      engineInstalled: expect.any(Boolean),
+    });
+    expect(body.hostname).toBeTruthy();
+    expect(body.memoryGb).toBeGreaterThan(0);
+    expect(body.ramBytes).toBeGreaterThan(0);
+  });
+
+  it("exposes fixed CLI installers without running them", async () => {
+    const listed = await api("GET", "/api/cli-tools");
+    expect(listed.status).toBe(200);
+    expect(listed.body.tools.find((tool: { id: string }) => tool.id === "kimi")).toMatchObject({
+      driverKind: "kimiAgent",
+      installCommand: "uv tool install --python 3.13 kimi-cli",
+    });
+    expect(listed.body.tools.find((tool: { id: string }) => tool.id === "qwen")).toMatchObject({
+      driverKind: "qwenAgent",
+      installCommand: "npm install -g @qwen-code/qwen-code@latest",
+    });
+    expect((await api("POST", "/api/cli-tools/unknown/install")).status).toBe(404);
+    expect((await api("POST", "/api/cli-tools/grok/install")).status).toBe(409);
+  });
+
+  it("streams persisted setup progress using the onboarding SSE shape", async () => {
+    const response = await fetch(`${BASE}/api/progress/done-job`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toContain(
+      `data: ${JSON.stringify({ id: "done-job", step: "Install bot server", message: "browser ready", done: true })}`,
+    );
+    expect((await api("GET", "/api/progress/missing-job")).status).toBe(404);
   });
 
   it("creates, patches, and deletes a bot", async () => {

@@ -3,8 +3,8 @@
 // pilnuje i NIE ubija przy zamknięciu aplikacji.
 //
 // Trzy ścieżki, w tej kolejności:
-//   1. `ENGINE_URL` w env  → silnik zewnętrzny (Termux, serwer, drugi dev).
-//      Zero spawnu, wyłącznie health-check. Ta sama umowa co scripts/dev-engine.mjs.
+//   1. `ENGINE_URL` w env  → inny port loopback (test/dev).
+//      Zero spawnu, wyłącznie health-check. Silnik nigdy nie jest zdalny.
 //   2. silnik już odpowiada na /health → reattach, zero spawnu.
 //   3. nie odpowiada → spawn DETACHED i czekanie na /health.
 //
@@ -24,6 +24,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 const ENGINE_DIR = join(ROOT, "engine");
 const DEFAULT_URL = "http://127.0.0.1:8700";
+export class EngineUnavailableError extends Error {
+}
 /** Python z venvu silnika — ten sam wzór resolvingu co scripts/dev-engine.mjs. */
 export function venvPython(engineDir = ENGINE_DIR) {
     return process.platform === "win32"
@@ -49,10 +51,37 @@ export function enginePython() {
     const runtime = runtimePython();
     return runtime && existsSync(runtime) ? runtime : null;
 }
+// multibot (G2): explicit, testable bind. Uvicorn defaults to loopback today,
+// but security must not depend on a third-party default staying unchanged.
+export const engineServerArgs = (port) => [
+    "-m",
+    "uvicorn",
+    "server.app:app",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    port,
+];
 /** Adres silnika BEZ podnoszenia go — dla nasłuchów, które mają czekać, aż
  * silnik pojawi się sam (attach-sync, WS uwagi), a nie go zapalać. */
 export function engineBaseUrl() {
-    return (process.env.ENGINE_URL ?? DEFAULT_URL).replace(/\/$/, "");
+    const raw = (process.env.ENGINE_URL ?? DEFAULT_URL).replace(/\/$/, "");
+    let url;
+    try {
+        url = new URL(raw);
+    }
+    catch {
+        throw new EngineUnavailableError(`invalid ENGINE_URL: ${raw}`);
+    }
+    // multibot (G2): harness is the only network boundary. A remote engine URL
+    // would bypass its authentication and expose terminal/browser capabilities.
+    if (url.protocol !== "http:" ||
+        !new Set(["127.0.0.1", "localhost", "::1", "[::1]"]).has(url.hostname.toLowerCase()) ||
+        url.username ||
+        url.password) {
+        throw new EngineUnavailableError("ENGINE_URL must use HTTP loopback (127.0.0.1, localhost, or ::1)");
+    }
+    return raw;
 }
 async function healthy(baseUrl, timeoutMs = 1_500) {
     try {
@@ -62,8 +91,6 @@ async function healthy(baseUrl, timeoutMs = 1_500) {
     catch {
         return false;
     }
-}
-export class EngineUnavailableError extends Error {
 }
 function spawnEngine(baseUrl) {
     const python = enginePython();
@@ -77,7 +104,7 @@ function spawnEngine(baseUrl) {
     // Domyślne katalogi danych jak w scripts/dev-engine.mjs — silnik trzyma profile
     // botów obok repo, nie w nim.
     const dataDir = process.env.SLAFY_DATA_DIR ?? join(ENGINE_DIR, "..", "engine-data");
-    const child = spawn(python, ["-m", "uvicorn", "server.app:app", "--port", port], {
+    const child = spawn(python, engineServerArgs(port), {
         cwd: ENGINE_DIR,
         env: { ...process.env, SLAFY_DATA_DIR: dataDir, HERMES_HOME: process.env.HERMES_HOME ?? dataDir },
         detached: true,

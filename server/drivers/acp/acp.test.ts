@@ -18,6 +18,9 @@ import type { ProviderInstance } from "../../contracts.ts";
 import { recordEvents, type EventRecorder } from "../../testing/events.ts";
 import { GrokAgentDriver } from "./grok.ts";
 import { GeminiAgentDriver } from "./gemini.ts";
+// multibot (G3): new ACP harnesses ride the same fake-CLI contract.
+import { KimiAgentDriver, kimiAcpArgs } from "./kimi.ts";
+import { QwenAgentDriver, qwenAcpArgs } from "./qwen.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "testing", "fake-acp-cli.ts");
 
@@ -27,6 +30,15 @@ describe("ACP decodeConfig", () => {
   });
   it("gemini defaults to the gemini binary", () => {
     expect(GeminiAgentDriver.decodeConfig(undefined)).toEqual({ cli: "gemini", fullAuto: false, workspace: undefined });
+  });
+  it("kimi uses the official ACP stdio entrypoint", () => {
+    expect(KimiAgentDriver.decodeConfig(undefined)).toEqual({ cli: "kimi", fullAuto: false, workspace: undefined });
+    expect(kimiAcpArgs()).toEqual(["acp"]);
+  });
+  it("qwen uses the official stable ACP stdio flag", () => {
+    expect(QwenAgentDriver.decodeConfig(undefined)).toEqual({ cli: "qwen", fullAuto: false, workspace: undefined });
+    expect(qwenAcpArgs()).toEqual(["--acp"]);
+    expect(qwenAcpArgs("qwen3-coder-plus")).toEqual(["--acp", "--model", "qwen3-coder-plus"]);
   });
   it("fullAuto only when explicitly true", () => {
     expect(GrokAgentDriver.decodeConfig({ fullAuto: "yes" }).fullAuto).toBe(false);
@@ -136,6 +148,16 @@ describe("ACP turns (fake CLI)", () => {
     const done = await recorder.until((e) => e.type === "turn.completed");
     expect(done).toMatchObject({ ok: true });
     expect(recorder.events.some((e) => e.provider === "geminiAgent")).toBe(true);
+  });
+
+  it.each([
+    [KimiAgentDriver, "kimiAgent"],
+    [QwenAgentDriver, "qwenAgent"],
+  ] as const)("runs the %s ACP driver through the shared runtime", async (driver, provider) => {
+    await create(driver);
+    await instance.adapter.sendTurn({ threadId: `t-${provider}`, text: "go" });
+    const done = await recorder.until((e) => e.type === "turn.completed");
+    expect(done).toMatchObject({ ok: true, provider });
   });
 
   it("rejects a second turn while one is in flight", async () => {

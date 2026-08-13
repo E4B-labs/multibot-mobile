@@ -71,22 +71,6 @@ async function startServerOn(port) {
   return null;
 }
 
-// Pierwszy start: ~350 MB pobierania i kilka minut instalacji. Leci w tle i
-// NIE blokuje okna — silnik i tak podnosi się leniwie (supervisor spawnuje go
-// dopiero przy pierwszym zapytaniu), a do tego czasu reszta apki działa.
-// Nieudany provisioning nie może wywrócić startu: silnik zgłosi się jako
-// "unavailable", użytkownikowi zostaje ENGINE_URL albo kolejny start.
-function provisionEngineRuntime() {
-  if (fs.existsSync(path.join(ENGINE_RUNTIME, ".provisioned"))) return;
-  const script = path.join(process.resourcesPath, "provision-engine.mjs");
-  const proc = utilityProcess.fork(
-    script,
-    ["--target", ENGINE_RUNTIME, "--requirements", path.join(process.resourcesPath, "engine", "requirements.txt")],
-    { stdio: "inherit" },
-  );
-  proc.once("exit", (code) => console.log(`[engine] provisioning exit ${code}`));
-}
-
 async function startServerPackaged() {
   // two passes: a quit-and-reopen relaunch can race the dying instance's
   // server during teardown — one settle-and-retry covers it
@@ -214,7 +198,8 @@ app.whenReady().then(async () => {
   // connection descriptor on first render. Never blocks window creation on
   // failure — computer use degrades to "unavailable", the rest still works.
   startCua().catch((e) => console.error("[cua] start failed:", e));
-  if (app.isPackaged) provisionEngineRuntime();
+  // multibot (G3): provisioning starts only after the onboarding 24/7 choice;
+  // the authenticated harness endpoint runs the same bundled script.
   if (app.isPackaged) serverReady = await startServerPackaged();
   const win = createWindow();
   // in-app auto-update (packaged only) — checks GitHub releases, downloads on

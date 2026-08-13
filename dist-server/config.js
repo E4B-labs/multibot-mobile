@@ -49,14 +49,31 @@ export function saveConfig(patch) {
     // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
     // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
     // wpis (JSON.stringify pomija takie pole).
-    for (const key of ["xai", "composio", "box", "profile", "mcpConnectors"]) {
+    for (const key of ["auth", "xai", "composio", "box", "profile", "mcpConnectors"]) {
         if (patch[key] && typeof patch[key] === "object") {
             disk[key] = { ...disk[key], ...patch[key] };
         }
     }
+    // multibot (G1): callers replace the complete instance map. This makes
+    // DELETE real (object merge cannot remove an instance) while preserving all
+    // unrelated top-level config and secrets.
+    if (patch.instances !== undefined)
+        disk.instances = patch.instances;
     mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(p, JSON.stringify(disk, null, 2));
 }
+// multibot (G1): stable built-in ids double as reserved custom-model ids and
+// the allow-list for CLI toggles. `computer` is not a command-line tool.
+export const DEFAULT_INSTANCE_CONFIGS = {
+    grok: { driver: "grokAgent" },
+    gemini: { driver: "geminiAgent" },
+    kimi: { driver: "kimiAgent" },
+    qwen: { driver: "qwenAgent" },
+    claude: { driver: "claudeAgent" },
+    codex: { driver: "codex" },
+    computer: { driver: "boxAgent" },
+};
+export const BUILT_IN_CLI_IDS = ["grok", "gemini", "claude", "codex", "kimi", "qwen"];
 // Default fleet: one instance per built-in driver (upstream
 // defaultInstanceIdForDriver — instanceId defaults to the driver kind).
 // Config-file keys are injected as per-instance environment so drivers
@@ -68,24 +85,27 @@ export function instanceConfigs(cfg) {
     // `grok` driver stays registered but out of the default fleet — that key is
     // a credential Milind doesn't want to manage; an `instances` entry brings
     // it back anytime.
-    const map = cfg.instances && Object.keys(cfg.instances).length
-        ? cfg.instances
-        : {
-            // multibot: silnik slafy w domyślnej flocie — sidecar podnosi się sam
-            // przy pierwszej turze; bez venvu instancja jest po prostu unavailable.
-            slafy: { driver: "slafy" },
-            grok: { driver: "grokAgent" },
-            gemini: { driver: "geminiAgent" },
-            claude: { driver: "claudeAgent" },
-            codex: { driver: "codex" },
-            computer: { driver: "boxAgent" },
+    // multibot (G1): configured instances are an overlay, never a replacement;
+    // adding one custom model must not erase the built-in CLI fleet.
+    const map = {};
+    const configuredInstances = {
+        ...DEFAULT_INSTANCE_CONFIGS,
+        ...(cfg.instances ?? {}),
+    };
+    for (const [id, configured] of Object.entries(configuredInstances)) {
+        const model = configured.model;
+        const entry = {
+            ...configured,
+            ...(configured.driver === "slafy" && model
+                ? { config: { ...(configured.config ?? {}), model } }
+                : {}),
         };
-    for (const entry of Object.values(map)) {
         entry.environment = {
             ...(cfg.xai?.key ? { XAI_API_KEY: cfg.xai.key } : {}),
             ...(cfg.box?.token ? { BOX_TOKEN: cfg.box.token } : {}),
             ...entry.environment,
         };
+        map[id] = entry;
     }
     return map;
 }

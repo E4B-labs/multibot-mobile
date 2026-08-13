@@ -17,7 +17,9 @@ describe("instanceConfigs", () => {
     };
 
     const fleet = instanceConfigs(cfg);
-    expect(Object.keys(fleet)).toEqual(expect.arrayContaining(["grok", "gemini", "claude", "codex", "computer", "local"]));
+    expect(Object.keys(fleet)).toEqual(
+      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "computer", "local"]),
+    );
     expect(fleet.slafy).toBeUndefined();
     expect(fleet.codex.enabled).toBe(false);
     expect(fleet.local).toMatchObject({

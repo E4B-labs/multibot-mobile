@@ -14,8 +14,25 @@ export class ProviderRegistry {
                         instanceId,
                         driverKind: entry.driver,
                         displayName: entry.displayName,
+                        enabled: entry.enabled ?? true,
                         shadow: true,
                         reason: `unknown driver "${entry.driver}" — kept as configured, unavailable here`,
+                    },
+                });
+                continue;
+            }
+            // multibot (G1): `enabled` is the persistent CLI allow switch. Disabled
+            // tools must not be spawned or remain routable through registry.get().
+            if (entry.enabled === false) {
+                this.byId.set(instanceId, {
+                    instanceId,
+                    shadow: {
+                        instanceId,
+                        driverKind: entry.driver,
+                        displayName: entry.displayName ?? driver.metadata.displayName,
+                        enabled: false,
+                        shadow: true,
+                        reason: "disabled in settings",
                     },
                 });
                 continue;
@@ -38,6 +55,7 @@ export class ProviderRegistry {
                         instanceId,
                         driverKind: entry.driver,
                         displayName: entry.displayName ?? driver.metadata.displayName,
+                        enabled: entry.enabled ?? true,
                         shadow: true,
                         reason: e instanceof Error ? e.message : String(e),
                     },
@@ -62,6 +80,7 @@ export class ProviderRegistry {
                     instanceId: entry.instanceId,
                     driverKind: entry.shadow.driverKind,
                     displayName: entry.shadow.displayName ?? entry.shadow.driverKind,
+                    enabled: entry.shadow.enabled,
                     snapshot: { state: "unavailable", reason: entry.shadow.reason },
                     models: { default: "", options: [] },
                 };
@@ -78,6 +97,7 @@ export class ProviderRegistry {
                 instanceId: inst.instanceId,
                 driverKind: inst.driverKind,
                 displayName: inst.displayName ?? inst.driverKind,
+                enabled: inst.enabled,
                 snapshot,
                 models: inst.models,
             };

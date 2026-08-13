@@ -92,11 +92,15 @@ export function saveConfig(patch: Partial<AppConfig>): void {
 export const DEFAULT_INSTANCE_CONFIGS = {
   grok: { driver: "grokAgent" },
   gemini: { driver: "geminiAgent" },
+  // multibot (G3): official ACP stdio CLIs.
+  kimi: { driver: "kimiAgent" },
+  qwen: { driver: "qwenAgent" },
   claude: { driver: "claudeAgent" },
   codex: { driver: "codex" },
   computer: { driver: "boxAgent" },
 } satisfies InstanceConfigMap;
-export const BUILT_IN_CLI_IDS = ["grok", "gemini", "claude", "codex"] as const;
+// multibot (G3): Kimi/Qwen share the same durable allow switch API.
+export const BUILT_IN_CLI_IDS = ["grok", "gemini", "claude", "codex", "kimi", "qwen"] as const;
 
 // Default fleet: one instance per built-in driver (upstream
 // defaultInstanceIdForDriver — instanceId defaults to the driver kind).

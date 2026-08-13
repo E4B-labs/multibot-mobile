@@ -2,14 +2,17 @@
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as box from "./box.js";
+import { ensureAccessToken, mountAuth, rotateAccessToken } from "./auth.js";
 import * as composio from "./composio.js";
-import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE_DIR } from "./config.js";
+import { BUILT_IN_CLI_IDS, DEFAULT_INSTANCE_CONFIGS, ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR, } from "./config.js";
+import { CLI_TOOLS, installCommandText } from "./cli-tools.js";
+import { deviceInfo } from "./device.js";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.js";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
 import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.js";
@@ -20,9 +23,15 @@ import { EventBus } from "./harness/bus.js";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
 import * as mcpConnectors from "./mcp-connectors.js";
 import { ProviderRegistry } from "./harness/registry.js";
+import { jobProgress, SetupJobs } from "./setup-jobs.js";
 import { chainDepth, mentionedBots, Store } from "./store.js";
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
-const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
+const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REMOTE = !new Set(["127.0.0.1", "::1", "localhost"]).has(HOST.toLowerCase());
+// multibot (G2): a remote server owns one origin. Dev keeps Vite separate;
+// remote mode serves the built app automatically unless explicitly overridden.
+const STATIC_DIR = process.env.OMB_STATIC_DIR || (REMOTE ? join(ROOT, "dist") : null);
 const MIME = {
     ".html": "text/html",
     ".js": "text/javascript",
@@ -35,6 +44,7 @@ const MIME = {
 };
 ensureDirs();
 const cfg = loadConfig();
+const access = ensureAccessToken(cfg);
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 const bus = new EventBus();
@@ -107,15 +117,24 @@ function askBotAndWait(targetBotId, message, depth) {
     });
 }
 // default selection for new bots: first available instance, claude preferred
-async function defaultSelection() {
-    const described = await registry.describe();
-    const available = described.filter((d) => d.snapshot.state === "available");
-    const pick = available.find((d) => d.driverKind === "claudeAgent") ?? available[0] ?? described[0];
+async function defaultSelection(described) {
+    const fleet = described ?? (await registry.describe());
+    const enabled = fleet.filter((d) => d.enabled !== false);
+    const available = enabled.filter((d) => d.snapshot.state === "available");
+    const pick = available.find((d) => d.driverKind === "claudeAgent") ??
+        available[0] ??
+        enabled.find((d) => d.driverKind === "claudeAgent") ??
+        enabled[0] ??
+        fleet[0];
     return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
 }
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
-bootSelection = await defaultSelection();
+const bootFleet = await registry.describe();
+bootSelection = await defaultSelection(bootFleet);
+// multibot (G1): legacy bots selected the removed `slafy` default instance.
+// Repair before the first API response, preferring a named custom model.
+store.migrateOrphanedSelections(bootFleet);
 store.seedIfEmpty();
 // ── SSE fan-out to clients ─────────────────────────────────────────────
 const sseClients = new Set();
@@ -444,6 +463,83 @@ async function reloadProviders() {
     await registry.disposeAll();
     await registry.load(instanceConfigs(cfg));
     bus.attach(registry.instances());
+    if (store.migrateOrphanedSelections(await registry.describe())) {
+        for (const bot of store.bots)
+            broadcast({ kind: "bot", bot });
+    }
+}
+// multibot (G3): jobs outlive onboarding panel mounts and persist their output
+// across harness restarts. Global events let any open panel update live.
+const setupJobs = new SetupJobs(join(DATA_DIR, "setup-jobs.json"), (job) => broadcast({ kind: "setup.job", job }));
+// multibot (G1): custom-model config stays write-only for API keys. Helpers
+// return only display metadata consumed by app settings and model picker.
+const RESERVED_INSTANCE_IDS = new Set([
+    ...Object.keys(DEFAULT_INSTANCE_CONFIGS),
+    ...BUILT_IN_DRIVERS.map((driver) => driver.driverKind),
+    "slafy",
+    "__proto__",
+    "prototype",
+    "constructor",
+]);
+function customModelsStatus() {
+    return Object.entries(cfg.instances ?? {}).flatMap(([id, entry]) => entry.driver === "slafy" && !RESERVED_INSTANCE_IDS.has(id) && entry.model?.default
+        ? [
+            {
+                id,
+                displayName: entry.displayName ?? id,
+                baseUrl: entry.model.baseUrl ?? "",
+                model: entry.model.default,
+                hasKey: Boolean(entry.environment?.OPENAI_API_KEY),
+            },
+        ]
+        : []);
+}
+function validBaseUrl(value) {
+    try {
+        const url = new URL(value);
+        return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+    }
+    catch {
+        return false;
+    }
+}
+async function cliToolsStatus() {
+    const described = await registry.describe();
+    return CLI_TOOLS.map((tool) => {
+        const instance = described.find((item) => item.instanceId === tool.id);
+        return {
+            id: tool.id,
+            driverKind: tool.driverKind,
+            displayName: instance?.displayName ?? tool.displayName,
+            enabled: cfg.instances?.[tool.id]?.enabled !== false,
+            detected: instance?.snapshot.state === "available",
+            reason: instance?.snapshot.reason,
+            version: instance?.snapshot.version ?? undefined,
+            installCommand: installCommandText(tool.install),
+        };
+    });
+}
+function provisionJob() {
+    const target = process.env.OMB_ENGINE_RUNTIME || join(DATA_DIR, "engine-runtime");
+    const scriptInRepo = join(ROOT, "scripts", "provision-engine.mjs");
+    const script = existsSync(scriptInRepo) ? scriptInRepo : join(ROOT, "provision-engine.mjs");
+    const temp = join(target, "tmp");
+    mkdirSync(temp, { recursive: true });
+    return setupJobs.start({
+        key: "engine-provision",
+        kind: "provision",
+        title: "Install bot server",
+        command: process.execPath,
+        args: [script, "--target", target, "--requirements", join(ROOT, "engine", "requirements.txt")],
+        cwd: ROOT,
+        env: {
+            TMP: temp,
+            TEMP: temp,
+            OMB_ENGINE_RUNTIME: target,
+            PLAYWRIGHT_BROWSERS_PATH: join(target, "browsers"),
+            ELECTRON_RUN_AS_NODE: "1",
+        },
+    });
 }
 // ── HTTP plumbing ─────────────────────────────────────────────────────
 function json(res, status, body) {
@@ -661,9 +757,179 @@ const server = createServer(async (req, res) => {
         if (method === "GET" && path === "/api/health") {
             return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
         }
+        // ── multibot (G2): authenticated token reveal/check/rotation ────────
+        if (method === "GET" && path === "/api/auth/check") {
+            return json(res, 200, { ok: true });
+        }
+        if (method === "GET" && path === "/api/auth/token") {
+            res.setHeader("cache-control", "no-store");
+            return json(res, 200, { token: cfg.auth.token });
+        }
+        if (method === "POST" && path === "/api/auth/token/rotate") {
+            const token = rotateAccessToken(cfg);
+            revokeAuthSessions(req.socket);
+            res.setHeader("cache-control", "no-store");
+            return json(res, 200, { token });
+        }
         // ── provider instances (model picker) ──
         if (method === "GET" && path === "/api/instances") {
             return json(res, 200, { instances: await registry.describe() });
+        }
+        // ── multibot (G3): device scan + background setup progress ─────────
+        if (method === "GET" && path === "/api/device") {
+            return json(res, 200, await deviceInfo());
+        }
+        if (method === "POST" && path === "/api/provision") {
+            const job = provisionJob();
+            return json(res, 202, { id: job.id, job });
+        }
+        m = path.match(/^\/api\/progress\/([\w-]+)$/);
+        if (m && method === "GET") {
+            const job = setupJobs.get(m[1]);
+            if (!job)
+                return json(res, 404, { error: "no such setup job" });
+            res.writeHead(200, {
+                "content-type": "text/event-stream",
+                "cache-control": "no-cache",
+                connection: "keep-alive",
+            });
+            const send = (next) => res.write(`data: ${JSON.stringify(jobProgress(next))}\n\n`);
+            let unsubscribe = () => { };
+            const keepalive = setInterval(() => res.write(": keepalive\n\n"), 25_000);
+            let ended = false;
+            const cleanup = () => {
+                if (ended)
+                    return;
+                ended = true;
+                clearInterval(keepalive);
+                unsubscribe();
+            };
+            unsubscribe = setupJobs.subscribe(job.id, (next) => {
+                if (ended)
+                    return;
+                send(next);
+                if (next.status !== "running") {
+                    cleanup();
+                    res.end();
+                }
+            });
+            req.on("close", cleanup);
+            // Subscribe before re-reading: a fast installer can otherwise finish
+            // between the initial GET and listener registration, leaving SSE open.
+            const current = setupJobs.get(job.id);
+            send(current);
+            if (current.status !== "running") {
+                cleanup();
+                return res.end();
+            }
+            return;
+        }
+        // ── multibot (G1): named custom models + persistent CLI allow switches ──
+        if (method === "GET" && path === "/api/models/custom") {
+            return json(res, 200, { models: customModelsStatus() });
+        }
+        m = path.match(/^\/api\/models\/custom\/([a-z0-9-]+)$/);
+        if (m && method === "PUT") {
+            const id = m[1];
+            const body = await readBody(req);
+            const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+            const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim().replace(/\/$/, "") : "";
+            const model = typeof body.model === "string" ? body.model.trim() : "";
+            if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(id))
+                return json(res, 400, { error: "invalid model id" });
+            if (RESERVED_INSTANCE_IDS.has(id))
+                return json(res, 409, { error: "reserved model id" });
+            if (!displayName || displayName.length > 80)
+                return json(res, 400, { error: "displayName required (max 80)" });
+            if (!validBaseUrl(baseUrl))
+                return json(res, 400, { error: "baseUrl must be an http(s) URL without credentials" });
+            if (!model || model.length > 200)
+                return json(res, 400, { error: "model required (max 200)" });
+            if (body.apiKey !== undefined && typeof body.apiKey !== "string") {
+                return json(res, 400, { error: "apiKey must be a string" });
+            }
+            const existing = cfg.instances?.[id];
+            if (existing && existing.driver !== "slafy")
+                return json(res, 409, { error: "instance id already used" });
+            const apiKey = body.apiKey === undefined ? existing?.environment?.OPENAI_API_KEY : body.apiKey.trim();
+            const environment = {
+                ...(existing?.environment ?? {}),
+                ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
+            };
+            if (!apiKey)
+                delete environment.OPENAI_API_KEY;
+            const instances = {
+                ...(cfg.instances ?? {}),
+                [id]: {
+                    driver: "slafy",
+                    displayName,
+                    environment,
+                    model: { default: model, baseUrl },
+                },
+            };
+            saveConfig({ instances });
+            Object.assign(cfg, loadConfig());
+            await reloadProviders();
+            const saved = customModelsStatus().find((item) => item.id === id);
+            broadcast({ kind: "config", ...configStatus() });
+            return json(res, 200, { model: saved });
+        }
+        if (m && method === "DELETE") {
+            const existing = cfg.instances?.[m[1]];
+            if (!existing || existing.driver !== "slafy" || RESERVED_INSTANCE_IDS.has(m[1])) {
+                return json(res, 404, { error: "no such custom model" });
+            }
+            const instances = { ...(cfg.instances ?? {}) };
+            delete instances[m[1]];
+            saveConfig({ instances });
+            Object.assign(cfg, loadConfig());
+            await reloadProviders();
+            broadcast({ kind: "config", ...configStatus() });
+            return json(res, 200, { ok: true });
+        }
+        if (method === "GET" && path === "/api/cli-tools") {
+            return json(res, 200, { tools: await cliToolsStatus() });
+        }
+        m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/install$/);
+        if (m && method === "POST") {
+            const toolId = m[1];
+            const tool = CLI_TOOLS.find((item) => item.id === toolId);
+            if (!tool)
+                return json(res, 404, { error: "no such command-line tool" });
+            if (!tool.install)
+                return json(res, 409, { error: "automatic install unavailable; use official CLI instructions" });
+            const temp = join(DATA_DIR, "tmp");
+            mkdirSync(temp, { recursive: true });
+            const job = setupJobs.start({
+                key: `cli-install:${tool.id}`,
+                kind: "cli-install",
+                title: `Install ${tool.displayName}`,
+                command: tool.install.command,
+                args: tool.install.args,
+                cwd: DATA_DIR,
+                env: { TMP: temp, TEMP: temp },
+            });
+            return json(res, 202, { id: job.id, job });
+        }
+        m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)$/);
+        if (m && method === "PUT") {
+            if (!BUILT_IN_CLI_IDS.includes(m[1])) {
+                return json(res, 404, { error: "no such command-line tool" });
+            }
+            const body = await readBody(req);
+            if (typeof body.enabled !== "boolean")
+                return json(res, 400, { error: "enabled must be boolean" });
+            const id = m[1];
+            const instances = {
+                ...(cfg.instances ?? {}),
+                [id]: { ...DEFAULT_INSTANCE_CONFIGS[id], ...(cfg.instances?.[id] ?? {}), enabled: body.enabled },
+            };
+            saveConfig({ instances });
+            Object.assign(cfg, loadConfig());
+            await reloadProviders();
+            const tool = (await cliToolsStatus()).find((item) => item.id === id);
+            broadcast({ kind: "config", ...configStatus() });
+            return json(res, 200, { tool });
         }
         // ── app config (API keys — never echoed back, booleans only) ──
         if (method === "GET" && path === "/api/config") {
@@ -758,20 +1024,23 @@ const server = createServer(async (req, res) => {
         }
         // packaged app: the server serves the built UI too (window → :8799 for
         // everything, no dev proxy to die). OMB_STATIC_DIR is set by Electron.
-        if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
-            const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");
-            const file = join(STATIC_DIR, safe);
+        if ((method === "GET" || method === "HEAD") && !path.startsWith("/api/") && STATIC_DIR) {
+            const root = resolve(STATIC_DIR);
+            const requested = path === "/" ? "index.html" : decodeURIComponent(path).replace(/^[/\\]+/, "");
+            const file = resolve(root, requested);
+            if (file !== root && !file.startsWith(root + sep))
+                return json(res, 404, { error: "not found" });
             try {
                 const data = readFileSync(file);
                 res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-                return res.end(data);
+                return res.end(method === "HEAD" ? undefined : data);
             }
             catch {
                 // SPA fallback
                 try {
                     const data = readFileSync(join(STATIC_DIR, "index.html"));
                     res.writeHead(200, { "content-type": "text/html" });
-                    return res.end(data);
+                    return res.end(method === "HEAD" ? undefined : data);
                 }
                 catch {
                     /* fall through to 404 */
@@ -790,6 +1059,10 @@ const server = createServer(async (req, res) => {
 // obsługuje `server/engine/proxy.ts`; montuje się opakowaniem listenera, więc
 // handler wyżej zostaje nietknięty.
 mountEngineProxy(server);
+// Auth mounts after the proxy so one wrapper covers harness HTTP, proxied
+// engine HTTP, and both engine WS upgrade paths.
+let revokeAuthSessions = (_except) => { };
+revokeAuthSessions = mountAuth(server, () => cfg.auth.token).revokeSessions;
 // ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
 // Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);
 // harness zamienia to na `needsAttention` w store i rozsyła jak każdą inną
@@ -805,8 +1078,10 @@ watchEngineAttention({
         broadcast({ kind: "bot", bot: store.bot(bot.id) });
     },
 });
-server.listen(PORT, "127.0.0.1", () => {
-    console.log(`openmausbot server on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+    console.log(`openmausbot server on http://${HOST}:${PORT}`);
+    if (access.created)
+        console.log(`[multibot] access token (shown once): ${access.token}`);
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
