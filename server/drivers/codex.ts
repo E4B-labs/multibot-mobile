@@ -24,6 +24,7 @@ import type {
 import { newEventId, newId } from "../contracts.ts";
 import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
 import { killTree } from "../kill-tree.ts";
+import { autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.ts";
 import { appendNative } from "./native.ts";
 
 const DRIVER_KIND = "codex";
@@ -87,6 +88,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     const sendTurn = async (turn: SendTurnInput) => {
       const { threadId } = turn;
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
+      const policy = turnPolicy(threadId);
+      const fullAuto = policy ? policy.autonomy === "autonomous" && !Object.values(policy.permissions).includes(false) : config.fullAuto;
       const turnId = newId();
 
       const env: Record<string, string | undefined> = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
@@ -146,7 +149,15 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             : isQuestion
               ? "ask_user"
               : "shell";
-        if (config.fullAuto && !isQuestion) {
+        if (!isQuestion && !toolAllowed(threadId, tool)) {
+          emit({ ...base(threadId, turnId), type: "runtime.error", message: `${tool} blocked by bot permissions` });
+          return send({
+            jsonrpc: "2.0",
+            id: msg.id,
+            result: { decision: legacy ? "denied" : "decline" },
+          });
+        }
+        if (!isQuestion && (autoApproveAllowed(threadId, tool) || (!policy && config.fullAuto))) {
           return send({ jsonrpc: "2.0", id: msg.id, result: { decision: legacy ? "approved" : "accept" } });
         }
         const requestId = newId();
@@ -349,8 +360,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             const started = await request("thread/start", {
               cwd: turn.cwd ?? homedir(),
               model: turn.model || null,
-              sandbox: config.fullAuto ? "danger-full-access" : "workspace-write",
-              approvalPolicy: config.fullAuto ? "never" : "on-request",
+              sandbox: fullAuto ? "danger-full-access" : policy?.permissions.file === false ? "read-only" : "workspace-write",
+              approvalPolicy: fullAuto ? "never" : "on-request",
               ephemeral: false,
             });
             codexThreadId = started?.thread?.id ?? null;

@@ -60,6 +60,8 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
   // wychodzi z samego id; obcy id zostaje jak jest.
   const nameOf = (engineBotId: string) => {
     if (engineBotId === "you") return "You";
+    const direct = state.bots.find((b) => b.id === engineBotId);
+    if (direct) return direct.name;
     const threadId = engineBotId.startsWith("mb-") ? engineBotId.slice(3) : engineBotId;
     return state.bots.find((b) => b.threadId === threadId)?.name ?? engineBotId;
   };
@@ -78,7 +80,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
     setError(null);
     push([{ from: "you", text: message, at: Date.now() }]);
     setText("");
-    api(`/api/engine/groups/${group.id}/chat`, {
+    api(`/api/groups/${group.id}/chat`, {
       method: "POST",
       body: JSON.stringify({ message }),
     })

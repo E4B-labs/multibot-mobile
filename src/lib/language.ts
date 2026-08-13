@@ -26,3 +26,7 @@ export function useLanguage(): Language {
 }
 
 export const languageLabel = (language: Language): string => (language === "pl" ? "Polski" : "English");
+
+export function tr(language: Language, english: string, polish: string): string {
+  return language === "pl" ? polish : english;
+}

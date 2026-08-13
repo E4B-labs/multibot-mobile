@@ -20,6 +20,7 @@ import {
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 // Własny helper zamiast `api` ze store: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}` — store'owy helper zgubiłby komunikat
@@ -95,6 +96,7 @@ function RoutineForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const polish = useLanguage() === "pl";
   const [name, setName] = useState(routine?.name ?? "");
   const [prompt, setPrompt] = useState(routine?.prompt ?? "");
   // Edycja startuje w "Custom" z aktualnym harmonogramem — display silnika
@@ -140,11 +142,11 @@ function RoutineForm({
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">
-        {routine ? "Edit routine" : "New routine"}
+        {routine ? (polish ? "Edytuj rutynę" : "Edit routine") : (polish ? "Nowa rutyna" : "New routine")}
       </div>
 
       <label className="block">
-        <FieldLabel>Name</FieldLabel>
+        <FieldLabel>{polish ? "Nazwa" : "Name"}</FieldLabel>
         <input
           className={inputCls}
           value={name}
@@ -154,7 +156,7 @@ function RoutineForm({
       </label>
 
       <label className="block">
-        <FieldLabel>Prompt</FieldLabel>
+        <FieldLabel>{polish ? "Polecenie" : "Prompt"}</FieldLabel>
         <textarea
           className={cn(inputCls, "min-h-[96px] resize-none")}
           value={prompt}
@@ -164,7 +166,7 @@ function RoutineForm({
       </label>
 
       <div>
-        <FieldLabel>Schedule</FieldLabel>
+        <FieldLabel>{polish ? "Harmonogram" : "Schedule"}</FieldLabel>
         <div className="flex overflow-hidden rounded-lg border border-hairline/40">
           {SCHEDULE_MODES.map((m, i) => (
             <button
@@ -222,13 +224,13 @@ function RoutineForm({
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-          {routine ? "Save" : "Create"}
+          {routine ? (polish ? "Zapisz" : "Save") : (polish ? "Utwórz" : "Create")}
         </button>
         <button
           onClick={onCancel}
           className="rounded-lg bg-raised px-4 py-2 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
         >
-          Cancel
+          {polish ? "Anuluj" : "Cancel"}
         </button>
       </div>
     </div>
@@ -237,6 +239,7 @@ function RoutineForm({
 
 export function RoutinesPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const engineBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
   const engineBotId = `mb-${bot.threadId}`;
   const routinePath = engineBacked
@@ -335,7 +338,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-[26px]" />
-        <span className="text-[15px] font-semibold text-ink">Routines</span>
+        <span className="text-[15px] font-semibold text-ink">{polish ? "Rutyny" : "Routines"}</span>
         <button
           onClick={() => dispatch({ type: "toggleRoutines", open: false })}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
@@ -369,7 +372,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
           // Empty state w konwencji pustych stanów panelu Computer
           <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
             <CalendarClock size={22} />
-            <div className="text-[13px] font-medium text-ink">No routines yet</div>
+            <div className="text-[13px] font-medium text-ink">{polish ? "Brak rutyn" : "No routines yet"}</div>
             <span className="text-[12px]">
               Routines are recurring tasks this bot runs on a schedule — they run in the background
               even while the app is closed.

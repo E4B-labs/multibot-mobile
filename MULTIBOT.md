@@ -109,7 +109,9 @@ bash scripts/install-termux.sh
 `termux-services` utrzymuje usługę, a skrypt Termux:Boot źródłuje
 `$PREFIX/etc/profile.d/start-services.sh`, włącza `sv-enable multibot` i wykonuje
 `termux-wake-lock`. Komputer przeglądarkowy na Androidzie jest niedostępny;
-czat i pozostałe funkcje działają. HTTPS z Tailscale:
+czat, memory, routines, skills i headless browser CDP działają. Android nie ma
+desktopowego okna Playwright; podgląd i przejęcie przeglądarki są zdalne z PWA.
+HTTPS z Tailscale:
 `tailscale serve --bg --yes http://127.0.0.1:8799`.
 
 ## G1–G5: funkcje aplikacji

@@ -116,6 +116,7 @@ export class ProviderRegistry {
             enabled: entry.shadow.enabled,
             snapshot: { state: "unavailable", reason: entry.shadow.reason } satisfies ProviderSnapshot,
             models: { default: "", options: [] },
+            capabilities: { peerMessaging: "mentions-only" as const },
           };
         }
         const inst = entry.live;
@@ -132,6 +133,9 @@ export class ProviderRegistry {
           enabled: inst.enabled,
           snapshot,
           models: inst.models,
+          capabilities: {
+            peerMessaging: inst.adapter.capabilities.agentsMcp === true ? ("tools" as const) : ("mentions-only" as const),
+          },
         };
       }),
     );

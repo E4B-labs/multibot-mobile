@@ -10,7 +10,7 @@
 // resolveCliSpawn turned it into `node <script>` on Windows too, so the
 // e2e half now runs everywhere alongside the mention-resolution units.
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ import { chainDepth, mentionedBots } from "./store.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
+const FAKE_CODEX = join(SERVER_DIR, "testing", "fake-codex-app-server.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
 const TOKEN = "comms-test-access-token";
@@ -78,6 +79,7 @@ describe("comms e2e (fake ACP fleet)", () => {
 
   beforeAll(async () => {
     chmodSync(FAKE_CLI, 0o755);
+    chmodSync(FAKE_CODEX, 0o755);
     home = mkdtempSync(join(tmpdir(), "omb-comms-test-"));
     mkdirSync(join(home, ".openmausbot"), { recursive: true });
     writeFileSync(
@@ -89,6 +91,10 @@ describe("comms e2e (fake ACP fleet)", () => {
             driver: "grokAgent",
             environment: { FAKE_ACP_MODE: "ask-peer" },
             config: { cli: FAKE_CLI, fullAuto: true },
+          },
+          codex: {
+            driver: "codex",
+            config: { cli: FAKE_CODEX, fullAuto: true },
           },
         },
       }),
@@ -103,6 +109,7 @@ describe("comms e2e (fake ACP fleet)", () => {
         HOME: home,
         USERPROFILE: home,
         OMB_PORT: String(PORT),
+        FAKE_CODEX_DUMP: join(home, "codex-dump.json"),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -129,8 +136,17 @@ describe("comms e2e (fake ACP fleet)", () => {
       child.on("close", () => resolve());
       setTimeout(() => (child.kill("SIGKILL"), resolve()), 5_000).unref?.();
     });
+    // Windows taskkill /T is asynchronous; let provider child handles close
+    // before removing their USERPROFILE tree.
+    if (process.platform === "win32") await new Promise((resolve) => setTimeout(resolve, 750));
     // multibot: Windows may release child cwd handles a moment after exit.
-    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    try {
+      rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error) {
+      // Windows AV/indexers can retain directory metadata after every child
+      // has exited. Temp cleanup must not turn a green acceptance run red.
+      if ((error as NodeJS.ErrnoException).code !== "EPERM" || process.platform !== "win32") throw error;
+    }
   });
 
   it("seals the internal comms endpoints behind the boot token", async () => {
@@ -189,5 +205,50 @@ describe("comms e2e (fake ACP fleet)", () => {
       expect(helperBot.busy).toBeFalsy();
     },
     40_000,
+  );
+
+  it(
+    "falls back to tagged peer replies for a provider without agents MCP and honors delegation policy",
+    async () => {
+      const selection = { instanceId: "grok", model: "fake-model" };
+      const helper = (await api("POST", "/api/bots")).body.bot;
+      await api("PATCH", `/api/bots/${helper.id}`, { name: "Fallback Helper", modelSelection: selection });
+      const asker = (await api("POST", "/api/bots")).body.bot;
+      await api("PATCH", `/api/bots/${asker.id}`, {
+        name: "Codex Asker",
+        modelSelection: { instanceId: "codex", model: "fake-model" },
+      });
+
+      const instances = (await api("GET", "/api/instances")).body.instances;
+      expect(instances.find((item: any) => item.instanceId === "codex").capabilities.peerMessaging).toBe("mentions-only");
+      expect(instances.find((item: any) => item.instanceId === "grok").capabilities.peerMessaging).toBe("tools");
+
+      await api("PATCH", `/api/bots/${asker.id}/permissions`, { toolset: "delegation", enabled: false });
+      expect((await api("POST", `/api/bots/${asker.id}/messages`, { text: "ask @Fallback Helper once" })).status).toBe(202);
+      for (const deadline = Date.now() + 20_000; ; ) {
+        const current = (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === asker.id);
+        if (!current.busy) break;
+        if (Date.now() > deadline) throw new Error("Codex turn with delegation disabled did not settle");
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      let dump = JSON.parse(readFileSync(join(home, "codex-dump.json"), "utf8"));
+      expect(dump.calls.findLast((call: any) => call.method === "turn/start").params.input[0].text).not.toContain("Peer Fallback Helper replied");
+      const helperBefore = (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === helper.id).messages;
+      expect(helperBefore.some((message: any) => message.role === "user")).toBe(false);
+
+      await api("PATCH", `/api/bots/${asker.id}/permissions`, { toolset: "delegation", enabled: true });
+      expect((await api("POST", `/api/bots/${asker.id}/messages`, { text: "ask @Fallback Helper now" })).status).toBe(202);
+      for (const deadline = Date.now() + 25_000; ; ) {
+        const current = (await api("GET", "/api/bots")).body.bots.find((b: any) => b.id === asker.id);
+        if (!current.busy) break;
+        if (Date.now() > deadline) throw new Error(`Codex fallback turn did not settle. stderr:\n${stderr.slice(-2000)}`);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      dump = JSON.parse(readFileSync(join(home, "codex-dump.json"), "utf8"));
+      const prompt = dump.calls.findLast((call: any) => call.method === "turn/start").params.input[0].text;
+      expect(prompt).toContain("Peer Fallback Helper replied:");
+      expect(prompt).toContain("hello from fake acp");
+    },
+    50_000,
   );
 });

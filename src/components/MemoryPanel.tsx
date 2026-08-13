@@ -14,6 +14,7 @@ import { useStore, type Bot } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`.
@@ -178,6 +179,7 @@ function MemoryGraph({ graph }: { graph: Graph }) {
 
 export function MemoryPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
@@ -273,7 +275,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-[26px]" />
-        <span className="text-[15px] font-semibold text-ink">Memory</span>
+        <span className="text-[15px] font-semibold text-ink">{polish ? "Pamięć" : "Memory"}</span>
         <button
           onClick={() => dispatch({ type: "toggleMemory", open: false })}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"

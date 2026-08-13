@@ -18,6 +18,7 @@ const USER_COLLAPSE_CHARS = 600;
 const USER_COLLAPSE_LINES = 8;
 
 function Bubble({ message }: { message: Message }) {
+  const polish = useLanguage() === "pl";
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
   const text = message.text ?? "";
@@ -41,7 +42,7 @@ function Bubble({ message }: { message: Message }) {
             </div>
             {collapsible && (
               <button onClick={() => setExpanded(true)} className="mt-1 text-[12.5px] text-ink-secondary hover:text-ink">
-                Show full message
+                {polish ? "Pokaż całą wiadomość" : "Show full message"}
               </button>
             )}
           </>
@@ -109,15 +110,18 @@ function StreamingBubble({ text }: { text: string }) {
 /** "Working for 12s" that ticks by mutating textContent on an interval —
  * no React commit per second while a turn streams (upstream trick). */
 function WorkingTimer({ since }: { since: number }) {
+  const polish = useLanguage() === "pl";
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const tick = () => {
-      if (ref.current) ref.current.textContent = `Working for ${Math.max(0, Math.round((Date.now() - since) / 1000))}s`;
+      if (ref.current) ref.current.textContent = polish
+        ? `Praca trwa ${Math.max(0, Math.round((Date.now() - since) / 1000))} s`
+        : `Working for ${Math.max(0, Math.round((Date.now() - since) / 1000))}s`;
     };
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [since]);
+  }, [polish, since]);
   return <span ref={ref} className="text-[12.5px] text-ink-secondary" />;
 }
 
@@ -262,7 +266,7 @@ export function ChatView({ bot }: { bot: Bot }) {
         <div className="mx-auto flex max-w-[900px] flex-col gap-3 pb-4">
           {first && (
             <div className="py-3 text-center text-[13px] text-ink-secondary">
-              Today {formatTime(first.at)}
+              {polish ? "Dziś" : "Today"} {formatTime(first.at)}
             </div>
           )}
           {bot.messages.map((m) => {
@@ -281,7 +285,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-full border border-hairline/40 bg-panel px-3 py-1.5 text-[13px] text-ink-secondary">
                 <Loader2 size={13} className="animate-spin" />
-                Setting up this bot's computer…
+                {polish ? "Konfigurowanie komputera bota…" : "Setting up this bot's computer…"}
               </div>
             </div>
           )}
@@ -310,7 +314,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           onClick={jumpToLatest}
           className="absolute bottom-24 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-hairline/40 bg-raised px-3 py-1.5 text-[12.5px] text-ink shadow-lg hover:bg-raised-hover"
         >
-          <ArrowDown size={13} /> Jump to latest
+          <ArrowDown size={13} /> {polish ? "Przejdź do najnowszych" : "Jump to latest"}
         </button>
       )}
 

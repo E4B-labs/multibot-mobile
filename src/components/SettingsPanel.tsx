@@ -11,6 +11,8 @@ import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { requestBrowserNotifications } from "@/lib/notifications";
+import { useLanguage } from "@/lib/language";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 
 function Field({
@@ -53,6 +55,7 @@ function EngineUsage({ bot }: { bot: Bot }) {
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
   const { state } = useStore();
+  const polish = useLanguage() === "pl";
   const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
   const usagePath = localBacked ? `/api/engine/bots/${engineBotId}/usage` : `/api/bots/${bot.id}/usage`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
@@ -82,22 +85,22 @@ function EngineUsage({ bot }: { bot: Bot }) {
 
   return (
     <div className="rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Usage</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zużycie" : "Usage"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Tokens this bot has used
+        {polish ? "Tokeny użyte przez tego bota" : "Tokens this bot has used"}
       </div>
       {status === "offline" ? (
         <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className="size-1.5 rounded-full bg-raised-hover" />
-          Service offline
+          {polish ? "Usługa offline" : "Service offline"}
         </div>
       ) : status === "ready" && usage.turns === 0 ? (
-        <div className="mt-3 text-[13px] text-ink-secondary">No usage yet</div>
+        <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Brak użycia" : "No usage yet"}</div>
       ) : status === "ready" ? (
         <div className="mt-3 flex gap-6">
-          {stat(fmt(usage.prompt_tokens), "Tokens in")}
-          {stat(fmt(usage.completion_tokens), "Tokens out")}
-          {stat(fmt(usage.turns), "Turns")}
+          {stat(fmt(usage.prompt_tokens), polish ? "Tokeny wejściowe" : "Tokens in")}
+          {stat(fmt(usage.completion_tokens), polish ? "Tokeny wyjściowe" : "Tokens out")}
+          {stat(fmt(usage.turns), polish ? "Tury" : "Turns")}
         </div>
       ) : null}
     </div>
@@ -106,6 +109,7 @@ function EngineUsage({ bot }: { bot: Bot }) {
 
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const patch = (
     p: Partial<
       Pick<Bot, "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "mascotShape">
@@ -124,7 +128,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
         >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-[15px] font-semibold text-ink">Settings</span>
+        <span className="text-[15px] font-semibold text-ink">{polish ? "Ustawienia" : "Settings"}</span>
         <button
           onClick={() => dispatch({ type: "toggleSettings", open: false })}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
@@ -227,9 +231,9 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
 
           <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
             <div>
-              <div className="text-[15px] font-medium text-ink">Model</div>
+              <div className="text-[15px] font-medium text-ink">{polish ? "Model" : "Model"}</div>
               <div className="mt-0.5 text-[13px] text-ink-secondary">
-                Which provider and model this bot runs on
+                {polish ? "Provider i model używany przez tego bota" : "Which provider and model this bot runs on"}
               </div>
             </div>
             <ModelPicker bot={bot} />
@@ -239,17 +243,17 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               delegation is automatic; no per-bot switch exists. */}
           <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
           <div className="rounded-xl bg-card p-4 text-[13px] text-ink-secondary">
-            <div className="text-[15px] font-medium text-ink">Bot-to-bot delegation</div>
+            <div className="text-[15px] font-medium text-ink">{polish ? "Delegowanie między botami" : "Bot-to-bot delegation"}</div>
             <div className="mt-1 leading-relaxed">
-              Always on. Mention another bot with <code className="rounded bg-inset px-1">@name</code> to delegate. Native peer tools are used when provider supports them; otherwise harness routes request and reply.
+              {polish ? <>Zawsze włączone. Oznacz bota przez <code className="rounded bg-inset px-1">@nazwa</code>. Dostępne narzędzia peer są używane, gdy provider je obsługuje; w innym razie harness przekazuje żądanie i odpowiedź.</> : <>Always on. Mention another bot with <code className="rounded bg-inset px-1">@name</code> to delegate. Native peer tools are used when provider supports them; otherwise harness routes request and reply.</>}
             </div>
           </div>
           <EngineUsage key={`usage-${bot.id}`} bot={bot} />
 
           <div className="rounded-xl bg-card p-4">
-            <div className="text-[15px] font-medium text-ink">Computer</div>
+            <div className="text-[15px] font-medium text-ink">{polish ? "Komputer" : "Computer"}</div>
             <div className="mt-0.5 text-[13px] text-ink-secondary">
-              Where this bot's computer runs{bot.computer ? "" : " (currently: auto)"}
+              {polish ? "Gdzie działa komputer tego bota" : "Where this bot's computer runs"}{bot.computer ? "" : polish ? " (obecnie: auto)" : " (currently: auto)"}
             </div>
             <div className="mt-3 flex overflow-hidden rounded-lg border border-hairline/40">
               {/* multibot (F5): fourth mode — the bot's own engine browser */}
@@ -265,7 +269,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                       : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
                   )}
                 >
-                  {mode === "shared" ? "Shared browser" : mode}
+                {mode === "shared" ? (polish ? "Wspólna przeglądarka" : "Shared browser") : mode}
                 </button>
               ))}
             </div>
@@ -274,16 +278,19 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
             <div>
               <div className="text-[15px] font-medium text-ink">
-                Notifications
+                {polish ? "Powiadomienia" : "Notifications"}
               </div>
               <div className="mt-0.5 text-[13px] text-ink-secondary">
-                Get notified when this agent finishes or needs input
+                {polish ? "Powiadom, gdy bot skończy albo potrzebuje odpowiedzi" : "Get notified when this agent finishes or needs input"}
               </div>
             </div>
             <button
               role="switch"
               aria-checked={bot.notifications}
-              onClick={() => patch({ notifications: !bot.notifications })}
+              onClick={() => {
+                if (!bot.notifications) void requestBrowserNotifications();
+                patch({ notifications: !bot.notifications });
+              }}
               className={cn(
                 "relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors",
                 bot.notifications ? "bg-accent" : "bg-raised",

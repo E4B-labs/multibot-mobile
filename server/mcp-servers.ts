@@ -29,6 +29,7 @@ export type McpServerEntry = Record<string, unknown>;
 export function mcpServers(
   integrations?: SendTurnInput["integrations"],
   cfg: AppConfig = loadConfig(),
+  allowConnectors = true,
 ): Record<string, McpServerEntry> {
   const servers: Record<string, McpServerEntry> = {};
   if (integrations?.composio?.key) {
@@ -38,7 +39,7 @@ export function mcpServers(
       headers: { "x-consumer-api-key": integrations.composio.key },
     };
   }
-  for (const c of connectors(cfg)) {
+  for (const c of allowConnectors ? connectors(cfg) : []) {
     servers[c.id] =
       c.transport.type === "stdio"
         ? { command: c.transport.command, args: c.transport.args ?? [], env: c.transport.env ?? {} }

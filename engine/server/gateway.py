@@ -138,6 +138,7 @@ Zero własnej pętli agenta — gadamy HTTP-em do gotowego serwera Hermesa
 
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -245,7 +246,28 @@ _proc: subprocess.Popen | None = None
 
 
 def api_key() -> str:
-    return os.environ.get("API_SERVER_KEY", "")
+    configured = os.environ.get("API_SERVER_KEY", "").strip()
+    if configured:
+        return configured
+    # Local gateway is an internal sidecar, but Hermes still refuses startup
+    # without a strong API_SERVER_KEY. Generate once in engine data instead of
+    # inheriting Windows' C:\\Users\... HERMES_HOME or requiring manual setup.
+    path = data_dir() / ".api-server-key"
+    try:
+        key = path.read_text(encoding="utf-8").strip()
+        if len(key) >= 32:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_hex(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(key + "\n", encoding="utf-8")
+        _harden(path, 0o600)
+    except OSError:
+        # Read-only packaged roots still need a per-process key to boot.
+        pass
+    return key
 
 
 def session_id(bot_id: str) -> str:

@@ -14,6 +14,7 @@ import {
 import type { MascotShape } from "@/lib/mascotShapes";
 import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
+import { notifyBrowser } from "@/lib/notifications";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -503,6 +504,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const notificationState = useRef(new Map<string, { unread: boolean; attention: string | null }>());
+
+  useEffect(() => {
+    const seen = notificationState.current;
+    for (const bot of state.bots) {
+      const before = seen.get(bot.id);
+      const attention = bot.needsAttention ?? null;
+      if (bot.notifications && before && attention && attention !== before.attention) {
+        notifyBrowser(`${bot.name} needs your input`, attention);
+      } else if (bot.notifications && before && bot.unread && !before.unread) {
+        const last = [...bot.messages].reverse().find((message) => message.role === "bot" && message.text);
+        notifyBrowser(`${bot.name} finished`, last?.text?.slice(0, 180) ?? "New bot message");
+      }
+      seen.set(bot.id, { unread: bot.unread, attention });
+    }
+  }, [state.bots]);
 
   // debounced PATCH per bot for text-field edits (name/title/description)
   const patchTimers = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Record<string, unknown> }>());

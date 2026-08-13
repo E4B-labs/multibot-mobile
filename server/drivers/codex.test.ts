@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ProviderInstance } from "../contracts.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
+import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
 import { CodexDriver } from "./codex.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
@@ -54,6 +55,7 @@ describe("CodexDriver turns (fake app-server)", () => {
     delete process.env.FAKE_CODEX_MODE;
     delete process.env.FAKE_CODEX_DUMP;
     delete process.env.OPENAI_API_KEY;
+    for (const id of ["t-policy-deny", "t-policy-auto"]) clearTurnPolicy(id);
     recorder?.stop();
     await instance?.dispose();
     rmSync(scratch, { recursive: true, force: true });
@@ -172,6 +174,19 @@ describe("CodexDriver turns (fake app-server)", () => {
 
     expect(recorder.events.some((e) => e.type === "request.opened")).toBe(false);
     expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "approved" });
+  });
+
+  it("denies a disabled workspace tool even when legacy fullAuto is on", async () => {
+    await create({ mode: "approval", fullAuto: true });
+    const dump = join(scratch, "policy-dump.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+    setTurnPolicy("t-policy-deny", { autonomy: "autonomous", permissions: { terminal: false, file: true } });
+
+    await instance.adapter.sendTurn({ threadId: "t-policy-deny", text: "clean up" });
+    await recorder.until((e) => e.type === "turn.completed");
+
+    expect(recorder.events.some((e) => e.type === "request.opened")).toBe(false);
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "denied" });
   });
 
   it("rejects a second turn while one is in flight", async () => {

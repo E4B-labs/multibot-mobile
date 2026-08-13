@@ -43,6 +43,7 @@ import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 import { registerWindowsServerAutostart } from "./windows-autostart.ts";
 import { WorkspaceStore } from "./workspace.ts";
+import { canUseIntegration, clearTurnPolicy, setTurnPolicy } from "./turn-policy.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
@@ -314,6 +315,7 @@ bus.subscribe((event: RuntimeEvent) => {
       const frame = stopScreenPoller(bot.id);
       if (frame) pushMessage({ role: "bot", kind: "screen", png: frame.png, mime: frame.mime });
       store.patchBot(bot.id, { busy: false, unread: true });
+      clearTurnPolicy(bot.threadId);
       activeCommsDepth.delete(bot.id); // multibot (F9): tura skończona — licznik też
       broadcast({ kind: "bot", bot: store.bot(bot.id) });
       break;
@@ -451,26 +453,32 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
   // in the background — box provisioning can take ~90s and must never
   // hang the HTTP request
   store.patchBot(bot.id, { busy: true, unread: false });
+  setTurnPolicy(bot.threadId, {
+    autonomy: workspace.autonomy(bot.id).autonomy,
+    permissions: workspace.permissions(bot.id),
+  });
   activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
   broadcast({ kind: "bot", bot: store.bot(bot.id) });
 
   void (async () => {
     try {
       const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
-      if (cfg.composio?.key) integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
+      if (cfg.composio?.key && canUseIntegration(bot.threadId, "integrations")) {
+        integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
+      }
       const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'shared' | 'off' | undefined(auto)
       // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
       // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
       // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
       // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
-      if ((wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
+      if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
         const mcp = await engineComputer(bot.threadId, undefined, wants === "shared" ? "shared" : "own");
         if (mcp) integrations.localComputer = mcp;
-      } else if ((wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
+      } else if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
         // Native browser tools still run inside this bot's engine profile.
         await configureEngineComputer(bot.threadId, wants === "shared" ? "shared" : "own");
       }
-      if (wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
+      if (canUseIntegration(bot.threadId, "browser") && wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
         // the Computer driver runs ON the box — provision it on first use
         if (!b && instance.driverKind === "boxAgent") {
@@ -483,7 +491,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // local computer (this Mac) via the Electron-hosted cua-driver: the
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
-      if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
+      if (canUseIntegration(bot.threadId, "browser") && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
@@ -496,6 +504,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // still be the TARGET of ask_bot regardless of its driver.
       if (
         commsDepth < MAX_COMMS_DEPTH &&
+        canUseIntegration(bot.threadId, "delegation") &&
         instance.adapter.capabilities.agentsMcp === true &&
         store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0
       ) {
@@ -513,7 +522,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // get explicit peer delegation. Fetch replies before their turn and
       // attach them to the prompt; native MCP providers keep live tools.
       let taggedReplies = "";
-      if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH) {
+      if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH && canUseIntegration(bot.threadId, "delegation")) {
         const replies = await Promise.all(
           tagged.map(async (peer) => ({
             peer,
@@ -566,6 +575,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       });
       broadcast({ kind: "message", threadId: bot.threadId, message: failure });
       store.patchBot(bot.id, { busy: false });
+      clearTurnPolicy(bot.threadId);
       activeCommsDepth.delete(bot.id); // multibot (F9): tura padła — licznik też
       broadcast({ kind: "bot", bot: store.bot(bot.id) });
     }
@@ -770,13 +780,17 @@ const server = createServer(async (req, res) => {
         const depth = chainDepth(body.depth, activeCommsDepth.get(fromBotId));
         if (!toBotId || !message) return json(res, 400, { error: "toBotId and message required" });
         if (toBotId === fromBotId) return json(res, 400, { error: "a bot cannot message itself" });
+        const from = store.bot(fromBotId);
+        if (!from) return json(res, 404, { error: "no such caller bot" });
+        if (workspace.permissions(fromBotId).delegation === false) {
+          return json(res, 403, { error: "bot-to-bot delegation is disabled for this bot" });
+        }
         if (depth >= MAX_COMMS_DEPTH) return json(res, 200, { error: "message chains are limited to one hop" });
         const target = store.bot(toBotId);
         if (!target) return json(res, 404, { error: "no such bot" });
         if (target.busy) return json(res, 200, { busy: true });
         // visibility: surface the cross-talk on the caller's own thread so
         // bot-to-bot turns are never invisible (they cost the user tokens)
-        const from = store.bot(fromBotId);
         const fromName = from?.name ?? "another bot";
         if (from) {
           const note = store.appendMessage(from.threadId, {
@@ -849,12 +863,38 @@ const server = createServer(async (req, res) => {
         bots: store.bots.map((b) => ({ ...b, messages: store.messagesFor(b.threadId) })),
       });
     }
+    let m: RegExpMatchArray | null;
+    // multibot: mixed-provider group rooms. Engine stores membership/shadow
+    // ids; harness owns actual turns so Claude/Codex/ACP bots answer through
+    // their selected provider instead of being silently replaced by engine.
+    m = path.match(/^\/api\/groups\/([\w-]+)\/chat$/);
+    if (m && method === "POST") {
+      const body = await readBody(req);
+      const message = String(body.message ?? "").trim();
+      if (!message) return json(res, 422, { error: "message required" });
+      try {
+        const base = await ensureEngine();
+        const groupResponse = await fetch(`${base}/api/groups/${encodeURIComponent(m[1])}`);
+        if (!groupResponse.ok) return json(res, groupResponse.status === 404 ? 404 : 502, { error: "no such group" });
+        const group = await groupResponse.json() as { bot_ids?: unknown[] };
+        const turns: Array<{ bot_id: string; reply: string }> = [];
+        for (const rawId of group.bot_ids ?? []) {
+          const engineId = String(rawId);
+          const threadId = engineId.startsWith("mb-") ? engineId.slice(3) : engineId;
+          const bot = store.botByThread(threadId);
+          if (!bot) continue;
+          turns.push({ bot_id: bot.id, reply: await askBotAndWait(bot.id, `[Group room] ${message}`, 0) });
+        }
+        return json(res, 200, { turns, owner: turns[0]?.bot_id ?? null });
+      } catch (error) {
+        return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
     if (method === "POST" && path === "/api/bots") {
       const bot = store.createBot();
       store.patchBot(bot.id, { modelSelection: await defaultSelection() });
       return json(res, 201, { bot: { ...store.bot(bot.id)!, messages: store.messagesFor(bot.threadId) } });
     }
-    let m: RegExpMatchArray | null;
     m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
@@ -1406,6 +1446,9 @@ server.listen(PORT, HOST, () => {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     harnessRoutines.stop();
-    void registry.disposeAll().finally(() => process.exit(0));
+    // taskkill /T is asynchronous on Windows. Exiting immediately abandoned
+    // CLI children (and kept their profile files locked), so give it one
+    // short reap window after all adapters requested disposal.
+    void registry.disposeAll().finally(() => setTimeout(() => process.exit(0), process.platform === "win32" ? 500 : 0));
   });
 }

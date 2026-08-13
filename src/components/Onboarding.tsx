@@ -4,6 +4,7 @@ import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { authFetch } from "@/lib/auth";
 import { ProfileImport } from "./AppSettingsPanel";
+import { useLanguage } from "@/lib/language";
 
 type CliTool = {
   id: string;
@@ -81,6 +82,7 @@ async function readProgress(path: string, onProgress: (value: Progress) => void)
 }
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
+  const polish = useLanguage() === "pl";
   const [step, setStep] = useState(0);
   const [device, setDevice] = useState<DeviceInfo | null>(null);
   const [deviceError, setDeviceError] = useState<string | null>(null);
@@ -200,72 +202,72 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <div role="dialog" aria-modal="true" aria-label="Multibot setup" className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
         {step === 0 && <div className="flex flex-col">
           <MausAvatar color="green" state="happy" size={72} />
-          <h1 className="mt-4 text-[20px] font-semibold text-ink">Set up this device</h1>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">We scan this device so setup matches its capabilities.</p>
+          <h1 className="mt-4 text-[20px] font-semibold text-ink">{polish ? "Skonfiguruj urządzenie" : "Set up this device"}</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Skanujemy urządzenie, aby dopasować konfigurację." : "We scan this device so setup matches its capabilities."}</p>
           {device ? <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
             <div className="font-medium text-ink">{device.hostname ?? "This device"}</div>
             <div className="mt-1">{device.platform ?? "Unknown platform"} · {device.arch ?? "unknown architecture"}{device.memoryGb ? ` · ${device.memoryGb} GB RAM` : ""}</div>
-            <div className="mt-1">Python {device.pythonVersion ?? (device.python ? "available" : "not found")} · Docker {device.dockerVersion ?? (device.docker ? "available" : "not found")}</div>
-          </div> : <div className="mt-5 flex items-center gap-2 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> Scanning device…</div>}
+            <div className="mt-1">Python {device.pythonVersion ?? (device.python ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))} · Docker {device.dockerVersion ?? (device.docker ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))}</div>
+          </div> : <div className="mt-5 flex items-center gap-2 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> {polish ? "Skanowanie urządzenia…" : "Scanning device…"}</div>}
           {deviceError && <div className="mt-3 text-[12px] text-danger">{deviceError}</div>}
-          <div className="mt-5 text-[14px] font-medium text-ink">Keep a bot server running here 24/7?</div>
+          <div className="mt-5 text-[14px] font-medium text-ink">{polish ? "Uruchomić tu serwer bota 24/7?" : "Keep a bot server running here 24/7?"}</div>
           <div className="mt-3 flex gap-2">
-            <button onClick={() => { setServerWanted(true); void startProvision(); }} className="flex-1 rounded-lg bg-accent py-2.5 text-[14px] font-medium text-white">Yes, set it up</button>
-            <button onClick={() => { setServerWanted(false); setStep(1); }} className="flex-1 rounded-lg bg-raised py-2.5 text-[14px] text-ink">Not now</button>
+            <button onClick={() => { setServerWanted(true); void startProvision(); }} className="flex-1 rounded-lg bg-accent py-2.5 text-[14px] font-medium text-white">{polish ? "Tak, skonfiguruj" : "Yes, set it up"}</button>
+            <button onClick={() => { setServerWanted(false); setStep(1); }} className="flex-1 rounded-lg bg-raised py-2.5 text-[14px] text-ink">{polish ? "Nie teraz" : "Not now"}</button>
           </div>
           {serverWanted && <ProgressBox progress={provision} />}
-          {serverWanted && provision && !provision.done && <button onClick={() => setStep(1)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">Continue in background</button>}
-          {serverWanted && provision?.done && <button onClick={() => setStep(1)} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink">Continue</button>}
+          {serverWanted && provision && !provision.done && <button onClick={() => setStep(1)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Kontynuuj w tle" : "Continue in background"}</button>}
+          {serverWanted && provision?.done && <button onClick={() => setStep(1)} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink">{polish ? "Dalej" : "Continue"}</button>}
         </div>}
 
         {step === 1 && <div className="flex flex-col">
-          <h1 className="text-[18px] font-semibold text-ink">About you</h1>
-          <p className="mt-1 text-[13.5px] text-ink-secondary">Choose how we should address you.</p>
+          <h1 className="text-[18px] font-semibold text-ink">{polish ? "O Tobie" : "About you"}</h1>
+          <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Podaj, jak mamy się do Ciebie zwracać." : "Choose how we should address you."}</p>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={`mt-5 ${inputClass}`} />
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && valid && saveProfile()} placeholder="you@example.com" className={`mt-3 ${inputClass}`} />
-          <button onClick={saveProfile} disabled={!valid} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white disabled:opacity-40">Continue</button>
-          <button onClick={() => setStep(2)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">Maybe later</button>
+          <button onClick={saveProfile} disabled={!valid} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white disabled:opacity-40">{polish ? "Dalej" : "Continue"}</button>
+          <button onClick={() => setStep(2)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Może później" : "Maybe later"}</button>
         </div>}
 
         {step === 2 && <div className="flex flex-col">
-          <h1 className="text-[18px] font-semibold text-ink">Command-line tools</h1>
-          <p className="mt-1 text-[13.5px] text-ink-secondary">Detected tools can run bots here. Missing tools can be installed from this screen.</p>
-          {!cli ? <div className="flex items-center gap-2 py-6 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> Checking…</div> : <div className="mt-4 flex flex-col gap-2.5">
-            {cli.length ? cli.map((item) => <StatusRow key={item.id} ok={item.detected} warn title={item.displayName} detail={item.detected ? `${item.version ?? "Installed"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not found."} action={!item.detected && item.installCommand ? <label className="flex shrink-0 items-center gap-2 text-[12px] text-ink"><input type="checkbox" checked={selectedCli.includes(item.id)} onChange={() => setSelectedCli((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id])} disabled={installing !== null} /> Install</label> : undefined} />) : <div className="rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">No tools detected yet.</div>}
-            {selectedCli.length > 0 && <button onClick={() => void installSelected()} disabled={installing !== null} className="mt-1 w-full rounded-lg bg-raised py-2.5 text-[13px] font-medium text-ink disabled:opacity-50">{installing ? `Installing ${installing}…` : `Install selected (${selectedCli.length})`}</button>}
+          <h1 className="text-[18px] font-semibold text-ink">{polish ? "Narzędzia CLI" : "Command-line tools"}</h1>
+          <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Wykryte narzędzia uruchamiają boty. Brakujące zainstalujesz tutaj." : "Detected tools can run bots here. Missing tools can be installed from this screen."}</p>
+          {!cli ? <div className="flex items-center gap-2 py-6 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> {polish ? "Sprawdzanie…" : "Checking…"}</div> : <div className="mt-4 flex flex-col gap-2.5">
+            {cli.length ? cli.map((item) => <StatusRow key={item.id} ok={item.detected} warn title={item.displayName} detail={item.detected ? `${item.version ?? (polish ? "Zainstalowane" : "Installed")}${item.loginCommand ? ` · ${polish ? "logowanie" : "sign in"}: ${item.loginCommand}` : ""}` : item.reason ?? (polish ? "Nie znaleziono." : "Not found.")} action={!item.detected && item.installCommand ? <label className="flex shrink-0 items-center gap-2 text-[12px] text-ink"><input type="checkbox" checked={selectedCli.includes(item.id)} onChange={() => setSelectedCli((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id])} disabled={installing !== null} /> {polish ? "Zainstaluj" : "Install"}</label> : undefined} />) : <div className="rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">{polish ? "Nie wykryto narzędzi." : "No tools detected yet."}</div>}
+            {selectedCli.length > 0 && <button onClick={() => void installSelected()} disabled={installing !== null} className="mt-1 w-full rounded-lg bg-raised py-2.5 text-[13px] font-medium text-ink disabled:opacity-50">{installing ? `${polish ? "Instalowanie" : "Installing"} ${installing}…` : `${polish ? "Zainstaluj wybrane" : "Install selected"} (${selectedCli.length})`}</button>}
           </div>}
           <ProgressBox progress={cliProgress} />
-          <button onClick={() => setStep(3)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">Continue</button>
+          <button onClick={() => setStep(3)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Dalej" : "Continue"}</button>
         </div>}
 
         {step === 3 && <div className="flex flex-col">
-          <h1 className="text-[18px] font-semibold text-ink">Add a custom model</h1>
-          <p className="mt-1 text-[13.5px] text-ink-secondary">Optional. Use any OpenAI-compatible endpoint, including a local model.</p>
+          <h1 className="text-[18px] font-semibold text-ink">{polish ? "Dodaj własny model" : "Add a custom model"}</h1>
+          <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Opcjonalne. Użyj dowolnego endpointu zgodnego z OpenAI, także lokalnego." : "Optional. Use any OpenAI-compatible endpoint, including a local model."}</p>
           <input autoFocus value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="Name" className={`mt-4 ${inputClass}`} />
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="Base URL · https://…/v1" className={`mt-2 ${inputClass}`} />
           <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model id" className={`mt-2 ${inputClass}`} />
           <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" autoComplete="off" className={`mt-2 ${inputClass}`} />
-          <button onClick={() => void saveCustomModel()} disabled={!modelName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink disabled:opacity-40">Save model</button>
+          <button onClick={() => void saveCustomModel()} disabled={!modelName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink disabled:opacity-40">{polish ? "Zapisz model" : "Save model"}</button>
           {modelError && <div className="mt-2 text-[12px] text-danger">{modelError}</div>}
           <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
-            <div>Have an existing profile? Import it now or do this later from App Settings.</div>
+            <div>{polish ? "Masz istniejący profil? Zaimportuj go teraz albo później w ustawieniach aplikacji." : "Have an existing profile? Import it now or do this later from App Settings."}</div>
             <button onClick={() => setShowProfileImport((open) => !open)} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">
               {showProfileImport ? "Hide profile import" : "Import existing profile"}
             </button>
           </div>
           {showProfileImport && <ProfileImport />}
-          <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">Continue</button>
-          <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">Skip for now</button>
+          <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Dalej" : "Continue"}</button>
+          <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Pomiń" : "Skip for now"}</button>
         </div>}
 
         {step === 4 && <div className="flex flex-col">
-          <h1 className="text-[18px] font-semibold text-ink">Permissions</h1>
-          <p className="mt-1 text-[13.5px] text-ink-secondary">Optional, and only used when you ask for the feature.</p>
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-card p-3.5"><div className="flex items-start gap-3"><Mic size={18} className="mt-0.5 shrink-0 text-ink-secondary" /><div><div className="text-[14px] font-medium text-ink">Microphone & speech</div><div className="mt-0.5 text-[12.5px] text-ink-secondary">Voice dictation into the composer.</div></div></div>{perms?.mic === "granted" ? <Check size={16} className="text-[#38d591]" /> : <button onClick={() => window.ogb?.permRequestMic?.().then(() => window.ogb?.permStatus?.().then(setPerms))} className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink">Enable</button>}</div>
-          <button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">Start using Multibot</button>
-          <button onClick={finish} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">Skip for now</button>
+          <h1 className="text-[18px] font-semibold text-ink">{polish ? "Uprawnienia" : "Permissions"}</h1>
+          <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Opcjonalne, używane tylko po wybraniu funkcji." : "Optional, and only used when you ask for the feature."}</p>
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-card p-3.5"><div className="flex items-start gap-3"><Mic size={18} className="mt-0.5 shrink-0 text-ink-secondary" /><div><div className="text-[14px] font-medium text-ink">{polish ? "Mikrofon i mowa" : "Microphone & speech"}</div><div className="mt-0.5 text-[12.5px] text-ink-secondary">{polish ? "Dyktowanie głosowe w polu wiadomości." : "Voice dictation into the composer."}</div></div></div>{perms?.mic === "granted" ? <Check size={16} className="text-[#38d591]" /> : <button onClick={() => window.ogb?.permRequestMic?.().then(() => window.ogb?.permStatus?.().then(setPerms))} className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink">{polish ? "Włącz" : "Enable"}</button>}</div>
+          <button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Uruchom MultiBot" : "Start using Multibot"}</button>
+          <button onClick={finish} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Pomiń" : "Skip for now"}</button>
         </div>}
-        {step === 5 && <div className="flex flex-col"><h1 className="text-[18px] font-semibold text-ink">Ready</h1><p className="mt-2 text-[13.5px] text-ink-secondary">Your workspace is ready.</p><button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">Start using Multibot</button></div>}
+        {step === 5 && <div className="flex flex-col"><h1 className="text-[18px] font-semibold text-ink">{polish ? "Gotowe" : "Ready"}</h1><p className="mt-2 text-[13.5px] text-ink-secondary">{polish ? "Workspace jest gotowy." : "Your workspace is ready."}</p><button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Uruchom MultiBot" : "Start using Multibot"}</button></div>}
       </div>
     </div>
   );

@@ -24,7 +24,9 @@ if (!existsSync(venvPy)) {
 
 const env = { ...process.env };
 env.SLAFY_DATA_DIR ??= existsSync(join(legacyData, "profiles")) ? legacyData : join(engine, "..", "engine-data");
-env.HERMES_HOME ??= env.SLAFY_DATA_DIR;
+// Keep Hermes and Multibot profiles on same data root. Host-level HERMES_HOME
+// (Windows defaults to C:) otherwise makes gateway read wrong config and exit 78.
+env.HERMES_HOME = env.SLAFY_DATA_DIR;
 
 const child = spawn(venvPy, ["-m", "uvicorn", "server.app:app", "--port", "8700"], {
   cwd: engine,

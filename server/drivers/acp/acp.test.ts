@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureDirs } from "../../config.ts";
 import type { ProviderInstance } from "../../contracts.ts";
 import { recordEvents, type EventRecorder } from "../../testing/events.ts";
+import { clearTurnPolicy, setTurnPolicy } from "../../turn-policy.ts";
 import { GrokAgentDriver } from "./grok.ts";
 import { GeminiAgentDriver } from "./gemini.ts";
 // multibot (G3): new ACP harnesses ride the same fake-CLI contract.
@@ -73,6 +74,7 @@ describe("ACP turns (fake CLI)", () => {
     delete process.env.FAKE_ACP_MODE;
     delete process.env.FAKE_ACP_DUMP;
     delete process.env.XAI_API_KEY;
+    for (const id of ["t-policy-deny", "t-policy-auto"]) clearTurnPolicy(id);
     recorder?.stop();
     await instance?.dispose();
     rmSync(scratch, { recursive: true, force: true });
@@ -148,6 +150,15 @@ describe("ACP turns (fake CLI)", () => {
     const done = await recorder.until((e) => e.type === "turn.completed");
     expect(done).toMatchObject({ ok: true });
     expect(recorder.events.some((e) => e.provider === "geminiAgent")).toBe(true);
+  });
+
+  it("enforces workspace permission and autonomy policy inside ACP", async () => {
+    await create(GrokAgentDriver, "permission");
+    setTurnPolicy("t-policy-deny", { autonomy: "autonomous", permissions: { terminal: false } });
+    await instance.adapter.sendTurn({ threadId: "t-policy-deny", text: "go" });
+    await recorder.until((e) => e.type === "turn.completed");
+    expect(recorder.events.some((e) => e.type === "request.opened")).toBe(false);
+    expect(recorder.events.some((e) => e.type === "runtime.error" && /blocked by bot permissions/.test(e.message))).toBe(true);
   });
 
   it.each([

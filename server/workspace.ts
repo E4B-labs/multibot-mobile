@@ -40,6 +40,7 @@ const DEFAULT_PERMISSIONS = {
   browser: true,
   delegation: true,
   file: true,
+  integrations: true,
   memory: true,
   skills: true,
   terminal: true,

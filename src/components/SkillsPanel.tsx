@@ -30,6 +30,7 @@ import { useStore, type Bot } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 // Lokalny helper jak w RoutinesPanel, plus `status` na błędzie: teach/start
 // odróżnia "brak przeglądarki" (404) od "silnik padł" po kodzie, nie po treści.
@@ -319,6 +320,7 @@ function TeachCard({
 
 export function SkillsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
@@ -391,7 +393,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-[26px]" />
-        <span className="text-[15px] font-semibold text-ink">Skills</span>
+        <span className="text-[15px] font-semibold text-ink">{polish ? "Umiejętności" : "Skills"}</span>
         <button
           onClick={() => dispatch({ type: "toggleSkills", open: false })}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"

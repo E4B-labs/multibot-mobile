@@ -223,6 +223,7 @@ function GroupsSection({
   onCreateOpenChange: (open: boolean) => void;
 }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   // null = nie załadowano (silnik offline / jeszcze nie sprawdzono)
   const [groups, setGroups] = useState<EngineGroup[] | null>(null);
   const [name, setName] = useState("");
@@ -297,7 +298,7 @@ function GroupsSection({
     <div className="border-t border-hairline/40 px-2 pb-1 pt-2">
       <div className="flex items-center justify-between px-3 pb-1">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-          Groups
+          {polish ? "Grupy" : "Groups"}
         </span>
       </div>
 
@@ -320,7 +321,7 @@ function GroupsSection({
         <div className="mx-1 mt-1 flex flex-col gap-2 rounded-xl bg-card p-3">
           <input
             className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
-            placeholder="Group name"
+            placeholder={polish ? "Nazwa grupy" : "Group name"}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -351,7 +352,7 @@ function GroupsSection({
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy && <Loader2 size={12} className="animate-spin" />}
-              Create
+              {polish ? "Utwórz" : "Create"}
             </button>
             <button
               onClick={() => {
@@ -360,7 +361,7 @@ function GroupsSection({
               }}
               className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
             >
-              Cancel
+              {polish ? "Anuluj" : "Cancel"}
             </button>
           </div>
         </div>

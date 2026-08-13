@@ -38,11 +38,27 @@ function profileMeta(source: string, id = ""): ExistingEngineProfile | null {
 function profileFromRoot(root: string): ExistingEngineProfile | null {
   const profiles = join(root, "profiles");
   if (!existsSync(profiles)) return null;
-  const names = readdirSync(profiles, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("mb-"))
+  const candidates = readdirSync(profiles, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort();
-  for (const name of names) {
+    .sort()
+    .map((name) => {
+      const dir = join(profiles, name);
+      const config = existsSync(join(dir, "config.yaml"))
+        ? readFileSync(join(dir, "config.yaml"), "utf8")
+        : "";
+      const env = existsSync(join(dir, ".env")) ? readFileSync(join(dir, ".env"), "utf8") : "";
+      // Prefer real configured profiles. Fresh harness profiles are `mb-*`
+      // and usually have no model; importing one would create a blank bot.
+      const score = (/(^|\n)model:/m.test(config) ? 2 : 0) +
+        (/(OPENAI|ANTHROPIC|OPENROUTER|GROQ|XAI|HF)_API_KEY=\S+/m.test(env) ? 1 : 0);
+      return { name, score };
+    })
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const ordered = candidates.some((candidate) => candidate.score > 0)
+    ? candidates
+    : candidates.filter((candidate) => !candidate.name.startsWith("mb-"));
+  for (const { name } of ordered) {
     const found = profileMeta(join(profiles, name), name);
     if (found) return found;
   }
