@@ -54,6 +54,7 @@ const TOOLS = [
     { name: "read_file", description: "Read a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
     { name: "write_file", description: "Write a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
     { name: "run_command", description: "Run a host command with arguments.", inputSchema: { type: "object", properties: { command: { type: "string" }, args: { type: "array", items: { type: "string" } }, cwd: { type: "string" } }, required: ["command"] } },
+    { name: "get_device_info", description: "Read verified host device facts (platform, Android model, Termux, RAM and installed runtimes).", inputSchema: { type: "object", properties: {} } },
 ];
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
 const ok = (id, result) => send({ jsonrpc: "2.0", id, result });
@@ -100,7 +101,7 @@ async function callTool(name, args) {
         get_my_profile: "profile.get", update_my_profile: "profile.update", remember: "memory.add", recall: "memory.list",
         read_memory: "memory.graph", create_skill: "skills.create", list_skills: "skills.list", create_routine: "routines.create",
         list_routines: "routines.list", run_routine: "routines.run", create_agent: "agent.create", update_agent: "agent.update",
-        list_groups: "groups.list", create_group: "groups.create", send_group_message: "groups.send", read_file: "file.read",
+        list_groups: "groups.list", create_group: "groups.create", send_group_message: "groups.send", get_device_info: "device.info", read_file: "file.read",
         write_file: "file.write", run_command: "terminal.run",
     };
     if (action[name]) {

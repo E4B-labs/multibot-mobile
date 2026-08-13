@@ -27,6 +27,11 @@ type DeviceInfo = {
   docker?: boolean;
   dockerVersion?: string | null;
   engineInstalled?: boolean;
+  android?: boolean;
+  termux?: boolean;
+  manufacturer?: string | null;
+  model?: string | null;
+  androidVersion?: string | null;
 };
 
 type Progress = { id?: string; step?: string; message?: string; done?: boolean; error?: string };
@@ -207,6 +212,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           {device ? <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
             <div className="font-medium text-ink">{device.hostname ?? "This device"}</div>
             <div className="mt-1">{device.platform ?? "Unknown platform"} · {device.arch ?? "unknown architecture"}{device.memoryGb ? ` · ${device.memoryGb} GB RAM` : ""}</div>
+            {(device.manufacturer || device.model) && <div className="mt-1">{device.manufacturer ?? "Android"} {device.model ?? ""}{device.androidVersion ? ` · Android ${device.androidVersion}` : ""}</div>}
+            {device.termux && <div className="mt-1">Termux host</div>}
             <div className="mt-1">Python {device.pythonVersion ?? (device.python ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))} · Docker {device.dockerVersion ?? (device.docker ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))}</div>
           </div> : <div className="mt-5 flex items-center gap-2 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> {polish ? "Skanowanie urządzenia…" : "Scanning device…"}</div>}
           {deviceError && <div className="mt-3 text-[12px] text-danger">{deviceError}</div>}

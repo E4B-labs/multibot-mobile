@@ -25,12 +25,21 @@ async function firstVersion(candidates) {
     }
     return null;
 }
+async function property(name) {
+    if (process.platform === "win32")
+        return null;
+    return new Promise((resolve) => execFile("getprop", [name], { timeout: 2_000, env: { ...process.env, PATH: augmentedPath() } }, (error, stdout) => resolve(error ? null : String(stdout).trim() || null)));
+}
 export async function deviceInfo() {
-    const [pythonVersion, dockerVersion] = await Promise.all([
+    const [pythonVersion, dockerVersion, manufacturer, model, androidVersion] = await Promise.all([
         firstVersion(process.platform === "win32" ? [["py", ["-3", "--version"]], ["python", ["--version"]]] : [["python3", ["--version"]], ["python", ["--version"]]]),
         version("docker", ["--version"]),
+        property("ro.product.manufacturer"),
+        property("ro.product.model"),
+        property("ro.build.version.release"),
     ]);
     const ramBytes = totalmem();
+    const termux = Boolean(process.env.TERMUX_VERSION || process.env.PREFIX?.includes("com.termux"));
     return {
         hostname: hostname(),
         platform: process.platform,
@@ -42,5 +51,10 @@ export async function deviceInfo() {
         docker: Boolean(dockerVersion),
         dockerVersion,
         engineInstalled: Boolean(enginePython()),
+        android: Boolean(manufacturer || model || androidVersion),
+        termux,
+        manufacturer,
+        model,
+        androidVersion,
     };
 }

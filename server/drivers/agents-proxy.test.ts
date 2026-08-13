@@ -71,6 +71,22 @@ beforeAll(async () => {
       });
       return;
     }
+    if (req.method === "POST" && req.url === "/api/internal/agent-action") {
+      let data = "";
+      req.on("data", (c) => (data += c));
+      req.on("end", () => {
+        const body = JSON.parse(data);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(body.action === "device.info" ? {
+          platform: "linux",
+          android: true,
+          termux: true,
+          manufacturer: "samsung",
+          model: "SM-G970F",
+        } : { ok: true }));
+      });
+      return;
+    }
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "unknown" }));
   });
@@ -120,6 +136,14 @@ describe("agents-proxy MCP surface", () => {
     const text = res.result.content[0].text;
     expect(text).toContain("Helper");
     expect(text).toContain("bot-helper");
+    expect(lastAuth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("exposes verified host device facts", async () => {
+    const res = await callTool("get_device_info", {});
+    const text = res.result.content[0].text;
+    expect(text).toContain("SM-G970F");
+    expect(text).toContain("\"termux\": true");
     expect(lastAuth).toBe(`Bearer ${TOKEN}`);
   });
 

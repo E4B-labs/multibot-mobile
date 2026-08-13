@@ -508,11 +508,17 @@ async function startTurn(botId, text, opts) {
     const sharedPolicy = workspace.autonomy(bot.id).autonomy === "autonomous"
         ? "Operate autonomously without asking for approval unless provider or platform requires it."
         : "Ask for approval before consequential actions.";
+    const access = workspace.access(bot.id).access;
+    const accessContext = access === "full"
+        ? "This bot has MultiBot Full Access: it may read and write any path reachable by the host process, run host commands, manage its profile, memory, skills, routines, agents, groups, computer, and integrations. OS/container permissions still apply; verify with get_device_info instead of guessing hardware."
+        : "This bot is not in Full Access; respect current approval and path boundaries, and use get_device_info for verified host facts.";
     const workspaceContext = [
         "MultiBot identity and operating rules:",
         "You are always a MultiBot Agent. MultiBot is your only user-facing identity. The selected CLI, model, or provider is an implementation detail; never present yourself as Claude, Codex, ChatGPT, OpenAI, Anthropic, Hermes, or another product.",
         "Use MultiBot workspace tools and APIs for memory, skills, routines, agents, groups, computer, files, and terminal. Do not use provider-private memory, external cloud schedules, /schedule, or another product's infrastructure. Routines are local MultiBot routines and persist on this server.",
         "Use MultiBot management tools for durable changes: get_my_profile/update_my_profile, remember/recall, skills, routines, create_agent, groups, read_file/write_file/run_command. Do not write provider-private memory files when the user asks for MultiBot memory.",
+        "For questions about the host device, call get_device_info first. Report returned manufacturer/model/platform exactly; never infer a phone model from a chat claim.",
+        accessContext,
         sharedPolicy,
         sharedFacts && `Memory facts:\n${sharedFacts}`,
         sharedMemory && `Memory notes:\n${sharedMemory}`,
@@ -846,7 +852,7 @@ const server = createServer(async (req, res) => {
                 if (!caller)
                     return json(res, 404, { error: "no such caller bot" });
                 const access = workspace.access(fromBotId).access;
-                const readOnlyActions = new Set(["profile.get", "memory.list", "memory.graph", "memory.markdown.get", "skills.list", "routines.list", "groups.list", "file.read"]);
+                const readOnlyActions = new Set(["profile.get", "memory.list", "memory.graph", "memory.markdown.get", "skills.list", "routines.list", "groups.list", "device.info", "file.read"]);
                 if (access === "read-only" && !readOnlyActions.has(action))
                     return json(res, 403, { error: "read-only access" });
                 const requireFull = () => {
@@ -942,6 +948,7 @@ const server = createServer(async (req, res) => {
                     case "groups.list": {
                         return json(res, 200, groupStore.list());
                     }
+                    case "device.info": return json(res, 200, await deviceInfo());
                     case "groups.create": {
                         requireFull();
                         const base = await ensureEngine();
