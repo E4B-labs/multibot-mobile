@@ -129,7 +129,8 @@ describe("comms e2e (fake ACP fleet)", () => {
       child.on("close", () => resolve());
       setTimeout(() => (child.kill("SIGKILL"), resolve()), 5_000).unref?.();
     });
-    rmSync(home, { recursive: true, force: true });
+    // multibot: Windows may release child cwd handles a moment after exit.
+    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it("seals the internal comms endpoints behind the boot token", async () => {
