@@ -26,6 +26,7 @@ export type MausColor =
  * vocabulary still carry those names, and the client resolves both on read.
  */
 export type MausExpression = string;
+export type MascotShape = string;
 
 export interface OptionCardData {
   title: string;
@@ -60,6 +61,8 @@ export interface BotRecord {
   notifications: boolean;
   color: MausColor;
   mascotExpression?: MausExpression | null;
+  /** Optional silhouette from the built-in mascot icon set. */
+  mascotShape?: MascotShape;
   unread: boolean;
   modelSelection: ModelSelection;
   /** provider-native continuation per instance (e.g. claude session id) */

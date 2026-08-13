@@ -14,6 +14,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { MAUS_COLORS, type MausColor, type MausMotion, type MausState } from "@/lib/mascot";
+import { mascotShape, type MascotShape } from "@/lib/mascotShapes";
 import { CursorAvatar, SHAPE, type CursorAvatarHandle, type CursorShape } from "./CursorAvatar";
 
 /**
@@ -96,6 +97,7 @@ export type MausAvatarHandle = CursorAvatarHandle;
 
 export type MausAvatarProps = {
   color: MausColor;
+  shape?: MascotShape;
   /** Named behaviour — drives the expression pool, its cadence and blinking. */
   state?: MausState;
   /** Pin one of the 25 faces and stop the state's own drift. */
@@ -130,6 +132,7 @@ export type MausAvatarProps = {
 function MausAvatarComponent(
   {
     color,
+    shape = "cursor",
     state = "idle",
     expression,
     size = 44,
@@ -193,7 +196,7 @@ function MausAvatarComponent(
         state={motionState ?? state}
         expression={expression}
         size={size}
-        shape={GRADIENT_SHAPE}
+        shape={shape === "cursor" ? GRADIENT_SHAPE : mascotShape(shape)}
         gradient={gradientFor(color)}
         title={label ?? null}
         lookAround={forward ? 0 : 1}

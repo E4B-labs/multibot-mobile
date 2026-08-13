@@ -12,6 +12,7 @@ import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 
 function Field({
   label,
@@ -198,7 +199,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const patch = (
     p: Partial<
-      Pick<Bot, "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression">
+      Pick<Bot, "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "mascotShape">
     >,
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
@@ -229,6 +230,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
         <div className="flex justify-center py-5">
           <MausAvatar
             color={bot.color}
+            shape={bot.mascotShape}
             state={activeState}
             size={112}
             motion={mascotMotion?.kind ?? "none"}
@@ -243,7 +245,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 Bot
               </span>
               <button
-                onClick={() => patch({ color: "green", mascotExpression: null })}
+                onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "cursor" })}
                 className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
               >
                 Reset
@@ -266,7 +268,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     title={expression}
                     aria-label={`Use ${expression} expression`}
                   >
-                    <MausAvatar color={bot.color} state={expression} size={42} animated={false} />
+                    <MausAvatar color={bot.color} shape={bot.mascotShape} state={expression} size={42} animated={false} />
                   </button>
                 ))}
               </div>
@@ -287,6 +289,26 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     title={color}
                     aria-label={`Use ${color} mascot color`}
                   />
+                ))}
+              </div>
+
+              <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
+                Icon shape
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {MASCOT_SHAPES.map((shape) => (
+                  <button
+                    key={shape}
+                    onClick={() => patch({ mascotShape: shape })}
+                    className={cn(
+                      "flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-raised",
+                      (bot.mascotShape ?? "cursor") === shape && "ring-2 ring-accent-border",
+                    )}
+                    title={shape}
+                    aria-label={`Use ${shape} icon shape`}
+                  >
+                    <MausAvatar color={bot.color} shape={shape} state={activeState} size={42} animated={false} />
+                  </button>
                 ))}
               </div>
             </div>

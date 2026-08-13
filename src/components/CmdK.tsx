@@ -77,7 +77,7 @@ export function CmdK() {
         label: b.name,
         hint: b.id === state.selectedId ? "Current bot" : "Switch to bot",
         icon: (
-          <MausAvatar color={b.color} state={normalizeState(b.mascotExpression) ?? "happy"} size={22} />
+          <MausAvatar color={b.color} shape={b.mascotShape} state={normalizeState(b.mascotExpression) ?? "happy"} size={22} />
         ),
         run: close(() => dispatch({ type: "select", id: b.id })),
       }));

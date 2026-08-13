@@ -11,6 +11,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import type { MascotShape } from "@/lib/mascotShapes";
 import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 
@@ -54,6 +55,7 @@ export interface Bot {
   notifications: boolean;
   color: MausColor;
   mascotExpression?: string | null;
+  mascotShape?: MascotShape;
   unread: boolean;
   busy?: boolean;
   // multibot: why the bot is waiting on a human (login/captcha/question); null/absent = not waiting.
@@ -175,7 +177,7 @@ type Action =
       patch: Partial<
         Pick<
           Bot,
-          "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "pinned" | "hidden"
+          "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "mascotShape" | "pinned" | "hidden"
         >
       >;
     };
@@ -443,7 +445,8 @@ function reducer(state: AppState, action: Action): AppState {
     case "updateBot": {
       const mascotChanged =
         Object.prototype.hasOwnProperty.call(action.patch, "color") ||
-        Object.prototype.hasOwnProperty.call(action.patch, "mascotExpression");
+        Object.prototype.hasOwnProperty.call(action.patch, "mascotExpression") ||
+        Object.prototype.hasOwnProperty.call(action.patch, "mascotShape");
       const next = mascotChanged
         ? withMascotMotion(state, action.botId, "customize")
         : state;
