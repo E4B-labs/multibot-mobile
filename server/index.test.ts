@@ -252,6 +252,20 @@ describe("harness HTTP API", () => {
     expect(ghost.snapshot.reason).toContain("not-a-real-driver");
   });
 
+  it("handles Hermes-style provider/model commands in chat", async () => {
+    const { body } = await api("GET", "/api/bots");
+    const bot = body.bots[0];
+    const listed = await api("POST", `/api/bots/${bot.id}/messages`, { text: "/model" });
+    expect(listed.status).toBe(200);
+    const afterList = (await api("GET", "/api/bots")).body.bots.find((item: { id: string }) => item.id === bot.id);
+    expect(afterList.messages.at(-1).text).toContain("Use /model <provider>/<model>");
+
+    const unknown = await api("POST", `/api/bots/${bot.id}/messages`, { text: "/model nope/fake" });
+    expect(unknown.status).toBe(200);
+    const afterUnknown = (await api("GET", "/api/bots")).body.bots.find((item: { id: string }) => item.id === bot.id);
+    expect(afterUnknown.messages.at(-1).text).toContain("Unknown model");
+  });
+
   it("manages custom models without echoing API keys", async () => {
     const bad = await api("PUT", "/api/models/custom/claude", {
       displayName: "Reserved",

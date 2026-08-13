@@ -118,6 +118,9 @@ HTTPS z Tailscale:
 
 - Provider picker pokazuje flotę CLI oraz nazwane modele `custom`; klucze modeli
   nigdy nie wracają w odpowiedzi API. Własny model dodaje się w App Settings.
+- Z poziomu czatu działa Hermes-style `/model`: `/model` pokazuje bieżący katalog,
+  `/model claude/opus`, `/model codex/gpt-5.1-codex` albo `/model <model>
+  --provider <provider>` przełącza parę provider + model dla bota.
 - Przy pierwszym starcie z istniejącym profilem silnika pusty harness tworzy
   pierwszy bot automatycznie; profil dostaje neutralną nazwę i stałą tożsamość
   `mb-<threadId>`, więc Memory, Routines i Skills trafiają do właściwego bota.

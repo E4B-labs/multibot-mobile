@@ -398,6 +398,85 @@ function readCuaConnection(): { command: string; args: string[]; env: Record<str
   return null;
 }
 
+// multibot: Hermes-compatible provider/model switch for chat. `/model` is a
+// harness command, not prose sent to whichever provider happens to be active.
+// Selection persists on bot, matching the model picker and surviving restart.
+async function handleModelCommand(bot: ReturnType<Store["bot"]>, text: string): Promise<string | null> {
+  if (!bot || !/^\/model(?:\s|$)/i.test(text)) return null;
+  if (bot.busy) throw Object.assign(new Error("the bot is already working — interrupt it first"), { status: 409 });
+
+  const raw = text.replace(/^\/model\s*/i, "").trim();
+  const providerFlag = raw.match(/(?:^|\s)--provider(?:=|\s+)([^\s]+)/i)?.[1]?.toLowerCase();
+  const target = raw
+    .replace(/(?:^|\s)--(?:provider(?:=|\s+)[^\s]+|global|session|once|refresh)(?=\s|$)/gi, "")
+    .trim();
+  const described = await registry.describe();
+  const key = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "");
+  const aliases: Record<string, string> = {
+    anthropic: "claude",
+    openai: "codex",
+    chatgpt: "codex",
+    google: "gemini",
+    xai: "grok",
+    moonshot: "kimi",
+    alibaba: "qwen",
+  };
+  const findProvider = (value: string) => {
+    const wanted = aliases[key(value)] ?? key(value);
+    return described.find((item) =>
+      [item.instanceId, item.driverKind, item.displayName].some((candidate) => key(candidate) === wanted),
+    );
+  };
+  const current = described.find((item) => item.instanceId === bot.modelSelection.instanceId);
+
+  if (!raw) {
+    const lines = described.map((item) => {
+      const models = item.models.options.map((model) => model.id).join(", ") || "no catalog";
+      const status = item.snapshot.state === "available" ? "ready" : `unavailable: ${item.snapshot.reason ?? "not ready"}`;
+      return `- ${item.displayName ?? item.instanceId}: ${models} (${status})`;
+    });
+    return `Current model: ${bot.modelSelection.model || "unknown"}\nProvider: ${current?.displayName ?? (bot.modelSelection.instanceId || "unknown")}\n\n${lines.join("\n")}\n\nUse /model <provider>/<model> or /model <model> --provider <provider>.`;
+  }
+
+  let provider = providerFlag ? findProvider(providerFlag) : undefined;
+  let model = target;
+  if (!provider && target.includes("/")) {
+    const slash = target.indexOf("/");
+    const candidate = findProvider(target.slice(0, slash));
+    if (candidate) {
+      provider = candidate;
+      model = target.slice(slash + 1);
+    }
+  }
+  if (!provider && target.includes(":")) {
+    const colon = target.indexOf(":");
+    const candidate = findProvider(target.slice(0, colon));
+    if (candidate) {
+      provider = candidate;
+      model = target.slice(colon + 1);
+    }
+  }
+  if (!provider && !providerFlag) {
+    provider = described.find((item) => item.instanceId === bot.modelSelection.instanceId &&
+      item.models.options.some((option) => option.id === target || option.label.toLowerCase() === target.toLowerCase()));
+    provider ??= described.find((item) => item.models.options.some((option) => option.id === target || option.label.toLowerCase() === target.toLowerCase()));
+  }
+  if (!provider && providerFlag) return `Unknown provider: ${providerFlag}. Use /model to list providers.`;
+  if (!provider) return `Unknown model: ${target}. Use /model to list providers and models.`;
+  if (provider.snapshot.state !== "available") {
+    return `${provider.displayName ?? provider.instanceId} unavailable: ${provider.snapshot.reason ?? "not ready"}`;
+  }
+  if (!model) model = provider.models.default;
+  const known = provider.models.options.some((option) => option.id === model || option.label.toLowerCase() === model.toLowerCase());
+  if (!known && provider.models.options.length && provider.driverKind !== "slafy") {
+    return `Unknown ${provider.displayName ?? provider.instanceId} model: ${model}. Available: ${provider.models.options.map((option) => option.id).join(", " )}`;
+  }
+  const selectedModel = provider.models.options.find((option) => option.id === model || option.label.toLowerCase() === model.toLowerCase())?.id ?? model;
+  store.patchBot(bot.id, { modelSelection: { instanceId: provider.instanceId, model: selectedModel } });
+  broadcast({ kind: "bot", bot: store.bot(bot.id) });
+  return `Model switched to: ${selectedModel}\nProvider: ${provider.displayName ?? provider.instanceId}`;
+}
+
 // ── turn dispatch (upstream ProviderCommandReactor, miniature) ──────────
 async function startTurn(botId: string, text: string, opts?: { commsDepth?: number }) {
   const bot = store.bot(botId);
@@ -952,6 +1031,16 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const text = String(body.text ?? "").trim();
       if (!text) return json(res, 400, { error: "text required" });
+      const modelReply = await handleModelCommand(store.bot(m[1]), text);
+      if (modelReply !== null) {
+        const bot = store.bot(m[1]);
+        if (!bot) return json(res, 404, { error: "no such bot" });
+        const userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text });
+        const botMessage = store.appendMessage(bot.threadId, { role: "bot", kind: "text", text: modelReply });
+        broadcast({ kind: "message", threadId: bot.threadId, message: userMessage });
+        broadcast({ kind: "message", threadId: bot.threadId, message: botMessage });
+        return json(res, 200, { ok: true, command: "model" });
+      }
       await startTurn(m[1], text);
       return json(res, 202, { ok: true });
     }

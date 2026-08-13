@@ -53,7 +53,9 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
         title={active ? `${active.displayName} · ${modelLabel(active, selection.model)}` : selection.model}
       >
         {active && <ProviderMark driverKind={active.driverKind} size={14} />}
-        <span className="max-w-[160px] truncate">{modelLabel(active, selection.model)}</span>
+        <span className="max-w-[190px] truncate">
+          {active ? `${active.displayName} · ${modelLabel(active, selection.model)}` : modelLabel(active, selection.model)}
+        </span>
         <ChevronDown size={14} className="text-ink-secondary" />
       </button>
 

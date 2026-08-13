@@ -135,9 +135,12 @@ export function Composer({ bot }: { bot: Bot }) {
   const [slashSkills, setSlashSkills] = useState<SlashSkill[] | null>(null);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
-  const slashQ = slafyDriver ? slashQuery(text) : null;
+  // `/model` belongs to harness, so it works for every provider. Skill
+  // commands remain engine-backed and only load for local engine bots.
+  const slashQ = slashQuery(text);
+  const engineSlashQ = slafyDriver ? slashQ : null;
   useEffect(() => {
-    if (slashQ === null || slashSkills !== null) return;
+    if (engineSlashQ === null || slashSkills !== null) return;
     let alive = true;
     authFetch("/api/engine/skills")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
@@ -146,11 +149,13 @@ export function Composer({ bot }: { bot: Bot }) {
     return () => {
       alive = false;
     };
-  }, [slashQ, slashSkills]);
+  }, [engineSlashQ, slashSkills]);
   const slashCandidates = useMemo(() => {
-    if (slashQ === null || slashDismissed || !slashSkills) return [];
-    return slashSkills.filter((s) => !slashQ || s.name.toLowerCase().includes(slashQ)).slice(0, 6);
-  }, [slashQ, slashDismissed, slashSkills]);
+    if (slashQ === null || slashDismissed) return [];
+    const modelCommand: SlashSkill = { name: "model", command: "/model", description: "Switch provider and model" };
+    const commands = [modelCommand, ...(slafyDriver && slashSkills ? slashSkills : [])];
+    return commands.filter((s) => !slashQ || s.name.toLowerCase().includes(slashQ)).slice(0, 6);
+  }, [slashQ, slashDismissed, slashSkills, slafyDriver]);
   const slashOpen = slashCandidates.length > 0;
   useEffect(() => setSlashHighlight(0), [slashQ]);
 
