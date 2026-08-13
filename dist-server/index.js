@@ -150,9 +150,9 @@ async function defaultSelection(described) {
         enabled.find((d) => d.driverKind === "claudeAgent") ??
         enabled[0] ??
         fleet[0];
-    return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
+    return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "sonnet" };
 }
-let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
+let bootSelection = { instanceId: "claude", model: "sonnet" };
 const store = new Store(() => bootSelection);
 const bootFleet = await registry.describe();
 bootSelection = await defaultSelection(bootFleet);

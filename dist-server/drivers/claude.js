@@ -25,12 +25,13 @@ import { appendNative } from "./native.js";
 const DRIVER_KIND = "claudeAgent";
 // model catalog ported from upstream packages/contracts/src/model.ts
 const MODELS = {
-    default: "claude-sonnet-5",
+    default: "sonnet",
     options: [
-        { id: "claude-fable-5", label: "Claude Fable 5" },
-        { id: "claude-opus-5", label: "Claude Opus 5" },
-        { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-        { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+        { id: "sonnet", label: "Claude Sonnet (latest)" },
+        { id: "opus", label: "Claude Opus (latest)" },
+        { id: "haiku", label: "Claude Haiku (latest)" },
+        { id: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
+        { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
     ],
 };
 // proxy entry files live next to this one as .ts in dev (node type

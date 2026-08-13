@@ -18,11 +18,12 @@ import { appendNative } from "./native.js";
 const DRIVER_KIND = "codex";
 // catalog ported from upstream packages/contracts/src/model.ts
 const MODELS = {
-    default: "gpt-5.6-sol",
+    default: "gpt-5.1-codex-max",
     options: [
-        { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-        { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
-        { id: "gpt-5.4", label: "GPT-5.4" },
+        { id: "gpt-5.1-codex-max", label: "GPT-5.1 Codex Max" },
+        { id: "gpt-5.1-codex", label: "GPT-5.1 Codex" },
+        { id: "gpt-5.1-codex-mini", label: "GPT-5.1 Codex Mini" },
+        { id: "gpt-5", label: "GPT-5" },
     ],
 };
 function decodeConfig(raw) {
