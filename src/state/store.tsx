@@ -92,6 +92,15 @@ export interface InstanceInfo {
   models: { default: string; options: Array<{ id: string; label: string }> };
 }
 
+// multibot: F9-FE — grupa silnika (engine `groups.py`): {id, name, bot_ids}.
+// Obiekt siedzi w stanie, bo GroupPanel potrzebuje nazwy i składu, a listę grup
+// trzyma Sidebar lokalnie (wzorzec engineOffline) — store zna tylko otwartą.
+export interface EngineGroup {
+  id: string;
+  name: string;
+  bot_ids: string[];
+}
+
 interface AppState {
   bots: Bot[];
   instances: InstanceInfo[];
@@ -106,6 +115,8 @@ interface AppState {
   // multibot: F8 — panele pamięci i skilli silnika slafy, ten sam prawy slot
   memoryOpen: boolean;
   skillsOpen: boolean;
+  // multibot: F9-FE — otwarty pokój grupowy (prawy slot); null = zamknięty
+  groupOpen: EngineGroup | null;
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
   /** latest live frame of a bot's computer, per botId */
@@ -154,6 +165,8 @@ type Action =
   // multibot: F8 — otwarcie/zamknięcie paneli pamięci i skilli
   | { type: "toggleMemory"; open?: boolean }
   | { type: "toggleSkills"; open?: boolean }
+  // multibot: F9-FE — otwarcie pokoju grupowego (group) / zamknięcie (null)
+  | { type: "toggleGroup"; group: EngineGroup | null }
   | {
       type: "updateBot";
       botId: string;
@@ -338,6 +351,7 @@ function reducer(state: AppState, action: Action): AppState {
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
+        groupOpen: open ? null : state.groupOpen,
       };
     }
     case "togglePlugins":
@@ -352,6 +366,7 @@ function reducer(state: AppState, action: Action): AppState {
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
+        groupOpen: open ? null : state.groupOpen,
       };
     }
     case "toggleAppSettings": {
@@ -365,6 +380,7 @@ function reducer(state: AppState, action: Action): AppState {
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
+        groupOpen: open ? null : state.groupOpen,
       };
     }
     // multibot: F6 — panel rutyn wypycha pozostałych lokatorów prawego slotu
@@ -378,6 +394,7 @@ function reducer(state: AppState, action: Action): AppState {
         appSettingsOpen: open ? false : state.appSettingsOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
+        groupOpen: open ? null : state.groupOpen,
       };
     }
     // multibot: F8 — panele pamięci i skilli, ta sama zasada wzajemnego wykluczania
@@ -391,6 +408,7 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
+        groupOpen: open ? null : state.groupOpen,
       };
     }
     case "toggleSkills": {
@@ -403,6 +421,21 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
+        groupOpen: open ? null : state.groupOpen,
+      };
+    }
+    // multibot: F9-FE — pokój grupowy w prawym slocie, ta sama zasada wykluczania
+    case "toggleGroup": {
+      const open = action.group !== null;
+      return {
+        ...state,
+        groupOpen: action.group,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
       };
     }
     case "updateBot": {
@@ -436,6 +469,7 @@ const initialState: AppState = {
   routinesOpen: false,
   memoryOpen: false,
   skillsOpen: false,
+  groupOpen: null,
   streaming: {},
   screens: {},
   provisioning: {},

@@ -1,6 +1,6 @@
-import { Brain, ChevronLeft, Wand2, X } from "lucide-react";
+import { Brain, ChevronLeft, MessagesSquare, Wand2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useStore, type Bot } from "@/state/store";
+import { useStore, formatTime, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
   PICKABLE_STATES,
@@ -96,6 +96,98 @@ function EngineUsage({ bot }: { bot: Bot }) {
           {stat(fmt(usage.prompt_tokens), "Tokens in")}
           {stat(fmt(usage.completion_tokens), "Tokens out")}
           {stat(fmt(usage.turns), "Turns")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// multibot: F9-FE — podgląd wątków inter-bot (read-only), karta jak EngineUsage.
+// Jeden GET przy otwarciu panelu (mount; karta keyowana bot.id), zero pollingu:
+//   GET /api/engine/bots/mb-<threadId>/interbot → [{id, bots: [a, b],
+//     messages: [{from, content, ts}]}] (engine/server/interbot.py — jeden
+//     wątek na PARĘ botów, A→B i B→A w tej samej rozmowie).
+// 404 = bot silnika jeszcze nie istnieje = zero wątków, nie błąd; błąd sieci /
+// 5xx = "Engine offline" konwencją EngineUsage. Trasy zapisu nie ma — podgląd.
+interface InterbotThread {
+  id: string;
+  bots: string[];
+  messages: Array<{ from: string; content: string; ts: string }>;
+}
+
+function InterbotCard({ bot }: { bot: Bot }) {
+  const { state } = useStore();
+  const engineBotId = `mb-${bot.threadId}`;
+  const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
+  const [threads, setThreads] = useState<InterbotThread[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/engine/bots/${engineBotId}/interbot`)
+      .then((res) => {
+        if (res.status === 404) return []; // brak bota = brak wątków
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<InterbotThread[]>;
+      })
+      .then((ts) => {
+        setThreads(ts);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("offline"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // `mb-<threadId>` jest odwracalne (server/drivers/slafy.ts), więc nazwa bota
+  // apki wychodzi z samego id; id spoza floty zostaje jak jest.
+  const nameOf = (id: string) => {
+    const threadId = id.startsWith("mb-") ? id.slice(3) : id;
+    return state.bots.find((b) => b.threadId === threadId)?.name ?? id;
+  };
+
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
+        <MessagesSquare size={16} className="text-ink-secondary" />
+        Bot-to-bot
+      </div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        Conversations this bot had with other bots — read-only
+      </div>
+      {status === "offline" ? (
+        <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
+          <span className="size-1.5 rounded-full bg-raised-hover" />
+          Engine offline
+        </div>
+      ) : status === "ready" && threads.length === 0 ? (
+        <div className="mt-3 text-[13px] text-ink-secondary">No bot-to-bot conversations yet</div>
+      ) : status === "ready" ? (
+        <div className="mt-3 flex flex-col gap-2">
+          {threads.map((t) => {
+            const last = t.messages[t.messages.length - 1];
+            const ts = last ? Date.parse(last.ts) : NaN;
+            return (
+              <div key={t.id} className="rounded-lg bg-inset p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  {/* UI-SPEC §5: "● BotA ✕ ● BotB" — nazwy zamiast kropek */}
+                  <span className="min-w-0 truncate text-[13px] font-medium text-ink">
+                    {t.bots.map(nameOf).join(" ✕ ")}
+                  </span>
+                  {Number.isFinite(ts) && (
+                    <span className="shrink-0 text-[11px] text-ink-secondary">
+                      {formatTime(ts)}
+                    </span>
+                  )}
+                </div>
+                {last && (
+                  <div className="mt-1 truncate text-[12px] text-ink-secondary" title={last.content}>
+                    {nameOf(last.from)}: {last.content}
+                  </div>
+                )}
+                <div className="mt-0.5 text-[11px] text-ink-secondary">
+                  {t.messages.length} message{t.messages.length === 1 ? "" : "s"}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -242,6 +334,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               <EngineProviderCard key={bot.id} bot={bot} />
               <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
               <EngineUsage key={`f10-${bot.id}`} bot={bot} />
+              {/* multibot: F9-FE — podgląd wątków inter-bot, ta sama zasada klucza */}
+              <InterbotCard key={`f9-${bot.id}`} bot={bot} />
               {/* multibot: F8 — wejścia do paneli pamięci i skilli; panele żyją
                   w prawym slocie (Shell), więc karta tylko przełącza flagę. */}
               <div className="rounded-xl bg-card p-4">

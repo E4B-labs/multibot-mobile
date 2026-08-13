@@ -14,6 +14,8 @@ import { RoutinesPanel } from "@/components/RoutinesPanel";
 // multibot: F8 — panele pamięci i skilli silnika slafy
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { SkillsPanel } from "@/components/SkillsPanel";
+// multibot: F9-FE — pokój grupowy silnika slafy
+import { GroupPanel } from "@/components/GroupPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
@@ -56,6 +58,9 @@ function Shell() {
       {/* multibot: F8 — pamięć i skille, ten sam gate i ta sama zasada klucza */}
       {state.memoryOpen && slafyBot && <MemoryPanel key={bot.id} bot={bot} />}
       {state.skillsOpen && slafyBot && <SkillsPanel key={bot.id} bot={bot} />}
+      {/* multibot: F9-FE — pokój grupowy; otwierany wyłącznie z sekcji Groups
+          (widocznej tylko przy botach slafy), klucz per grupę = świeży mount */}
+      {state.groupOpen && <GroupPanel key={state.groupOpen.id} group={state.groupOpen} />}
       {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
       </div>

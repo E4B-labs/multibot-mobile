@@ -6,6 +6,7 @@ import {
   Copy,
   EyeOff,
   FolderPlus,
+  Loader2,
   Pencil,
   Pin,
   PinOff,
@@ -14,8 +15,9 @@ import {
   Settings,
   Puzzle,
   Trash2,
+  Users,
 } from "lucide-react";
-import { useStore, formatTime, type Bot } from "@/state/store";
+import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
@@ -205,6 +207,170 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
   );
 }
 
+// multibot: F9-FE — grupy silnika w sidebarze: grupa = wpis na liście, klik
+// otwiera pokój w prawym slocie (store `toggleGroup`). Widoczne wyłącznie, gdy
+// GET /api/engine/groups przeszedł (boty slafy istnieją, silnik żyje) — offline
+// pokrywa kropka "Engine offline" w stopce, więc sekcja po prostu znika.
+function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
+  const { state, dispatch } = useStore();
+  // null = nie załadowano (silnik offline / jeszcze nie sprawdzono)
+  const [groups, setGroups] = useState<EngineGroup[] | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Jeden GET przy mount (wzorzec engineStatus) — zero pollingu; POST create
+  // dopisuje do listy lokalnie.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/engine/groups")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((gs: EngineGroup[]) => alive && setGroups(gs))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (groups === null) return null;
+
+  const toggle = (engineBotId: string) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(engineBotId)) next.delete(engineBotId);
+      else next.add(engineBotId);
+      return next;
+    });
+
+  const create = async () => {
+    if (busy || !name.trim() || picked.size === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Boty silnika wstają leniwie (slafy.ts `ensureBot`) — bez tego POST grupy
+      // odbiłby się 422 "unknown bot". Idempotentny POST jak w RoutinesPanel
+      // (409 = już jest = sukces).
+      for (const bot of slafyBots) {
+        const engineBotId = `mb-${bot.threadId}`;
+        if (!picked.has(engineBotId)) continue;
+        const res = await fetch("/api/engine/bots", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: engineBotId, name: bot.name }),
+        });
+        if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
+      }
+      // Kolejność `bot_ids` = kolejność floty; pierwszy bot to owner pokoju
+      // (engine groups.py: fallback routingu rundy).
+      const bot_ids = slafyBots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
+      const res = await fetch("/api/engine/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), bot_ids }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = typeof body.detail === "string" ? body.detail : undefined;
+        throw new Error(detail ?? body.error ?? `${res.status} ${res.statusText}`);
+      }
+      const group = body as EngineGroup;
+      setGroups((gs) => [...(gs ?? []), group]);
+      setFormOpen(false);
+      setName("");
+      setPicked(new Set());
+      dispatch({ type: "toggleGroup", group });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-hairline/40 px-2 pb-1 pt-2">
+      <div className="flex items-center justify-between px-3 pb-1">
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
+          Groups
+        </span>
+        <button
+          onClick={() => setFormOpen((v) => !v)}
+          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+          title="New group"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+
+      {groups.map((g) => (
+        <button
+          key={g.id}
+          onClick={() => dispatch({ type: "toggleGroup", group: g })}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left",
+            state.groupOpen?.id === g.id ? "bg-raised" : "hover:bg-raised/50",
+          )}
+        >
+          <Users size={16} className="shrink-0 text-ink-secondary" />
+          <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{g.name || g.id}</span>
+          <span className="shrink-0 text-[12px] text-ink-secondary">{g.bot_ids.length}</span>
+        </button>
+      ))}
+
+      {formOpen && (
+        <div className="mx-1 mt-1 flex flex-col gap-2 rounded-xl bg-card p-3">
+          <input
+            className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
+            placeholder="Group name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+            {slafyBots.map((b) => {
+              const engineBotId = `mb-${b.threadId}`;
+              return (
+                <label
+                  key={b.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-[13px] text-ink hover:bg-raised/50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={picked.has(engineBotId)}
+                    onChange={() => toggle(engineBotId)}
+                    className="accent-accent"
+                  />
+                  <span className="truncate">{b.name}</span>
+                </label>
+              );
+            })}
+          </div>
+          {error && <div className="text-[12px] text-danger">{error}</div>}
+          <div className="flex gap-2">
+            <button
+              onClick={() => void create()}
+              disabled={busy || !name.trim() || picked.size === 0}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy && <Loader2 size={12} className="animate-spin" />}
+              Create
+            </button>
+            <button
+              onClick={() => {
+                setFormOpen(false);
+                setError(null);
+              }}
+              className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const { state, dispatch } = useStore();
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -236,6 +402,14 @@ export function Sidebar() {
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
+
+  // multibot: F9-FE — kandydaci do grup: cała flota slafy (także ukryci — skład
+  // pokoju to nie kosmetyka sidebaru). Kolejność stabilna z listy botów.
+  const slafyBots = state.bots.filter(
+    (b) =>
+      state.instances.find((i) => i.instanceId === b.modelSelection.instanceId)?.driverKind ===
+      "slafy",
+  );
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-hairline/40 bg-panel">
@@ -282,6 +456,9 @@ export function Sidebar() {
           ))}
         </div>
       </div>
+
+      {/* multibot: F9-FE — grupy silnika, tylko gdy flota ma boty slafy */}
+      {slafyBots.length > 0 && <GroupsSection slafyBots={slafyBots} />}
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
