@@ -25,10 +25,11 @@ function profileMeta(source: string, id = ""): ExistingEngineProfile | null {
     /* SOUL/config-only profiles are valid; name falls back to directory. */
   }
   const profileId = id || String(meta.id ?? dir.split(/[\\/]/).pop() ?? "profile");
+  const fallbackName = profileId.startsWith(".") ? "My bot" : profileId;
   return {
     source: dir,
     id: profileId,
-    name: typeof meta.name === "string" && meta.name.trim() ? meta.name.trim() : profileId,
+    name: typeof meta.name === "string" && meta.name.trim() ? meta.name.trim() : fallbackName,
     ...(typeof meta.title === "string" && meta.title ? { title: meta.title } : {}),
     ...(typeof meta.description === "string" && meta.description ? { description: meta.description } : {}),
   };
