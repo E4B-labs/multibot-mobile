@@ -4,7 +4,7 @@
 // Renders ONLY for bots on the slafy driver (same instances check as
 // SettingsPanel). Engine bot id `mb-<threadId>` mirrors decodeConfig's default
 // botPrefix in server/drivers/slafy.ts — a custom prefix needs a change here
-// too (same caveat as EngineProvider.tsx).
+// too (same caveat as local runtime controls).
 // Button styling copies the ChatMarkdown code-block copy button; visibility is
 // gated on bubble hover via the `group/msg` class added in ChatView's Bubble.
 import { useEffect, useRef, useState } from "react";
@@ -115,7 +115,7 @@ export function SpeakButton({ text }: { text: string }) {
           : phase === "loading"
             ? "Loading audio…"
             : phase === "error"
-              ? "TTS unavailable — is the engine running?"
+              ? "TTS unavailable — is the local service running?"
               : "Read aloud"
       }
     >

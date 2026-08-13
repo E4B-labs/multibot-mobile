@@ -28,6 +28,19 @@ describe("ProviderRegistry", () => {
     expect(registry.get("a")).not.toBeNull();
   });
 
+  it("keeps a disabled instance unavailable without creating it", async () => {
+    const fake = makeFakeDriver();
+    const registry = new ProviderRegistry([fake.driver]);
+    await registry.load({ a: { driver: "fake", enabled: false } });
+
+    expect(registry.get("a")).toBeNull();
+    expect(fake.created.size).toBe(0);
+    expect((await registry.describe())[0].snapshot).toMatchObject({
+      state: "unavailable",
+      reason: "disabled in settings",
+    });
+  });
+
   it("keeps an unknown driver as an unavailable shadow instead of failing", async () => {
     const registry = new ProviderRegistry([makeFakeDriver().driver]);
     await registry.load({ mystery: { driver: "from-the-future", displayName: "Tomorrow" } });

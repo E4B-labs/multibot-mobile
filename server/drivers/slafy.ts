@@ -47,23 +47,34 @@ export const engineBotIdFor = (threadId: string, prefix = ENGINE_BOT_PREFIX) => 
 export const threadIdOfEngineBot = (botId: string, prefix = ENGINE_BOT_PREFIX) =>
   botId.startsWith(prefix) ? botId.slice(prefix.length) : null;
 
-// D5: katalog budowany per-instancja w `create()`, nie współdzielona stała.
-// Jedna pozycja i to nie przypadek: model wybiera się w silniku, per bot, przez
-// BYOK (`PUT /api/bots/<id>/provider`) — do gatewaya Hermesa leci zawsze
-// `model: "hermes-agent"` (engine/server/gateway.py). Silnik nie ma endpointu
-// listującego modele, a zmyślanie listy tutaj kłamałoby o tym, co robi picker.
-function modelCatalog(): ModelCatalog {
-  return { default: "hermes-agent", options: [{ id: "hermes-agent", label: "Hermes Agent (BYOK)" }] };
+// multibot (G1): one configured model per named instance. The instance name is
+// the provider label; model id stays exact so local OpenAI-compatible servers
+// can expose arbitrary ids without a catalog endpoint.
+function modelCatalog(model = "hermes-agent"): ModelCatalog {
+  return { default: model, options: [{ id: model, label: model === "hermes-agent" ? "Custom model" : model }] };
 }
 
 export interface SlafyConfig {
   /** Prefiks id bota w silniku; id = `<prefix><threadId>` (regex silnika: a-z0-9_-). */
   botPrefix: string;
+  /** multibot (G1): OpenAI-compatible endpoint selected by this instance. */
+  model?: { default: string; baseUrl?: string };
 }
 
 function decodeConfig(raw: unknown): SlafyConfig {
   const o = (raw ?? {}) as Record<string, unknown>;
-  return { botPrefix: typeof o.botPrefix === "string" ? o.botPrefix : ENGINE_BOT_PREFIX };
+  const model = o.model && typeof o.model === "object" ? (o.model as Record<string, unknown>) : null;
+  return {
+    botPrefix: typeof o.botPrefix === "string" ? o.botPrefix : ENGINE_BOT_PREFIX,
+    ...(model && typeof model.default === "string" && model.default.trim()
+      ? {
+          model: {
+            default: model.default.trim(),
+            ...(typeof model.baseUrl === "string" && model.baseUrl.trim() ? { baseUrl: model.baseUrl.trim() } : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 /** Jedna ramka SSE: `event:` (opcjonalnie) + `data:` z JSON-em. */
@@ -103,7 +114,7 @@ async function* sseFrames(body: ReadableStream<Uint8Array>, signal: AbortSignal)
 
 export const SlafyDriver: ProviderDriver<SlafyConfig> = {
   driverKind: DRIVER_KIND,
-  metadata: { displayName: "Slafy Engine", supportsMultipleInstances: true },
+  metadata: { displayName: "Custom model", supportsMultipleInstances: true },
   models: modelCatalog(),
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
@@ -134,18 +145,35 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
     /** Bot silnika zakładany leniwie, przy pierwszym użyciu wątku. */
     const ensureBot = async (baseUrl: string, threadId: string) => {
       const botId = engineBotId(threadId);
-      if (ensuredBots.has(botId)) return botId;
-      const res = await fetch(`${baseUrl}/api/bots`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: botId, name: botId }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      // 409 = bot już jest (restart harnessu, ten sam wątek) — to sukces, nie błąd.
-      if (!res.ok && res.status !== 409) {
-        throw new Error(`engine POST /api/bots → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (!ensuredBots.has(botId)) {
+        const res = await fetch(`${baseUrl}/api/bots`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: botId, name: botId }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        // 409 = bot już jest (restart harnessu, ten sam wątek) — to sukces, nie błąd.
+        if (!res.ok && res.status !== 409) {
+          throw new Error(`engine POST /api/bots → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+        }
+        ensuredBots.add(botId);
       }
-      ensuredBots.add(botId);
+      // multibot (G1): push every turn. Two custom instances can target the
+      // same engine bot, so either one may have changed its provider last.
+      if (config.model) {
+        const configured = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/provider`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            provider: "custom",
+            api_key: input.environment.OPENAI_API_KEY ?? "",
+            base_url: config.model.baseUrl ?? null,
+            model: config.model.default,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!configured.ok) throw new Error(`engine provider configuration -> HTTP ${configured.status}`);
+      }
       return botId;
     };
 
@@ -546,7 +574,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       displayName: input.displayName,
       enabled: input.enabled,
       // D5: katalog per instancja, `registry.describe()` nietknięte.
-      models: modelCatalog(),
+      models: modelCatalog(config.model?.default),
       snapshot,
       adapter: {
         provider: DRIVER_KIND,

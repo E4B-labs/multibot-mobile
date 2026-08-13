@@ -10,7 +10,16 @@ import { fileURLToPath } from "node:url";
 
 import * as box from "./box.ts";
 import * as composio from "./composio.ts";
-import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE_DIR } from "./config.ts";
+import {
+  BUILT_IN_CLI_IDS,
+  DEFAULT_INSTANCE_CONFIGS,
+  ensureDirs,
+  instanceConfigs,
+  loadConfig,
+  saveConfig,
+  EVENTS_DIR,
+  NATIVE_DIR,
+} from "./config.ts";
 import type { RuntimeEvent } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
@@ -115,15 +124,25 @@ function askBotAndWait(targetBotId: string, message: string, depth: number): Pro
 }
 
 // default selection for new bots: first available instance, claude preferred
-async function defaultSelection() {
-  const described = await registry.describe();
-  const available = described.filter((d) => d.snapshot.state === "available");
-  const pick = available.find((d) => d.driverKind === "claudeAgent") ?? available[0] ?? described[0];
+async function defaultSelection(described?: Awaited<ReturnType<ProviderRegistry["describe"]>>) {
+  const fleet = described ?? (await registry.describe());
+  const enabled = fleet.filter((d) => d.enabled !== false);
+  const available = enabled.filter((d) => d.snapshot.state === "available");
+  const pick =
+    available.find((d) => d.driverKind === "claudeAgent") ??
+    available[0] ??
+    enabled.find((d) => d.driverKind === "claudeAgent") ??
+    enabled[0] ??
+    fleet[0];
   return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
 }
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
-bootSelection = await defaultSelection();
+const bootFleet = await registry.describe();
+bootSelection = await defaultSelection(bootFleet);
+// multibot (G1): legacy bots selected the removed `slafy` default instance.
+// Repair before the first API response, preferring a named custom model.
+store.migrateOrphanedSelections(bootFleet);
 store.seedIfEmpty();
 
 // ── SSE fan-out to clients ─────────────────────────────────────────────
@@ -462,6 +481,60 @@ async function reloadProviders() {
   await registry.disposeAll();
   await registry.load(instanceConfigs(cfg));
   bus.attach(registry.instances());
+  if (store.migrateOrphanedSelections(await registry.describe())) {
+    for (const bot of store.bots) broadcast({ kind: "bot", bot });
+  }
+}
+
+// multibot (G1): custom-model config stays write-only for API keys. Helpers
+// return only display metadata consumed by app settings and model picker.
+const RESERVED_INSTANCE_IDS = new Set([
+  ...Object.keys(DEFAULT_INSTANCE_CONFIGS),
+  ...BUILT_IN_DRIVERS.map((driver) => driver.driverKind),
+  "slafy",
+  "__proto__",
+  "prototype",
+  "constructor",
+]);
+
+function customModelsStatus() {
+  return Object.entries(cfg.instances ?? {}).flatMap(([id, entry]) =>
+    entry.driver === "slafy" && !RESERVED_INSTANCE_IDS.has(id) && entry.model?.default
+      ? [
+          {
+            id,
+            displayName: entry.displayName ?? id,
+            baseUrl: entry.model.baseUrl ?? "",
+            model: entry.model.default,
+            hasKey: Boolean(entry.environment?.OPENAI_API_KEY),
+          },
+        ]
+      : [],
+  );
+}
+
+function validBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+async function cliToolsStatus() {
+  const described = await registry.describe();
+  return BUILT_IN_CLI_IDS.map((id) => {
+    const instance = described.find((item) => item.instanceId === id);
+    return {
+      id,
+      driverKind: DEFAULT_INSTANCE_CONFIGS[id].driver,
+      displayName: instance?.displayName ?? id,
+      enabled: cfg.instances?.[id]?.enabled !== false,
+      detected: instance?.snapshot.state === "available",
+      reason: instance?.snapshot.reason,
+    };
+  });
 }
 
 // ── HTTP plumbing ─────────────────────────────────────────────────────
@@ -672,6 +745,85 @@ const server = createServer(async (req, res) => {
     // ── provider instances (model picker) ──
     if (method === "GET" && path === "/api/instances") {
       return json(res, 200, { instances: await registry.describe() });
+    }
+
+    // ── multibot (G1): named custom models + persistent CLI allow switches ──
+    if (method === "GET" && path === "/api/models/custom") {
+      return json(res, 200, { models: customModelsStatus() });
+    }
+    m = path.match(/^\/api\/models\/custom\/([a-z0-9-]+)$/);
+    if (m && method === "PUT") {
+      const id = m[1];
+      const body = await readBody(req);
+      const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+      const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim().replace(/\/$/, "") : "";
+      const model = typeof body.model === "string" ? body.model.trim() : "";
+      if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(id)) return json(res, 400, { error: "invalid model id" });
+      if (RESERVED_INSTANCE_IDS.has(id)) return json(res, 409, { error: "reserved model id" });
+      if (!displayName || displayName.length > 80) return json(res, 400, { error: "displayName required (max 80)" });
+      if (!validBaseUrl(baseUrl)) return json(res, 400, { error: "baseUrl must be an http(s) URL without credentials" });
+      if (!model || model.length > 200) return json(res, 400, { error: "model required (max 200)" });
+      if (body.apiKey !== undefined && typeof body.apiKey !== "string") {
+        return json(res, 400, { error: "apiKey must be a string" });
+      }
+      const existing = cfg.instances?.[id];
+      if (existing && existing.driver !== "slafy") return json(res, 409, { error: "instance id already used" });
+      const apiKey = body.apiKey === undefined ? existing?.environment?.OPENAI_API_KEY : body.apiKey.trim();
+      const environment = {
+        ...(existing?.environment ?? {}),
+        ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
+      };
+      if (!apiKey) delete environment.OPENAI_API_KEY;
+      const instances = {
+        ...(cfg.instances ?? {}),
+        [id]: {
+          driver: "slafy",
+          displayName,
+          environment,
+          model: { default: model, baseUrl },
+        },
+      };
+      saveConfig({ instances });
+      Object.assign(cfg, loadConfig());
+      await reloadProviders();
+      const saved = customModelsStatus().find((item) => item.id === id)!;
+      broadcast({ kind: "config", ...configStatus() });
+      return json(res, 200, { model: saved });
+    }
+    if (m && method === "DELETE") {
+      const existing = cfg.instances?.[m[1]];
+      if (!existing || existing.driver !== "slafy" || RESERVED_INSTANCE_IDS.has(m[1])) {
+        return json(res, 404, { error: "no such custom model" });
+      }
+      const instances = { ...(cfg.instances ?? {}) };
+      delete instances[m[1]];
+      saveConfig({ instances });
+      Object.assign(cfg, loadConfig());
+      await reloadProviders();
+      broadcast({ kind: "config", ...configStatus() });
+      return json(res, 200, { ok: true });
+    }
+    if (method === "GET" && path === "/api/cli-tools") {
+      return json(res, 200, { tools: await cliToolsStatus() });
+    }
+    m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)$/);
+    if (m && method === "PUT") {
+      if (!(BUILT_IN_CLI_IDS as readonly string[]).includes(m[1])) {
+        return json(res, 404, { error: "no such command-line tool" });
+      }
+      const body = await readBody(req);
+      if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled must be boolean" });
+      const id = m[1] as (typeof BUILT_IN_CLI_IDS)[number];
+      const instances = {
+        ...(cfg.instances ?? {}),
+        [id]: { ...DEFAULT_INSTANCE_CONFIGS[id], ...(cfg.instances?.[id] ?? {}), enabled: body.enabled },
+      };
+      saveConfig({ instances });
+      Object.assign(cfg, loadConfig());
+      await reloadProviders();
+      const tool = (await cliToolsStatus()).find((item) => item.id === id)!;
+      broadcast({ kind: "config", ...configStatus() });
+      return json(res, 200, { tool });
     }
 
     // ── app config (API keys — never echoed back, booleans only) ──

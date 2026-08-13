@@ -83,6 +83,42 @@ describe("Store", () => {
     expect(reloaded.bot(bot.id)?.resumeCursors).toEqual({ claude: "sess-abc", codex: "thread-xyz" });
   });
 
+  it("migrates orphaned selections to a custom model first", () => {
+    const store = new Store(selection);
+    const orphan = store.createBot();
+    store.patchBot(orphan.id, { modelSelection: { instanceId: "slafy", model: "hermes-agent" } });
+
+    expect(
+      store.migrateOrphanedSelections([
+        {
+          instanceId: "claude",
+          driverKind: "claudeAgent",
+          models: { default: "claude-sonnet-5" },
+          snapshot: { state: "available" },
+        },
+        {
+          instanceId: "local-qwen",
+          driverKind: "slafy",
+          models: { default: "qwen2.5" },
+          snapshot: { state: "unavailable" },
+        },
+      ]),
+    ).toBe(1);
+    expect(new Store(selection).bot(orphan.id)?.modelSelection).toEqual({
+      instanceId: "local-qwen",
+      model: "qwen2.5",
+    });
+  });
+
+  it("leaves an explicit empty selection when no provider exists", () => {
+    const store = new Store(selection);
+    const orphan = store.createBot();
+    store.patchBot(orphan.id, { modelSelection: { instanceId: "gone", model: "old" } });
+
+    expect(store.migrateOrphanedSelections([])).toBe(1);
+    expect(store.bot(orphan.id)?.modelSelection).toEqual({ instanceId: "", model: "" });
+  });
+
   it("seedIfEmpty creates exactly one starter bot, once", () => {
     const store = new Store(selection);
     store.seedIfEmpty();

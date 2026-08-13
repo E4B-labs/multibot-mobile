@@ -1,8 +1,7 @@
 // API smoke test: boots the real harness server (node server/index.ts)
 // against a throwaway home directory and exercises the HTTP surface the
-// app depends on. The config pins one deliberately-unknown driver so the
-// suite is deterministic with or without agent CLIs installed — and pins
-// the shadow-instance behavior end to end while it's at it.
+// app depends on. A deliberately-unknown overlay pins shadow-instance
+// behavior without replacing the built-in fleet.
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,7 +29,6 @@ const api = async (method: string, path: string, body?: unknown): Promise<{ stat
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "omb-api-test-"));
-  // a fleet of exactly one unknown driver: no CLI probes, no network
   mkdirSync(join(home, ".openmausbot"), { recursive: true });
   writeFileSync(
     join(home, ".openmausbot", "config.json"),
@@ -92,14 +90,77 @@ describe("harness HTTP API", () => {
   it("describes the configured fleet, shadows included", async () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);
-    expect(body.instances).toHaveLength(1);
-    expect(body.instances[0]).toMatchObject({
+    expect(body.instances.map((instance: { instanceId: string }) => instance.instanceId)).toEqual(
+      expect.arrayContaining(["grok", "gemini", "claude", "codex", "computer", "ghost"]),
+    );
+    expect(body.instances.some((instance: { instanceId: string }) => instance.instanceId === "slafy")).toBe(false);
+    const ghost = body.instances.find((instance: { instanceId: string }) => instance.instanceId === "ghost");
+    expect(ghost).toMatchObject({
       instanceId: "ghost",
       driverKind: "not-a-real-driver",
       displayName: "Ghost",
       snapshot: { state: "unavailable" },
     });
-    expect(body.instances[0].snapshot.reason).toContain("not-a-real-driver");
+    expect(ghost.snapshot.reason).toContain("not-a-real-driver");
+  });
+
+  it("manages custom models without echoing API keys", async () => {
+    const bad = await api("PUT", "/api/models/custom/claude", {
+      displayName: "Reserved",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "x",
+    });
+    expect(bad.status).toBe(409);
+
+    const saved = await api("PUT", "/api/models/custom/local-qwen", {
+      displayName: "Local Qwen",
+      baseUrl: "http://127.0.0.1:11434/v1/",
+      model: "qwen2.5",
+      apiKey: "test-secret-value",
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.model).toEqual({
+      id: "local-qwen",
+      displayName: "Local Qwen",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen2.5",
+      hasKey: true,
+    });
+    expect(JSON.stringify(saved.body)).not.toContain("test-secret-value");
+
+    const listed = await api("GET", "/api/models/custom");
+    expect(listed.body.models).toContainEqual(saved.body.model);
+    expect(JSON.stringify(listed.body)).not.toContain("test-secret-value");
+    const instances = await api("GET", "/api/instances");
+    expect(instances.body.instances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          instanceId: "local-qwen",
+          displayName: "Local Qwen",
+          models: expect.objectContaining({ default: "qwen2.5" }),
+        }),
+      ]),
+    );
+
+    expect((await api("DELETE", "/api/models/custom/local-qwen")).status).toBe(200);
+    expect((await api("GET", "/api/models/custom")).body.models).toEqual([]);
+  });
+
+  it("persists command-line tool allow switches", async () => {
+    const disabled = await api("PUT", "/api/cli-tools/codex", { enabled: false });
+    expect(disabled.status).toBe(200);
+    expect(disabled.body.tool).toMatchObject({ id: "codex", enabled: false, detected: false });
+    const listed = await api("GET", "/api/cli-tools");
+    expect(listed.body.tools.find((tool: { id: string }) => tool.id === "codex")).toMatchObject({
+      enabled: false,
+      reason: "disabled in settings",
+    });
+    const instance = (await api("GET", "/api/instances")).body.instances.find(
+      (item: { instanceId: string }) => item.instanceId === "codex",
+    );
+    expect(instance.snapshot).toMatchObject({ state: "unavailable", reason: "disabled in settings" });
+    expect((await api("PUT", "/api/cli-tools/codex", { enabled: true })).status).toBe(200);
+    expect((await api("PUT", "/api/cli-tools/unknown", { enabled: true })).status).toBe(404);
   });
 
   it("creates, patches, and deletes a bot", async () => {
@@ -132,12 +193,15 @@ describe("harness HTTP API", () => {
   it("rejects an empty message and explains an unavailable provider", async () => {
     const { body } = await api("GET", "/api/bots");
     const bot = body.bots[0];
+    await api("PATCH", `/api/bots/${bot.id}`, {
+      modelSelection: { instanceId: "ghost", model: "" },
+    });
 
     const empty = await api("POST", `/api/bots/${bot.id}/messages`, { text: "   " });
     expect(empty.status).toBe(400);
 
-    // the seeded bot's selection points at the ghost instance — sending a
-    // real message must fail loudly, not 202-and-hang
+    // A bot explicitly bound to the ghost instance must fail loudly, not
+    // 202-and-hang.
     const send = await api("POST", `/api/bots/${bot.id}/messages`, { text: "hello?" });
     expect(send.status).toBe(409);
     expect(send.body.error).toContain("unavailable");

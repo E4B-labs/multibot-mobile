@@ -9,7 +9,6 @@ import {
   MAUS_COLOR_NAMES,
 } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
-import { EngineProviderCard } from "./EngineProvider"; // multibot: BYOK silnika slafy
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
 
@@ -324,14 +323,11 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <ModelPicker bot={bot} />
           </div>
 
-          {/* multibot: karty silnika slafy — tylko dla botów jeżdżących na
-              driverze slafy; reszta floty widzi stockowy panel. Klucz per bot.id
-              wymusza remount + świeży GET przy przełączeniu bota (prefiks w
-              drugiej karcie, bo klucze rodzeństwa muszą być unikalne). */}
+          {/* multibot: service-only controls remain for bots routed through local
+              runtime; model credentials live in App Settings. */}
           {state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
             "slafy" && (
             <>
-              <EngineProviderCard key={bot.id} bot={bot} />
               <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
               <EngineUsage key={`f10-${bot.id}`} bot={bot} />
               {/* multibot: F9-FE — podgląd wątków inter-bot, ta sama zasada klucza */}

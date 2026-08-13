@@ -17,6 +17,15 @@ describe("SlafyDriver.decodeConfig", () => {
     expect(SlafyDriver.decodeConfig(undefined)).toEqual({ botPrefix: "mb-" });
     expect(SlafyDriver.decodeConfig({ botPrefix: "x-" }).botPrefix).toBe("x-");
   });
+
+  it("decodes a configured model and base URL", () => {
+    expect(
+      SlafyDriver.decodeConfig({ model: { default: "qwen2.5", baseUrl: "http://127.0.0.1:11434/v1" } }),
+    ).toEqual({
+      botPrefix: "mb-",
+      model: { default: "qwen2.5", baseUrl: "http://127.0.0.1:11434/v1" },
+    });
+  });
 });
 
 describe("SlafyDriver turns (fake engine)", () => {
@@ -97,6 +106,31 @@ describe("SlafyDriver turns (fake engine)", () => {
     expect(engine.createdBots).toEqual(["mb-t-one"]); // drugi raz już nie zakłada
     expect(engine.chats.map((c) => c.message)).toEqual(["pierwsza", "druga"]);
     expect(JSON.stringify(engine.chats)).not.toContain("stara tura");
+  });
+
+  it("pushes per-instance provider settings before a custom-model turn", async () => {
+    engine = await startFakeEngine();
+    process.env.ENGINE_URL = engine.url;
+    instance = await SlafyDriver.create({
+      instanceId: "local-qwen",
+      displayName: "Local Qwen",
+      environment: { OPENAI_API_KEY: "test-key" },
+      enabled: true,
+      config: SlafyDriver.decodeConfig({
+        model: { default: "qwen2.5", baseUrl: "http://127.0.0.1:11434/v1" },
+      }),
+    });
+    recorder = recordEvents(instance.adapter);
+
+    expect(instance.models).toEqual({ default: "qwen2.5", options: [{ id: "qwen2.5", label: "qwen2.5" }] });
+    await instance.adapter.sendTurn({ threadId: "t-custom", text: "czesc" });
+    await recorder.until((event) => event.type === "turn.completed");
+    expect(engine.provider).toEqual({
+      provider: "custom",
+      model: "qwen2.5",
+      base_url: "http://127.0.0.1:11434/v1",
+      has_key: true,
+    });
   });
 
   it("turns a mid-turn engine kill into a clean runtime.error", async () => {
@@ -274,7 +308,7 @@ describe("SlafyDriver turns (fake engine)", () => {
     await create();
     expect(instance.models).toEqual({
       default: "hermes-agent",
-      options: [{ id: "hermes-agent", label: "Hermes Agent (BYOK)" }],
+      options: [{ id: "hermes-agent", label: "Custom model" }],
     });
     // per instancja = nie ta sama referencja co katalog drivera (D5)
     expect(instance.models).not.toBe(SlafyDriver.models);

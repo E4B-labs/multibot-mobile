@@ -2,45 +2,10 @@ import { useEffect, useState } from "react";
 import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
-import { useStore } from "@/state/store";
-import { cn } from "@/lib/cn";
 
 // Three-step first-run onboarding: who you are (email), what's installed
 // (live engine checks from the harness), what the app may use (TCC).
 // Every check is skippable — onboarding must never brick the app.
-
-// multibot: F11 — czwarta ścieżka w kroku "Your engines": bot na silniku slafy
-// z własnym kluczem API, zero CLI. Kolejność jest twarda: NAJPIERW bot harnessu
-// (POST /api/bots → PATCH modelSelection na instancję "slafy"), bo id bota w
-// silniku wywodzi się z jego threadId (`mb-<threadId>`, server/drivers/slafy.ts).
-// Dopiero POTEM klucz: engine `set_provider` robi `_require(bot_id)`
-// (engine/server/app.py), więc bota silnika zakładamy jawnie jak ensureBot
-// w slafy.ts (POST /api/engine/bots, 409 = już jest = sukces) i strzelamy
-// POST /api/engine/provider/mb-<threadId>. Silnik offline (502/503/sieć) NIE
-// blokuje flow — bot harnessu już stoi, klucz można dodać później w Settings.
-// Wersja minimalna EngineProviderCard: bez base URL, więc i bez "custom".
-const BYOK_PROVIDERS = ["openrouter", "anthropic", "openai"] as const;
-const BYOK_LABELS: Record<(typeof BYOK_PROVIDERS)[number], string> = {
-  openrouter: "OpenRouter",
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-};
-
-// Konwencja błędów jak lokalne api() w AppSettingsPanel: silnik oddaje `{detail}`
-// (FastAPI), przelotka `{error}`; `status` odróżnia offline od błędu usera.
-async function jfetch(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const detail = typeof body.detail === "string" ? body.detail : undefined;
-    const err = new Error(detail ?? body.error ?? `${res.status} ${res.statusText}`) as Error & {
-      status?: number;
-    };
-    err.status = res.status;
-    throw err;
-  }
-  return body;
-}
 
 type InstanceRow = {
   instanceId: string;
@@ -86,66 +51,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [instances, setInstances] = useState<InstanceRow[] | null>(null);
   const [perms, setPerms] = useState<{ mic: string } | null>(null);
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
-
-  // multibot: F11 — BYOK (nagłówek nad BYOK_PROVIDERS). Onboarding renderuje się
-  // wewnątrz StoreProvider, więc dispatch jest pod ręką; SSE frame `{kind:"bot"}`
-  // tylko PATCHUJE znane boty (botPatched → updateBot), więc świeżego bota
-  // dokładamy do store sami, wzorem duplicateBot.
-  const { dispatch } = useStore();
-  const [byokOpen, setByokOpen] = useState(false);
-  const [byokProvider, setByokProvider] = useState<(typeof BYOK_PROVIDERS)[number]>("openrouter");
-  const [byokModel, setByokModel] = useState("openrouter/auto");
-  const [byokKey, setByokKey] = useState("");
-  const [byokBusy, setByokBusy] = useState(false);
-  const [byokDone, setByokDone] = useState<"saved" | "offline" | null>(null);
-  const [byokError, setByokError] = useState<string | null>(null);
-
-  const createByokBot = async () => {
-    if (byokBusy || !byokModel.trim()) return;
-    setByokBusy(true);
-    setByokError(null);
-    try {
-      // 1. bot harnessu — threadId wyznacza id bota w silniku
-      const { bot } = await jfetch("/api/bots", { method: "POST" });
-      const { bot: patched } = await jfetch(`/api/bots/${bot.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ modelSelection: { instanceId: "slafy", model: "hermes-agent" } }),
-      });
-      // odpowiedź PATCH nie niesie messages — sklejamy jak duplicateBot
-      dispatch({ type: "botAdded", bot: { ...bot, ...patched, messages: bot.messages } });
-      track("onboarding_byok_bot_created");
-      // 2. klucz — dopiero po bocie; silnik offline nie blokuje flow
-      try {
-        const engineBotId = `mb-${bot.threadId}`;
-        const mk = await fetch("/api/engine/bots", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: engineBotId, name: engineBotId }),
-        });
-        if (!mk.ok && mk.status !== 409) {
-          throw Object.assign(new Error(`HTTP ${mk.status}`), { status: mk.status });
-        }
-        await jfetch(`/api/engine/provider/${engineBotId}`, {
-          method: "POST",
-          body: JSON.stringify({
-            provider: byokProvider,
-            model: byokModel.trim(),
-            ...(byokKey.trim() ? { api_key: byokKey.trim() } : {}),
-          }),
-        });
-        setByokKey("");
-        setByokDone("saved");
-      } catch (e) {
-        const status = (e as { status?: number }).status;
-        if (status === 502 || status === 503 || status === undefined) setByokDone("offline");
-        else setByokError(e instanceof Error ? e.message : String(e));
-      }
-    } catch (e) {
-      setByokError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setByokBusy(false);
-    }
-  };
 
   const saveProfile = () => {
     identifyEmail(email.trim().toLowerCase());
@@ -284,84 +189,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                     }
                   />
 
-                  {/* multibot: F11 — BYOK: bot na lokalnym silniku z własnym kluczem */}
-                  {byokDone ? (
-                    <div className="flex items-start gap-3 rounded-xl bg-card p-3.5">
-                      <span
-                        className={cn(
-                          "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full",
-                          byokDone === "saved" ? "bg-success/15 text-success" : "bg-raised text-ink-secondary",
-                        )}
-                      >
-                        {byokDone === "saved" ? <Check size={14} /> : <AlertTriangle size={13} />}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-ink">Slafy bot created</div>
-                        <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-secondary">
-                          {byokDone === "saved"
-                            ? "Key saved — the bot is in your sidebar, ready to chat."
-                            : "Engine offline — the bot is in your sidebar; add your key later in its Settings."}
-                        </div>
-                      </div>
-                    </div>
-                  ) : !byokOpen ? (
-                    <button
-                      onClick={() => setByokOpen(true)}
-                      className="rounded-xl bg-card p-3.5 text-left hover:bg-raised/50"
-                    >
-                      <div className="text-[14px] font-medium text-ink">Use your own key (local engine)</div>
-                      <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-secondary">
-                        No CLI needed — a bot on the local Slafy engine calling OpenRouter, Anthropic
-                        or OpenAI with your API key.
-                      </div>
-                    </button>
-                  ) : (
-                    <div className="rounded-xl bg-card p-3.5">
-                      <div className="text-[14px] font-medium text-ink">Use your own key (local engine)</div>
-                      <div className="mt-2.5 flex overflow-hidden rounded-lg border border-hairline/40">
-                        {BYOK_PROVIDERS.map((p, i) => (
-                          <button
-                            key={p}
-                            onClick={() => setByokProvider(p)}
-                            className={cn(
-                              "flex-1 py-1.5 text-[13px]",
-                              i > 0 && "border-l border-hairline/40",
-                              byokProvider === p
-                                ? "bg-raised text-ink"
-                                : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
-                            )}
-                          >
-                            {BYOK_LABELS[p]}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        value={byokModel}
-                        onChange={(e) => setByokModel(e.target.value)}
-                        placeholder="openrouter/auto"
-                        className="mt-2.5 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
-                      />
-                      <div className="mt-2.5 flex gap-2">
-                        <input
-                          type="password"
-                          value={byokKey}
-                          onChange={(e) => setByokKey(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && createByokBot()}
-                          placeholder="sk-…  (or add it later in Settings)"
-                          autoComplete="off"
-                          className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
-                        />
-                        <button
-                          onClick={createByokBot}
-                          disabled={byokBusy || !byokModel.trim()}
-                          className="flex w-[96px] shrink-0 items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {byokBusy ? <Loader2 size={13} className="animate-spin" /> : "Create bot"}
-                        </button>
-                      </div>
-                      {byokError && <div className="mt-2 text-[12px] text-danger">{byokError}</div>}
-                    </div>
-                  )}
                 </>
               )}
             </div>

@@ -78,7 +78,7 @@ function CopyButton({ text, title }: { text: string; title: string }) {
 }
 
 // Presety harmonogramu → stringi, które silnik parsuje sam ("every 1h" =
-// interwał Hermesa; daily/weekly = cron, dzień tygodnia 0-6 z niedzielą=0).
+// interwał local service; daily/weekly = cron, dzień tygodnia 0-6 z niedzielą=0).
 const SCHEDULE_MODES = ["hourly", "daily", "weekly", "custom"] as const;
 type ScheduleMode = (typeof SCHEDULE_MODES)[number];
 const MODE_LABELS: Record<ScheduleMode, string> = {
@@ -243,7 +243,7 @@ function RoutineForm({
 
 export function RoutinesPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
-  // Ten sam wzorzec id co EngineProviderCard: domyślny botPrefix "mb-" z
+  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
@@ -346,7 +346,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         {status === "offline" ? (
-          // Konwencja EngineProviderCard
+          // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
             Engine offline
@@ -371,7 +371,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
             <CalendarClock size={22} />
             <div className="text-[13px] font-medium text-ink">No routines yet</div>
             <span className="text-[12px]">
-              Routines are recurring tasks this bot runs on a schedule — they fire in the engine
+              Routines are recurring tasks this bot runs on a schedule — they run in the background
               even while the app is closed.
             </span>
             <button
@@ -512,7 +512,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                           </div>
                           <div className="text-[11px] text-ink-secondary">
                             Sign the raw POST body with HMAC-SHA256 and send the hex digest in the
-                            X-Slafy-Signature header.
+                            webhook signature header.
                           </div>
                         </div>
                       )}

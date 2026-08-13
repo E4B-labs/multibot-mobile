@@ -79,6 +79,13 @@ export interface BotRecord {
   createdAt: number;
 }
 
+export interface SelectionTarget {
+  instanceId: string;
+  driverKind: string;
+  models: { default: string };
+  snapshot: { state: "available" | "unavailable" };
+}
+
 const BOTS_FILE = join(DATA_DIR, "bots.json");
 const messagesFile = (threadId: string) => join(DATA_DIR, `messages-${threadId}.json`);
 
@@ -241,6 +248,26 @@ export class Store {
     if (!bot) return;
     bot.resumeCursors[instanceId] = cursor;
     this.saveBots();
+  }
+
+  /** multibot (G1): repair selections whose instance disappeared from fleet.
+   * Prefer a configured custom model, then any live provider, then an explicit
+   * empty selection. One write covers every migrated bot. */
+  migrateOrphanedSelections(targets: SelectionTarget[]): number {
+    const known = new Set(targets.map((target) => target.instanceId));
+    const fallback =
+      targets.find((target) => target.driverKind === "slafy") ??
+      targets.find((target) => target.snapshot.state === "available");
+    let changed = 0;
+    for (const bot of this.bots) {
+      if (known.has(bot.modelSelection.instanceId)) continue;
+      bot.modelSelection = fallback
+        ? { instanceId: fallback.instanceId, model: fallback.models.default }
+        : { instanceId: "", model: "" };
+      changed++;
+    }
+    if (changed) this.saveBots();
+    return changed;
   }
 
   /** First-run seed: one bot so the app never opens empty. */

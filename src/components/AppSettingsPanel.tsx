@@ -1,7 +1,7 @@
 // App-level settings, in the right-side slot: who you are + credentials
 // shared by all bots. Per-bot settings (name, persona, model, computer)
 // live in SettingsPanel; contextual Box-token entry stays in ComputerPanel.
-import { X } from "lucide-react";
+import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
@@ -10,11 +10,11 @@ import { cn } from "@/lib/cn";
 // multibot: F11 — status silnika dla EngineStatusRow
 import { engineOnline } from "@/lib/engineStatus";
 
-// multibot: F10 — import profilu Hermesa do silnika slafy. UI gada wyłącznie z
+// multibot: F10 — import existing profile into local service. UI gada wyłącznie z
 // przelotką harnessu (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>`):
 //   POST /api/engine/import/inspect {source} — podgląd bez kopiowania
 //     (engine/server/importer.py `inspect`); katalog `profiles/` w źródle =
-//     Hermes ROOT, odpowiedź niesie `profiles: [nazwy]` i wtedy dociągamy
+//     profile ROOT, odpowiedź niesie `profiles: [nazwy]` i wtedy dociągamy
 //     inspect per podprofil (`<root>/profiles/<nazwa>`, mieszane separatory
 //     łyka pathlib), 422 = to nie profil,
 //   POST /api/engine/import {source, bot_id} — kopia profilu jako bot silnika
@@ -79,7 +79,7 @@ function summary(p: InspectOut): string {
   return parts.length ? parts.join(" · ") : "empty profile";
 }
 
-function HermesImport() {
+function ProfileImport() {
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState<"inspect" | "import" | null>(null);
   // found[0] = źródło; przy ROOT-cie dalej idą podprofile z `profiles/`
@@ -153,9 +153,9 @@ function HermesImport() {
 
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Import from Hermes</div>
+      <div className="text-[15px] font-medium text-ink">Import existing profile</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Copy an existing Hermes profile into the engine — SOUL, memory and chat history come along.
+        Copy an existing profile into the local service — SOUL, memory and chat history come along.
       </div>
 
       <div className="mt-3 flex gap-2">
@@ -204,7 +204,7 @@ function HermesImport() {
       {selected && !done && (
         <div className="mt-3 flex items-end gap-2">
           <label className="block w-full">
-            <div className="mb-1 text-[12px] text-ink-secondary">Bot id in the engine</div>
+            <div className="mb-1 text-[12px] text-ink-secondary">Bot id in the service</div>
             <input
               className={inputClass}
               value={botId}
@@ -223,9 +223,9 @@ function HermesImport() {
 
       {done && (
         <div className="mt-3 text-[13px] text-ink-secondary">
-          Imported as engine bot <span className="text-ink">&ldquo;{done.id}&rdquo;</span> — SOUL,
-          memory and chat history copied; its skills are now shared with every engine bot. It
-          won&rsquo;t appear as a chat here on its own — create a new bot with the slafy driver to
+          Imported as local bot <span className="text-ink">&ldquo;{done.id}&rdquo;</span> — SOUL,
+          memory and chat history copied; its skills are now shared with every local bot. It
+          won&rsquo;t appear as a chat here on its own — create a new bot with this custom model to
           use it.
         </div>
       )}
@@ -238,9 +238,9 @@ function HermesImport() {
 // multibot: F11 — status silnika slafy: jeden GET przy każdym otwarciu panelu
 // (mount = otwarcie, panel renderuje się warunkowo w App.tsx), zero pollingu.
 // Czemu tu: to jedyne panelowe miejsce "app-level" (per-bot rzeczy żyją w
-// SettingsPanel), a sekcje silnika (Hermes import) już tu mieszkają.
+// SettingsPanel), a sekcje usługi profili już tu mieszkają.
 // Kropka: bg-success = działa, bg-raised-hover = konwencja "Engine offline"
-// z EngineProviderCard/HermesImport.
+// z local service status/import components.
 function EngineStatusRow() {
   const [online, setOnline] = useState<boolean | null>(null);
   useEffect(() => {
@@ -252,13 +252,13 @@ function EngineStatusRow() {
   }, []);
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Slafy engine</div>
+      <div className="text-[15px] font-medium text-ink">Local service</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        The local engine behind BYOK bots, routines and skills.
+        Background service for custom models, routines and skills.
       </div>
       <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
         <span className={cn("size-1.5 rounded-full", online ? "bg-success" : "bg-raised-hover")} />
-        {online === null ? "Checking…" : online ? "Running" : "Engine offline"}
+        {online === null ? "Checking…" : online ? "Running" : "Service offline"}
       </div>
     </div>
   );
@@ -301,6 +301,194 @@ function ProfileFields() {
         placeholder="you@example.com"
         className={inputClass}
       />
+    </div>
+  );
+}
+
+interface CustomModel {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  model: string;
+  hasKey: boolean;
+}
+
+function readCustomModel(value: any): CustomModel {
+  const model = value?.model;
+  return {
+    id: String(value?.id ?? ""),
+    displayName: String(value?.displayName ?? value?.name ?? value?.id ?? "Custom model"),
+    baseUrl: String(value?.baseUrl ?? value?.base_url ?? model?.baseUrl ?? model?.base_url ?? ""),
+    model: String(value?.modelId ?? (typeof model === "string" ? model : model?.default) ?? value?.defaultModel ?? ""),
+    hasKey: Boolean(value?.hasKey ?? value?.configured ?? value?.keyConfigured),
+  };
+}
+
+function CustomModels() {
+  const { dispatch } = useStore();
+  const [models, setModels] = useState<CustomModel[]>([]);
+  const [displayName, setDisplayName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputClass =
+    "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
+
+  const reload = () =>
+    api("/api/models/custom")
+      .then((body) => {
+        const rows = Array.isArray(body) ? body : body.models ?? [];
+        setModels(rows.map(readCustomModel).filter((item: CustomModel) => item.id));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+
+  useEffect(() => {
+    reload();
+    // one load per panel mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshInstances = () =>
+    api("/api/instances")
+      .then(({ instances }) => dispatch({ type: "instances", instances }))
+      .catch(() => {});
+
+  const save = () => {
+    const name = displayName.trim();
+    const url = baseUrl.trim();
+    const modelId = model.trim();
+    if (busy || !name || !url || !modelId || !apiKey.trim()) return;
+    setBusy(true);
+    setError(null);
+    const id = slug(name);
+    api(`/api/models/custom/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ displayName: name, baseUrl: url, model: modelId, apiKey: apiKey.trim() }),
+    })
+      .then(() => {
+        setDisplayName("");
+        setBaseUrl("");
+        setModel("");
+        setApiKey("");
+        reload();
+        refreshInstances();
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+
+  const remove = (id: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    api(`/api/models/custom/${encodeURIComponent(id)}`, { method: "DELETE" })
+      .then(() => {
+        setModels((items) => items.filter((item) => item.id !== id));
+        refreshInstances();
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Models</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        Add custom models by URL. Keys are stored locally and never shown again.
+      </div>
+      {models.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {models.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-inset px-3 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium text-ink">{item.displayName}</div>
+                <div className="truncate text-[11px] text-ink-secondary">
+                  {item.model} · {item.baseUrl} · {item.hasKey ? "key saved" : "no key"}
+                </div>
+              </div>
+              <button
+                aria-label={`Remove ${item.displayName}`}
+                onClick={() => remove(item.id)}
+                className="shrink-0 rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-danger"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-col gap-2">
+        <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Name" />
+        <input className={inputClass} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="Base URL · https://…/v1" />
+        <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model id · local/model" />
+        <div className="flex gap-2">
+          <input
+            type="password"
+            className={inputClass}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="API key"
+            autoComplete="off"
+          />
+          <button
+            onClick={save}
+            disabled={busy || !displayName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()}
+            className="flex w-[78px] shrink-0 items-center justify-center gap-1 rounded-lg bg-raised px-2 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <><Plus size={13} />Add</>}
+          </button>
+        </div>
+      </div>
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
+function CommandLineTools() {
+  const [cli, setCli] = useState<Array<{ id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string }>>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {});
+  }, []);
+
+  const toggle = (tool: (typeof cli)[number]) => {
+    setBusy(tool.id);
+    void api(`/api/cli-tools/${encodeURIComponent(tool.id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled: !tool.enabled }),
+    })
+      .then(({ tool: saved }) => setCli((items) => items.map((item) => item.id === saved.id ? saved : item)))
+      .finally(() => setBusy(null));
+  };
+
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Command-line tools</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">Allow tools that can run bots on this device.</div>
+      <div className="mt-3 flex flex-col gap-1">
+        {cli.length === 0 ? (
+          <div className="py-2 text-[13px] text-ink-secondary">No command-line tools detected.</div>
+        ) : cli.map((item) => (
+          <label key={item.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] text-ink">{item.displayName}</div>
+              <div className="truncate text-[11px] text-ink-secondary">
+                {item.detected ? item.version ?? "Detected" : item.reason ?? "Not detected"}
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={item.enabled}
+              disabled={busy === item.id}
+              onChange={() => toggle(item)}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -397,10 +585,15 @@ export function AppSettingsPanel() {
           </div>
         </div>
 
-        {/* multibot: F11 — status silnika nad sekcją importu Hermesa */}
+        {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
+        <CustomModels />
+        {/* multibot: G1 — CLI allowlist UI; provisioning actions land in G3. */}
+        <CommandLineTools />
+
+        {/* multibot: F11 — status local service above profile import */}
         <EngineStatusRow />
 
-        <HermesImport />
+        <ProfileImport />
 
         <UpdatesRow />
       </div>

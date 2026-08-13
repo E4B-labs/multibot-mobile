@@ -316,7 +316,7 @@ function TeachCard({
 
 export function SkillsPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
-  // Ten sam wzorzec id co EngineProviderCard: domyślny botPrefix "mb-" z
+  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
@@ -382,7 +382,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         {status === "offline" ? (
-          // Konwencja EngineProviderCard
+          // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
             Engine offline

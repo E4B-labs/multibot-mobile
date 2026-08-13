@@ -49,11 +49,21 @@ const botById = async (id: string) => (await bots()).find((b) => b.id === id);
 beforeAll(async () => {
   engine = await startFakeEngine();
   home = mkdtempSync(join(tmpdir(), "omb-proxy-test-"));
-  // flota z jednej instancji silnika — nowe boty od razu celują w slafy
+  // multibot (G1): configured instances overlay the built-ins, so disable
+  // those explicitly to keep this fixture a one-live-instance slafy fleet.
   mkdirSync(join(home, ".openmausbot"), { recursive: true });
   writeFileSync(
     join(home, ".openmausbot", "config.json"),
-    JSON.stringify({ instances: { slafy: { driver: "slafy" } } }),
+    JSON.stringify({
+      instances: {
+        slafy: { driver: "slafy" },
+        grok: { driver: "grokAgent", enabled: false },
+        gemini: { driver: "geminiAgent", enabled: false },
+        claude: { driver: "claudeAgent", enabled: false },
+        codex: { driver: "codex", enabled: false },
+        computer: { driver: "boxAgent", enabled: false },
+      },
+    }),
   );
   // Bot ZNANY przed startem harnessu + uwaga zapalona w silniku, zanim ktokolwiek
   // się podłączył: dokładnie sytuacja "rutyna utknęła na loginie przy zamkniętej

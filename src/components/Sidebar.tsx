@@ -378,17 +378,17 @@ export function Sidebar() {
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
   // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
   // nie odpytujemy). Boty i instancje hydratują się async, więc efekt na
-  // [hasSlafyBot] odpala się raz, gdy flaga stanie się prawdą — to jest to
+  // [hasLocalBot] odpala się raz, gdy flaga stanie się prawdą — to jest to
   // "jedno sprawdzenie przy mount aplikacji"; kolejne robi AppSettingsPanel
   // przy otwarciu. Zero pollingu.
-  const hasSlafyBot = state.bots.some(
+  const hasLocalBot = state.bots.some(
     (b) =>
       state.instances.find((i) => i.instanceId === b.modelSelection.instanceId)?.driverKind ===
       "slafy",
   );
   const [engineOffline, setEngineOffline] = useState(false);
   useEffect(() => {
-    if (!hasSlafyBot) {
+    if (!hasLocalBot) {
       setEngineOffline(false);
       return;
     }
@@ -397,7 +397,7 @@ export function Sidebar() {
     return () => {
       alive = false;
     };
-  }, [hasSlafyBot]);
+  }, [hasLocalBot]);
 
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
@@ -463,10 +463,10 @@ export function Sidebar() {
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
         {/* multibot: F11 — subtelna kropka statusu silnika, tylko offline+slafy;
-            szara bg-raised-hover = konwencja "Engine offline" z EngineProviderCard */}
+            szara bg-raised-hover = konwencja "Service offline" */}
         {engineOffline && (
           <div
-            title="Slafy engine offline — bots on the local engine can't run. Check App Settings."
+            title="Local service offline — custom-model bots can't run. Check App Settings."
             className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />

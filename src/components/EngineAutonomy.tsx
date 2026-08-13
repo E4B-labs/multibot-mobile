@@ -1,5 +1,5 @@
 // multibot: F4 — autonomia i twarde reguły narzędzi silnika slafy. Karta pod
-// EngineProviderCard w SettingsPanel, tylko dla botów na driverze slafy. UI gada
+// Local runtime controls in SettingsPanel, only for local-driver bots. UI gada
 // wyłącznie z przelotką harnessu (generyczny proxy `server/engine/proxy.ts`:
 // `/api/engine/<rest>` → `/api/<rest>` silnika):
 //   GET/PATCH /api/engine/bots/mb-<threadId>             — `autonomy` (BotPatch,
@@ -47,7 +47,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function EngineAutonomy({ bot }: { bot: Bot }) {
-  // Ten sam wzorzec id co EngineProviderCard: domyślny botPrefix "mb-" z
+  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");

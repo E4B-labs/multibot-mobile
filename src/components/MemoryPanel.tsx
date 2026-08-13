@@ -2,7 +2,7 @@
 // Routines/Settings/Computer). UI gada wyłącznie z przelotką harnessu
 // (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>` silnika);
 // wszystkie trasy są READ-ONLY z założenia silnika (engine/server/memory.py:
-// zapis faktów/MEMORY.md należy do Hermesa, UI tylko czyta):
+// zapis faktów/MEMORY.md należy do local service, UI tylko czyta):
 //   GET /api/engine/bots/mb-<threadId>/memory/facts?q=&limit= — lista faktów,
 //   GET /api/engine/bots/mb-<threadId>/memory/markdown        — {content},
 //   GET /api/engine/bots/mb-<threadId>/memory/graph           — {nodes, edges}
@@ -177,7 +177,7 @@ function MemoryGraph({ graph }: { graph: Graph }) {
 
 export function MemoryPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
-  // Ten sam wzorzec id co EngineProviderCard: domyślny botPrefix "mb-" z
+  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
@@ -251,7 +251,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         {status === "offline" ? (
-          // Konwencja EngineProviderCard
+          // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
             Engine offline
@@ -340,7 +340,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
             {tab === "markdown" &&
               (markdown.trim() ? (
                 <div className="mt-3 rounded-xl bg-card p-4 text-[13px]">
-                  {/* Read-only: zapis MEMORY.md z UI wywróciłby drift guard Hermesa
+                  {/* Read-only: zapis MEMORY.md z UI wywróciłby drift guard local service
                       (engine/server/memory.py §c) — silnik świadomie nie daje trasy. */}
                   <ChatMarkdown text={markdown} />
                 </div>

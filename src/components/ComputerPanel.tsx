@@ -187,7 +187,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     pwFrameRef.current = null;
     setPwStatus("connecting");
     setTakeover(false);
-    // default botPrefix "mb-", same pattern as EngineProvider/EngineAutonomy
+    // default botPrefix "mb-", same pattern as local runtime controls
     const engineBotId = `mb-${bot.threadId}`;
     const connect = async () => {
       if (!alive) return;
