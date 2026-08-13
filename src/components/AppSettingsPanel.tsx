@@ -546,15 +546,18 @@ function CustomModels() {
 }
 
 function CommandLineTools() {
-  const [cli, setCli] = useState<Array<{ id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null }>>([]);
+  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean };
+  type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
+  const [cli, setCli] = useState<CliRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [login, setLogin] = useState<LoginSession | null>(null);
 
   useEffect(() => {
     void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {});
   }, []);
 
-  const toggle = (tool: (typeof cli)[number]) => {
+  const toggle = (tool: CliRow) => {
     setBusy(tool.id);
     void api(`/api/cli-tools/${encodeURIComponent(tool.id)}`, {
       method: "PUT",
@@ -562,6 +565,54 @@ function CommandLineTools() {
     })
       .then(({ tool: saved }) => setCli((items) => items.map((item) => item.id === saved.id ? saved : item)))
       .finally(() => setBusy(null));
+  };
+
+  const followLogin = async (jobId: string, toolId: string) => {
+    const response = await authFetch(`/api/progress/${encodeURIComponent(jobId)}`);
+    if (!response.ok || !response.body) throw new Error(`Login stream failed (${response.status})`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const part = await reader.read();
+      buffer += decoder.decode(part.value ?? new Uint8Array(), { stream: !part.done });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        const line = frame.split("\n").find((item) => item.startsWith("data: "));
+        if (!line) continue;
+        const event = JSON.parse(line.slice(6)) as { output?: string[]; done: boolean; error?: string };
+        setLogin((current) => current?.jobId === jobId
+          ? { ...current, toolId, output: event.output ?? current.output, done: event.done, error: event.error }
+          : current);
+      }
+      if (part.done) break;
+    }
+  };
+
+  const startLogin = async (tool: CliRow) => {
+    if (login) return;
+    try {
+      const response = await api(`/api/cli-tools/${encodeURIComponent(tool.id)}/login`, { method: "POST" });
+      const session: LoginSession = { toolId: tool.id, jobId: response.id, output: response.job?.output ?? [], done: false };
+      setLogin(session);
+      await followLogin(response.id, tool.id);
+    } catch (error) {
+      setLogin((current) => current ? { ...current, done: true, error: error instanceof Error ? error.message : String(error) } : null);
+    }
+  };
+
+  const sendLoginInput = async (text: string) => {
+    if (!login || !text.trim()) return;
+    await api(`/api/progress/${encodeURIComponent(login.jobId)}/input`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  };
+
+  const stopLogin = async () => {
+    if (!login) return;
+    await api(`/api/progress/${encodeURIComponent(login.jobId)}/stop`, { method: "POST" }).catch(() => {});
   };
 
   const install = async (tool: (typeof cli)[number]) => {
@@ -592,27 +643,55 @@ function CommandLineTools() {
         {cli.length === 0 ? (
           <div className="py-2 text-[13px] text-ink-secondary">No command-line tools detected.</div>
         ) : cli.map((item) => (
-          <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
-            <div className="min-w-0">
-              <div className="truncate text-[13px] text-ink">{item.displayName}</div>
-              <div className="truncate text-[11px] text-ink-secondary">
-                {item.detected ? `${item.version ?? "Detected"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
+          <div key={item.id}>
+            <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] text-ink">{item.displayName}</div>
+                <div className="truncate text-[11px] text-ink-secondary">
+                  {item.detected ? `${item.version ?? "Detected"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {!item.detected && item.installCommand && <button
+                  onClick={() => void install(item)}
+                  disabled={installing !== null}
+                  className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
+                >{installing === item.id ? "Installing…" : "Install"}</button>}
+                {item.loginAvailable && <button
+                  onClick={() => void startLogin(item)}
+                  disabled={login !== null || !item.detected}
+                  className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
+                >Sign in</button>}
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  disabled={busy === item.id}
+                  onChange={() => toggle(item)}
+                  className="size-4 accent-[var(--color-accent)]"
+                />
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {!item.detected && item.installCommand && <button
-                onClick={() => void install(item)}
-                disabled={installing !== null}
-                className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
-              >{installing === item.id ? "Installing…" : "Install"}</button>}
-              <input
-                type="checkbox"
-                checked={item.enabled}
-                disabled={busy === item.id}
-                onChange={() => toggle(item)}
-                className="size-4 accent-[var(--color-accent)]"
-              />
-            </div>
+            {login?.toolId === item.id && (
+              <div className="mx-2 mb-2 rounded-lg bg-inset p-2">
+                <div className="mb-1 text-[11px] text-ink-secondary">
+                  Follow official login in this terminal. Browser OAuth URL can be opened from any device.
+                </div>
+                <pre className="max-h-36 overflow-auto whitespace-pre-wrap text-[11px] text-ink">{login.output.join("\n")}</pre>
+                {!login.done && <div className="mt-2 flex gap-2">
+                  <input
+                    className="min-w-0 flex-1 rounded-md border border-hairline/40 bg-card px-2 py-1 text-[12px] text-ink"
+                    placeholder={item.id === "claude" ? "Type /login or answer prompt" : "Answer CLI prompt"}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      const input = event.currentTarget;
+                      void sendLoginInput(input.value).then(() => { input.value = ""; });
+                    }}
+                  />
+                  <button onClick={() => void stopLogin()} className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink">Stop</button>
+                </div>}
+                {login.error && <div className="mt-1 text-[11px] text-danger">{login.error}</div>}
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -355,6 +355,19 @@ describe("harness HTTP API", () => {
     expect((await api("POST", "/api/cli-tools/grok/install")).status).toBe(409);
   });
 
+  it("exposes official interactive login commands without starting them in metadata", async () => {
+    const listed = await api("GET", "/api/cli-tools");
+    expect(listed.body.tools.find((tool: { id: string }) => tool.id === "claude")).toMatchObject({
+      loginCommand: "claude",
+      loginAvailable: true,
+    });
+    expect(listed.body.tools.find((tool: { id: string }) => tool.id === "codex")).toMatchObject({
+      loginCommand: "codex --login",
+      loginAvailable: true,
+    });
+    expect((await api("POST", "/api/cli-tools/grok/login")).status).toBe(409);
+  });
+
   it("streams persisted setup progress using the onboarding SSE shape", async () => {
     const response = await fetch(`${BASE}/api/progress/done-job`, {
       headers: { authorization: `Bearer ${TOKEN}` },

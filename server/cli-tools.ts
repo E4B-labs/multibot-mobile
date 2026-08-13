@@ -12,6 +12,8 @@ export interface CliToolMetadata {
   install?: CliInstall;
   /** Interactive OAuth/subscription login; never automated by server. */
   loginCommand?: string;
+  /** Fixed interactive command; stdin stays attached for OAuth prompts. */
+  login?: CliInstall;
 }
 
 export const CLI_TOOLS: readonly CliToolMetadata[] = [
@@ -27,6 +29,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     driverKind: "geminiAgent",
     displayName: "Gemini",
     loginCommand: "gemini",
+    login: { command: "gemini", args: [] },
     install: { command: "npm", args: ["install", "-g", "@google/gemini-cli@latest"] },
   },
   {
@@ -34,13 +37,15 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     driverKind: "claudeAgent",
     displayName: "Claude Code",
     loginCommand: "claude",
+    login: { command: "claude", args: [] },
     install: { command: "npm", args: ["install", "-g", "@anthropic-ai/claude-code@latest"] },
   },
   {
     id: "codex",
     driverKind: "codex",
     displayName: "Codex",
-    loginCommand: "codex",
+    loginCommand: "codex --login",
+    login: { command: "codex", args: ["--login"] },
     install: { command: "npm", args: ["install", "-g", "@openai/codex@latest"] },
   },
   {
@@ -48,6 +53,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     driverKind: "kimiAgent",
     displayName: "Kimi Code",
     loginCommand: "kimi",
+    login: { command: "kimi", args: [] },
     install: { command: "uv", args: ["tool", "install", "--python", "3.13", "kimi-cli"] },
   },
   {
@@ -55,6 +61,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     driverKind: "qwenAgent",
     displayName: "Qwen Code",
     loginCommand: "qwen",
+    login: { command: "qwen", args: [] },
     install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] },
   },
 ] as const;

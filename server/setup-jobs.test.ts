@@ -71,4 +71,18 @@ describe("SetupJobs", () => {
     expect(jobProgress(recovered)).toMatchObject({ done: false, error: "server restarted before the job finished" });
     expect(JSON.parse(readFileSync(file, "utf8"))[0].status).toBe("failed");
   });
+
+  it("keeps interactive login output in progress events", () => {
+    const job: SetupJob = {
+      id: "login",
+      key: "cli-login:claude",
+      kind: "cli-login",
+      title: "Sign in Claude Code",
+      command: "claude",
+      status: "running",
+      output: ["$ claude", "Open browser to continue"],
+      createdAt: 1,
+    };
+    expect(jobProgress(job)).toMatchObject({ done: false, output: ["$ claude", "Open browser to continue"] });
+  });
 });

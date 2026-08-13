@@ -765,6 +765,7 @@ async function cliToolsStatus() {
       version: instance?.snapshot.version ?? undefined,
       installCommand: installCommandText(tool.install),
       loginCommand: tool.loginCommand ?? null,
+      loginAvailable: Boolean(tool.login),
     };
   });
 }
@@ -1352,6 +1353,35 @@ const server = createServer(async (req, res) => {
     }
     if (method === "GET" && path === "/api/cli-tools") {
       return json(res, 200, { tools: await cliToolsStatus() });
+    }
+    m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/login$/);
+    if (m && method === "POST") {
+      const toolId = m[1];
+      const tool = CLI_TOOLS.find((item) => item.id === toolId);
+      if (!tool) return json(res, 404, { error: "no such command-line tool" });
+      if (!tool.login) return json(res, 409, { error: "interactive login unavailable; use official CLI instructions" });
+      const temp = join(DATA_DIR, "tmp");
+      mkdirSync(temp, { recursive: true });
+      const job = setupJobs.startInteractive({
+        key: `cli-login:${tool.id}`,
+        kind: "cli-login",
+        title: `Sign in ${tool.displayName}`,
+        command: tool.login.command,
+        args: tool.login.args,
+        cwd: DATA_DIR,
+        env: { TMP: temp, TEMP: temp },
+      });
+      return json(res, 202, { id: job.id, job });
+    }
+    m = path.match(/^\/api\/progress\/([\w-]+)\/(input|stop)$/);
+    if (m && method === "POST") {
+      const job = setupJobs.get(m[1]);
+      if (!job) return json(res, 404, { error: "no such setup job" });
+      if (job.kind !== "cli-login") return json(res, 409, { error: "job does not accept interactive input" });
+      if (m[2] === "stop") return json(res, setupJobs.stop(m[1]) ? 200 : 409, { ok: true });
+      const body = await readBody(req);
+      if (typeof body.text !== "string") return json(res, 400, { error: "text required" });
+      return json(res, setupJobs.input(m[1], body.text) ? 200 : 409, { ok: true });
     }
     m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/install$/);
     if (m && method === "POST") {

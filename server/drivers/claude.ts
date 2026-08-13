@@ -46,11 +46,19 @@ export interface ClaudeConfig {
 const MODELS = {
   default: "sonnet",
   options: [
-    { id: "sonnet", label: "Claude Sonnet (latest)" },
-    { id: "opus", label: "Claude Opus (latest)" },
-    { id: "haiku", label: "Claude Haiku (latest)" },
+    { id: "fable", label: "Claude Fable 5 (latest alias)" },
+    { id: "sonnet", label: "Claude Sonnet (latest alias)" },
+    { id: "opus", label: "Claude Opus (latest alias)" },
+    { id: "haiku", label: "Claude Haiku (latest alias)" },
+    { id: "claude-fable-5", label: "Claude Fable 5" },
+    { id: "claude-opus-5", label: "Claude Opus 5" },
+    { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+    { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
     { id: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
+    { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
     { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+    { id: "claude-3-7-sonnet-20250219", label: "Claude Sonnet 3.7" },
+    { id: "claude-3-5-haiku-20241022", label: "Claude Haiku 3.5" },
   ],
 };
 
