@@ -15,7 +15,7 @@
 // zamknięcie/otwarcie panelu); upgrade = transkrypt grupy po stronie silnika,
 // gdy pokój ma pamiętać po restarcie apki.
 import { useEffect, useState } from "react";
-import { Loader2, Send, Trash2, Users, X } from "lucide-react";
+import { Loader2, Send, Users } from "lucide-react";
 import { useStore, formatTime, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { MausAvatar } from "./Avatar";
@@ -53,12 +53,11 @@ interface Entry {
 const transcripts = new Map<string, Entry[]>();
 
 export function GroupPanel({ group }: { group: EngineGroup }) {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const polish = useLanguage() === "pl";
   const [entries, setEntries] = useState<Entry[]>(() => group.messages ?? transcripts.get(group.id) ?? []);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -111,25 +110,10 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
       .finally(() => setBusy(false));
   };
 
-  const remove = async () => {
-    if (deleting || busy || !window.confirm("Delete this group?")) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      await api(`/api/groups/${group.id}`, { method: "DELETE" });
-      dispatch({ type: "toggleGroup", group: null });
-      dispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
       {/* Header — ten sam rytm co zwykły panel agenta */}
-      <div className="flex items-center justify-between px-5 py-3">
+      <div className="flex items-center px-5 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           {members.length > 0 ? (
             <div className="flex -space-x-2 shrink-0">
@@ -148,23 +132,6 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
               {members.length} {polish ? "botów" : "bots"} · {group.bot_ids.map(nameOf).join(" · ")}
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => void remove()}
-            disabled={deleting || busy}
-            className="rounded-md p-1 text-ink-secondary hover:bg-danger/10 hover:text-danger disabled:opacity-50"
-            title="Delete group"
-          >
-            {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleGroup", group: null })}
-            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-            title="Close"
-          >
-            <X size={18} />
-          </button>
         </div>
       </div>
 
