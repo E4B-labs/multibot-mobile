@@ -44,24 +44,31 @@ export interface ClaudeConfig {
 
 // model catalog ported from upstream packages/contracts/src/model.ts
 const MODELS = {
-  default: "sonnet",
+  default: "claude-sonnet-5",
   options: [
-    { id: "sonnet", label: "Claude Sonnet (latest)" },
-    { id: "opus", label: "Claude Opus (latest)" },
-    { id: "haiku", label: "Claude Haiku (latest)" },
+    { id: "claude-opus-5", label: "Opus 5" },
+    { id: "claude-sonnet-5", label: "Sonnet 5" },
+    { id: "claude-fable-5", label: "Fable 5" },
+    { id: "claude-haiku-4-5", label: "Haiku 4.5" },
   ],
 };
 
-// Claude Code resolves aliases to currently available Anthropic models. Older
-// Multibot profiles stored fictional/version-pinned IDs; keep them usable but
-// never send unsupported IDs to the official CLI.
-const normalizeModel = (model: string | undefined) => {
-  if (!model) return MODELS.default;
-  if (model === "fable" || model.startsWith("claude-fable-")) return "sonnet";
-  if (model.startsWith("claude-opus-")) return "opus";
-  if (model.startsWith("claude-sonnet-") || model === "claude-sonnet-5") return "sonnet";
-  if (model.startsWith("claude-haiku-") || model === "claude-haiku-4-5") return "haiku";
+// UI keeps stable product names; Claude Code receives official aliases.
+const canonicalModel = (model: string | undefined) => {
+  if (!model || model === "sonnet" || model.startsWith("claude-sonnet-")) return "claude-sonnet-5";
+  if (model === "opus" || model.startsWith("claude-opus-")) return "claude-opus-5";
+  if (model === "haiku" || model.startsWith("claude-haiku-")) return "claude-haiku-4-5";
+  if (model === "fable" || model.startsWith("claude-fable-")) return "claude-fable-5";
   return model;
+};
+const cliModel = (model: string | undefined) => {
+  switch (canonicalModel(model)) {
+    case "claude-opus-5": return "opus";
+    case "claude-haiku-4-5": return "haiku";
+    case "claude-fable-5": return "sonnet";
+    case "claude-sonnet-5": return "sonnet";
+    default: return canonicalModel(model);
+  }
 };
 
 // proxy entry files live next to this one as .ts in dev (node type
@@ -251,6 +258,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const sessionId = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
       const newSessionId = sessionId ? null : newId();
 
+      const selectedModel = cliModel(turn.model);
+      const requestedReasoning = (turn as SendTurnInput & { reasoning?: string }).reasoning;
       const args = [
         "-p",
         "--output-format", "stream-json",
@@ -259,14 +268,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         // token-level streaming: content_block_delta events between the
         // whole-message frames, so the bubble grows as the model writes
         "--include-partial-messages",
-        // Short chat turns should not inherit Claude Code's high default
-        // reasoning effort; lower effort reduces latency and token burn.
-        "--effort", "low",
         "--permission-mode", policy ? "default" : config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode,
       ];
+      // Haiku has no adaptive-effort control in Claude Code. Other displayed
+      // Claude models accept the full effort range.
+      if (selectedModel !== "haiku") args.push("--effort", requestedReasoning || "low");
       if (sessionId) args.push("--resume", sessionId);
       else args.push("--session-id", newSessionId!);
-      args.push("--model", normalizeModel(turn.model));
+      args.push("--model", selectedModel);
       if (turn.system) args.push("--append-system-prompt", turn.system);
 
       // integrations → MCP servers; pre-allow their tools (a headless
@@ -556,7 +565,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       generateText: (prompt: string) =>
         new Promise((resolve, reject) => {
           // multibot
-          const cli = resolveCliSpawn(config.cli, ["-p", prompt, "--model", "claude-haiku-4-5", "--output-format", "text"]);
+          const cli = resolveCliSpawn(config.cli, ["-p", prompt, "--model", "haiku", "--output-format", "text"]);
           execFile(
             cli.command,
             cli.args,

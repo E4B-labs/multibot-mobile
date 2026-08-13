@@ -152,9 +152,9 @@ async function defaultSelection(described) {
         enabled.find((d) => d.driverKind === "claudeAgent") ??
         enabled[0] ??
         fleet[0];
-    return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "sonnet" };
+    return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
 }
-let bootSelection = { instanceId: "claude", model: "sonnet" };
+let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
 const workspace = new WorkspaceStore();
 const bootFleet = await registry.describe();
@@ -162,19 +162,19 @@ bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
 // Repair before the first API response, preferring a named custom model.
 store.migrateOrphanedSelections(bootFleet);
-// Claude Code accepts aliases (`sonnet`, `opus`, `haiku`), not the old
-// fictional/version-pinned IDs that earlier Multibot builds persisted.
+// Keep persisted Claude selections inside four stable UI entries. The driver
+// translates these product IDs to Claude Code aliases at execution time.
 for (const bot of store.bots) {
     if (bot.modelSelection.instanceId !== "claude")
         continue;
     const model = bot.modelSelection.model;
-    const alias = model.startsWith("claude-opus-") ? "opus"
-        : model.startsWith("claude-sonnet-") ? "sonnet"
-            : model.startsWith("claude-haiku-") || model === "haiku" ? "haiku"
-                : model === "fable" || model.startsWith("claude-fable-") ? "sonnet"
+    const stable = model === "opus" || model.startsWith("claude-opus-") ? "claude-opus-5"
+        : model === "haiku" || model.startsWith("claude-haiku-") ? "claude-haiku-4-5"
+            : model === "fable" || model.startsWith("claude-fable-") ? "claude-fable-5"
+                : model === "sonnet" || model.startsWith("claude-sonnet-") ? "claude-sonnet-5"
                     : model;
-    if (alias !== model)
-        store.patchBot(bot.id, { modelSelection: { instanceId: "claude", model: alias } });
+    if (stable !== model)
+        store.patchBot(bot.id, { modelSelection: { instanceId: "claude", model: stable } });
 }
 const existingEngineProfile = findExistingEngineProfile(ROOT);
 const hadHarnessBots = store.bots.length > 0;
@@ -469,7 +469,7 @@ async function handleModelCommand(bot, text) {
     broadcast({ kind: "bot", bot: store.bot(bot.id) });
     return `Model switched to: ${selectedModel}\nProvider: ${provider.displayName ?? provider.instanceId}`;
 }
-// ── turn dispatch (upstream ProviderCommandReactor, miniature) ──────────
+const isReasoningLevel = (value) => value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
 async function startTurn(botId, text, opts) {
     const bot = store.bot(botId);
     if (!bot)
@@ -623,6 +623,7 @@ async function startTurn(botId, text, opts) {
                         : "") +
                     taggedReplies,
                 integrations,
+                ...(opts?.reasoning ? { reasoning: opts.reasoning } : {}),
             });
             if (integrations.computer)
                 startScreenPoller(bot.id);
@@ -1025,6 +1026,7 @@ const server = createServer(async (req, res) => {
             const text = String(body.text ?? "").trim();
             if (!text)
                 return json(res, 400, { error: "text required" });
+            const reasoning = isReasoningLevel(body.reasoning) ? body.reasoning : undefined;
             const modelReply = await handleModelCommand(store.bot(m[1]), text);
             if (modelReply !== null) {
                 const bot = store.bot(m[1]);
@@ -1036,7 +1038,7 @@ const server = createServer(async (req, res) => {
                 broadcast({ kind: "message", threadId: bot.threadId, message: botMessage });
                 return json(res, 200, { ok: true, command: "model" });
             }
-            await startTurn(m[1], text);
+            await startTurn(m[1], text, { reasoning });
             return json(res, 202, { ok: true });
         }
         m = path.match(/^\/api\/bots\/([\w-]+)\/respond$/);

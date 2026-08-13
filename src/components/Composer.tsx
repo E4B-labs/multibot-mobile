@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Mic, Square, Wand2 } from "lucide-react";
+import { Brain, Plus, Mic, Square, Wand2 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -37,6 +37,23 @@ interface SlashSkill {
   description: string;
 }
 
+type ReasoningLevel = "default" | "low" | "medium" | "high" | "xhigh" | "max";
+const REASONING_LEVELS: Array<{ id: ReasoningLevel; label: string }> = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "X high" },
+  { id: "max", label: "Max" },
+];
+
+function reasoningLevels(model: string) {
+  // Claude Code does not expose adaptive effort for Haiku; leave provider
+  // default intact instead of sending an unsupported value.
+  return model.toLowerCase().includes("haiku")
+    ? [{ id: "default" as const, label: "Default" }]
+    : REASONING_LEVELS;
+}
+
 export function Composer({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const [text, setText] = useState("");
@@ -44,6 +61,8 @@ export function Composer({ bot }: { bot: Bot }) {
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [reasoning, setReasoning] = useState<ReasoningLevel>("low");
   const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc'd this @
   const inputRef = useRef<HTMLInputElement>(null);
   // what was typed before the mic went on — partials append after it
@@ -185,9 +204,20 @@ export function Composer({ bot }: { bot: Bot }) {
     });
   };
 
+  const availableReasoning = reasoningLevels(bot.modelSelection.model);
+  useEffect(() => {
+    setReasoning((current) => availableReasoning.some((item) => item.id === current) ? current : availableReasoning[0].id);
+    setReasoningOpen(false);
+  }, [bot.modelSelection.model]);
+
   const send = () => {
     if (!text.trim() || bot.busy) return;
-    dispatch({ type: "send", botId: bot.id, text: text.trim() });
+    dispatch({
+      type: "send",
+      botId: bot.id,
+      text: text.trim(),
+      ...(reasoning !== "default" ? { reasoning } : {}),
+    });
     track("message_sent", { driver: bot.modelSelection?.instanceId });
     setText("");
   };
@@ -368,6 +398,35 @@ export function Composer({ bot }: { bot: Bot }) {
           }
           className="w-full bg-transparent text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none"
         />
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setReasoningOpen((open) => !open)}
+            aria-expanded={reasoningOpen}
+            aria-label="Reasoning effort"
+            className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"
+            title={`Reasoning: ${availableReasoning.find((item) => item.id === reasoning)?.label ?? "Default"}`}
+          >
+            <Brain size={15} />
+            <span>{availableReasoning.find((item) => item.id === reasoning)?.label ?? "Default"}</span>
+          </button>
+          {reasoningOpen && (
+            <div className="absolute bottom-full right-0 z-30 mb-2 min-w-32 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl">
+              {availableReasoning.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { setReasoning(item.id); setReasoningOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[12px] text-ink",
+                    reasoning === item.id ? "bg-raised" : "hover:bg-raised/60",
+                  )}
+                >
+                  {item.label}
+                  {reasoning === item.id && <span className="text-accent">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {bot.busy ? (
           <button
             onClick={() => dispatch({ type: "interrupt", botId: bot.id })}

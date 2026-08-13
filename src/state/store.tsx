@@ -142,7 +142,7 @@ type Action =
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
-  | { type: "send"; botId: string; text: string }
+  | { type: "send"; botId: string; text: string; reasoning?: string }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
   | { type: "newBot" }
@@ -544,7 +544,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "send":
           api(`/api/bots/${action.botId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ text: action.text }),
+            body: JSON.stringify({ text: action.text, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }),
           }).catch(showError);
           break;
         case "answerCard": {

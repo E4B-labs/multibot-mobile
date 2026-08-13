@@ -64,6 +64,8 @@ export const CodexDriver = {
             const policy = turnPolicy(threadId);
             const fullAuto = policy ? policy.autonomy === "autonomous" && !Object.values(policy.permissions).includes(false) : config.fullAuto;
             const turnId = newId();
+            const requestedReasoning = turn.reasoning;
+            const effort = requestedReasoning === "max" ? "xhigh" : requestedReasoning;
             const env = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
             // the CLI owns its own ChatGPT login; a leaked API key silently flips
             // billing to pay-as-you-go (agentcal)
@@ -342,6 +344,7 @@ export const CodexDriver = {
                     await request("turn/start", {
                         threadId: codexThreadId,
                         input: [{ type: "text", text: turn.system ? `${turn.system}\n\n${turn.text}` : turn.text }],
+                        ...(effort ? { effort } : {}),
                     });
                 }
                 catch (e) {

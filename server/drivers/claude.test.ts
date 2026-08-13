@@ -106,6 +106,22 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("sonnet");
   });
 
+  it("forwards selected reasoning effort to Claude Code", async () => {
+    await create();
+    const dump = join(scratch, "reasoning.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    await instance.adapter.sendTurn({
+      threadId: "t-reasoning",
+      text: "hi",
+      model: "claude-opus-5",
+      reasoning: "max",
+    } as any);
+    await recorder.until((e) => e.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("max");
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("opus");
+  });
+
   it("streams partial-message text deltas without re-emitting the whole message", async () => {
     await create("stream");
     await instance.adapter.sendTurn({ threadId: "t-stream", text: "hi" });

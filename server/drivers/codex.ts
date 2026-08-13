@@ -91,6 +91,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const policy = turnPolicy(threadId);
       const fullAuto = policy ? policy.autonomy === "autonomous" && !Object.values(policy.permissions).includes(false) : config.fullAuto;
       const turnId = newId();
+      const requestedReasoning = (turn as SendTurnInput & { reasoning?: string }).reasoning;
+      const effort = requestedReasoning === "max" ? "xhigh" : requestedReasoning;
 
       const env: Record<string, string | undefined> = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
       // the CLI owns its own ChatGPT login; a leaked API key silently flips
@@ -371,6 +373,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           await request("turn/start", {
             threadId: codexThreadId,
             input: [{ type: "text", text: turn.system ? `${turn.system}\n\n${turn.text}` : turn.text }],
+            ...(effort ? { effort } : {}),
           });
         } catch (e) {
           if (!state.settled) {
