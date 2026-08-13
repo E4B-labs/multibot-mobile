@@ -740,6 +740,10 @@ def set_bot_mcp(bot_id: str, name: str, body: BotMcpIn) -> dict:
     if not (spec.get("url") or spec.get("command")):
         raise ValueError("spec needs `url` (HTTP/SSE) or `command` (stdio)")
     plugins.set_bot_server(bot_id, name, spec)
+    # multibot: Hermes discovers MCP servers only at gateway startup. The
+    # harness mounts `mb-agents` immediately before the next chat; stop the
+    # sidecar so that request starts it again with the new local tools.
+    gateway.stop()
     return {"bot_id": bot_id, "name": name, "installed": True}
 
 

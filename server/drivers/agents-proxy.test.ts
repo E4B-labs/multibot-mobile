@@ -17,6 +17,7 @@ let stub: Server;
 let stubPort = 0;
 let lastAuth: string | undefined;
 let lastAskBody: any = null;
+let lastActionBody: any = null;
 let askResponse: unknown = { botName: "Helper", text: "hi from helper" };
 
 let child: ChildProcess;
@@ -76,6 +77,7 @@ beforeAll(async () => {
       req.on("data", (c) => (data += c));
       req.on("end", () => {
         const body = JSON.parse(data);
+        lastActionBody = body;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(body.action === "device.info" ? {
           platform: "linux",
@@ -145,6 +147,22 @@ describe("agents-proxy MCP surface", () => {
     expect(text).toContain("SM-G970F");
     expect(text).toContain("\"termux\": true");
     expect(lastAuth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("routes routine creation through the local MultiBot action API", async () => {
+    const res = await callTool("create_routine", {
+      name: "Hej Kacper",
+      prompt: "hej kacper!",
+      schedule: "35 1 * * *",
+    });
+    expect(res.result.content[0].text).toContain('"ok": true');
+    expect(lastActionBody).toMatchObject({
+      fromBotId: "bot-asker",
+      action: "routines.create",
+      name: "Hej Kacper",
+      prompt: "hej kacper!",
+      schedule: "35 1 * * *",
+    });
   });
 
   // multibot (F9): delegacja po opisie — bez tego pola adresata da się wybrać

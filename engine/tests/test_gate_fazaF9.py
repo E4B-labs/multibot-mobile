@@ -107,12 +107,15 @@ def test_set_bot_server_is_idempotent_and_updates_a_rotated_token(fleet):
     assert _servers(BOT_A)["mb-agents"]["env"]["OMB_COMMS_TOKEN"] == "po-restarcie"
 
 
-def test_api_mounts_filters_and_refuses_a_bot_it_does_not_know(fleet):
+def test_api_mounts_filters_and_refuses_a_bot_it_does_not_know(fleet, monkeypatch):
+    restarts = []
+    monkeypatch.setattr(gateway, "stop", lambda: restarts.append(True))
     with TestClient(app_module.app) as c:
         spec = {**_agents_spec(BOT_A), "display_name": "Agents", "accounts": ["x"]}
         r = c.put(f"/api/bots/{BOT_A}/mcp/mb-agents", json={"spec": spec})
         assert r.status_code == 200
         assert r.json() == {"bot_id": BOT_A, "name": "mb-agents", "installed": True}
+        assert restarts == [True]  # gateway must rediscover newly mounted tools
         # obce klucze odsiane — Hermes wywala wpis z nadmiarem jako "suspicious"
         assert set(_servers(BOT_A)["mb-agents"]) == {"command", "args", "env"}
 
