@@ -20,6 +20,7 @@ import { augmentedPath, resolveCliSpawn } from "../env-path.js";
 // multibot (F7): wspólny montaż mcpServers (Composio + własne konektory).
 import { mcpServers as buildMcpServers } from "../mcp-servers.js";
 import { killTree } from "../kill-tree.js";
+import { autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../turn-policy.js";
 import { newEventId, newId } from "../contracts.js";
 import { appendNative } from "./native.js";
 const DRIVER_KIND = "claudeAgent";
@@ -27,11 +28,19 @@ const DRIVER_KIND = "claudeAgent";
 const MODELS = {
     default: "sonnet",
     options: [
-        { id: "sonnet", label: "Claude Sonnet (latest)" },
-        { id: "opus", label: "Claude Opus (latest)" },
-        { id: "haiku", label: "Claude Haiku (latest)" },
+        { id: "fable", label: "Claude Fable 5 (latest alias)" },
+        { id: "sonnet", label: "Claude Sonnet (latest alias)" },
+        { id: "opus", label: "Claude Opus (latest alias)" },
+        { id: "haiku", label: "Claude Haiku (latest alias)" },
+        { id: "claude-fable-5", label: "Claude Fable 5" },
+        { id: "claude-opus-5", label: "Claude Opus 5" },
+        { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+        { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
         { id: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
+        { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
         { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+        { id: "claude-3-7-sonnet-20250219", label: "Claude Sonnet 3.7" },
+        { id: "claude-3-5-haiku-20241022", label: "Claude Haiku 3.5" },
     ],
 };
 // proxy entry files live next to this one as .ts in dev (node type
@@ -199,6 +208,7 @@ export const ClaudeDriver = {
             const { threadId } = turn;
             if (active.has(threadId))
                 throw new Error("a turn is already running on this thread");
+            const policy = turnPolicy(threadId);
             const turnId = newId();
             const sessionId = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
             const newSessionId = sessionId ? null : newId();
@@ -210,7 +220,7 @@ export const ClaudeDriver = {
                 // token-level streaming: content_block_delta events between the
                 // whole-message frames, so the bubble grows as the model writes
                 "--include-partial-messages",
-                "--permission-mode", config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode,
+                "--permission-mode", policy ? "default" : config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode,
             ];
             if (sessionId)
                 args.push("--resume", sessionId);
@@ -224,7 +234,7 @@ export const ClaudeDriver = {
             // acceptEdits run silently denies anything unlisted)
             // multibot (F7): Composio i własne konektory użytkownika montuje wspólny
             // helper — ten sam, z którego korzystają pozostałe drivery.
-            const mcpServers = buildMcpServers(turn.integrations);
+            const mcpServers = buildMcpServers(turn.integrations, undefined, canUseIntegration(threadId, "integrations"));
             const allowed = Object.keys(mcpServers).map((name) => `mcp__${name}`);
             if (turn.integrations?.computer) {
                 mcpServers.computer = {
@@ -257,19 +267,29 @@ export const ClaudeDriver = {
             // an Allow/Deny card in chat, and the agent gets ask_user. Skipped in
             // bypassPermissions (fullAuto) — nothing would ever ask.
             let broker;
-            if (config.permissionMode !== "bypassPermissions") {
+            if (policy || config.permissionMode !== "bypassPermissions") {
                 const socketPath = permissionSocketPath(threadId);
                 broker = createPermissionBroker({
                     socketPath,
-                    onAsk: (ask) => emit({
-                        ...base(threadId, turnId),
-                        type: "request.opened",
-                        requestId: ask.id,
-                        requestType: ask.kind,
-                        tool: ask.tool,
-                        summary: askSummary(ask),
-                        choices: Array.isArray(ask.input?.choices) ? ask.input.choices.slice(0, 5) : undefined,
-                    }),
+                    onAsk: (ask) => {
+                        if (ask.kind === "permission" && !toolAllowed(threadId, ask.tool)) {
+                            queueMicrotask(() => broker?.answer(ask.id, "deny", `${ask.tool} blocked by bot permissions`));
+                            return;
+                        }
+                        if (ask.kind === "permission" && autoApproveAllowed(threadId, ask.tool)) {
+                            queueMicrotask(() => broker?.answer(ask.id, "allow"));
+                            return;
+                        }
+                        emit({
+                            ...base(threadId, turnId),
+                            type: "request.opened",
+                            requestId: ask.id,
+                            requestType: ask.kind,
+                            tool: ask.tool,
+                            summary: askSummary(ask),
+                            choices: Array.isArray(ask.input?.choices) ? ask.input.choices.slice(0, 5) : undefined,
+                        });
+                    },
                     onResolve: (resolved) => emit({
                         ...base(threadId, turnId),
                         type: "request.resolved",
@@ -281,6 +301,15 @@ export const ClaudeDriver = {
                 args.push("--permission-prompt-tool", "mcp__ogb__approve");
                 mcpServers.ogb = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
                 allowed.push("mcp__ogb");
+            }
+            if (policy) {
+                const denied = [
+                    ...(policy.permissions.terminal === false ? ["Bash"] : []),
+                    ...(policy.permissions.file === false ? ["Read", "Edit", "Write", "NotebookEdit", "Glob", "Grep"] : []),
+                    ...(policy.permissions.browser === false ? ["WebFetch", "WebSearch"] : []),
+                ];
+                if (denied.length)
+                    args.push("--disallowedTools", denied.join(","));
             }
             if (Object.keys(mcpServers).length) {
                 args.push("--mcp-config", JSON.stringify({ mcpServers }));

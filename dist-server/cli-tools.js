@@ -11,6 +11,7 @@ export const CLI_TOOLS = [
         driverKind: "geminiAgent",
         displayName: "Gemini",
         loginCommand: "gemini",
+        login: { command: "gemini", args: [] },
         install: { command: "npm", args: ["install", "-g", "@google/gemini-cli@latest"] },
     },
     {
@@ -18,13 +19,15 @@ export const CLI_TOOLS = [
         driverKind: "claudeAgent",
         displayName: "Claude Code",
         loginCommand: "claude",
+        login: { command: "claude", args: [] },
         install: { command: "npm", args: ["install", "-g", "@anthropic-ai/claude-code@latest"] },
     },
     {
         id: "codex",
         driverKind: "codex",
         displayName: "Codex",
-        loginCommand: "codex",
+        loginCommand: "codex --login",
+        login: { command: "codex", args: ["--login"] },
         install: { command: "npm", args: ["install", "-g", "@openai/codex@latest"] },
     },
     {
@@ -32,6 +35,7 @@ export const CLI_TOOLS = [
         driverKind: "kimiAgent",
         displayName: "Kimi Code",
         loginCommand: "kimi",
+        login: { command: "kimi", args: [] },
         install: { command: "uv", args: ["tool", "install", "--python", "3.13", "kimi-cli"] },
     },
     {
@@ -39,6 +43,7 @@ export const CLI_TOOLS = [
         driverKind: "qwenAgent",
         displayName: "Qwen Code",
         loginCommand: "qwen",
+        login: { command: "qwen", args: [] },
         install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] },
     },
 ];

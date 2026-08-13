@@ -110,7 +110,9 @@ function spawnEngine(baseUrl) {
     const dataDir = process.env.SLAFY_DATA_DIR ?? defaultEngineDataDir();
     const child = spawn(python, engineServerArgs(port), {
         cwd: ENGINE_DIR,
-        env: { ...process.env, SLAFY_DATA_DIR: dataDir, HERMES_HOME: process.env.HERMES_HOME ?? dataDir },
+        // Never inherit a host-level Hermes path. On Windows it defaults to C:\\Users
+        // and splits engine profiles from SLAFY_DATA_DIR (gateway then exits 78).
+        env: { ...process.env, SLAFY_DATA_DIR: dataDir, HERMES_HOME: dataDir },
         detached: true,
         stdio: "ignore",
         windowsHide: true,

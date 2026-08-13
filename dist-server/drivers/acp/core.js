@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { newEventId, newId } from "../../contracts.js";
 import { augmentedPath, resolveCliSpawn } from "../../env-path.js";
 import { killTree } from "../../kill-tree.js";
+import { autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../../turn-policy.js";
 // multibot (F7): własne serwery MCP użytkownika, wspólne dla wszystkich driverów.
 import { connectors as customConnectors } from "../../mcp-connectors.js";
 import { appendNative } from "../native.js";
@@ -88,7 +89,7 @@ export function createAcpDriver(support) {
                 // komentarz wyżej (HTTP/SSE to EXTRA transport ACP, nie baseline).
                 // Wiążą się przy `session/new`, więc konektor dodany w trakcie sesji
                 // dołącza dopiero do następnej.
-                for (const c of customConnectors()) {
+                for (const c of canUseIntegration(turn.threadId, "integrations") ? customConnectors() : []) {
                     if (c.transport.type !== "stdio")
                         continue;
                     servers.push({
@@ -108,7 +109,11 @@ export function createAcpDriver(support) {
                 const cwd = turn.cwd ?? config.workspace ?? homedir();
                 const env = childEnv();
                 const mcpServers = acpMcpServers(turn);
-                const cli = resolveCliSpawn(config.cli, support.spawnArgs(config, turn)); // multibot
+                const policy = turnPolicy(threadId);
+                const effectiveConfig = policy
+                    ? { ...config, fullAuto: policy.autonomy === "autonomous" && !Object.values(policy.permissions).includes(false) }
+                    : config;
+                const cli = resolveCliSpawn(config.cli, support.spawnArgs(effectiveConfig, turn)); // multibot
                 const child = spawn(cli.command, cli.args, {
                     cwd,
                     env,
@@ -180,7 +185,20 @@ export function createAcpDriver(support) {
                         message: `${DRIVER_KIND} offered no "${want}" permission option — cancelling the request instead of guessing`,
                     });
                     const toolCall = params.toolCall ?? {};
-                    if (config.fullAuto) {
+                    const kind = String(toolCall.kind ?? "");
+                    const tool = kind === "execute" ? "shell" : kind === "edit" ? "edit" : kind || "tool";
+                    if (!toolAllowed(threadId, tool)) {
+                        const reject = optionFor("reject");
+                        if (!reject)
+                            missing("reject");
+                        emit({ ...base(threadId, turnId), type: "runtime.error", message: `${tool} blocked by bot permissions` });
+                        return send({
+                            jsonrpc: "2.0",
+                            id: msg.id,
+                            result: reject ? { outcome: { outcome: "selected", optionId: reject } } : cancelled,
+                        });
+                    }
+                    if (autoApproveAllowed(threadId, tool) || (!policy && config.fullAuto)) {
                         const allow = optionFor("allow");
                         if (!allow)
                             missing("allow");
@@ -190,8 +208,6 @@ export function createAcpDriver(support) {
                             result: allow ? { outcome: { outcome: "selected", optionId: allow } } : cancelled,
                         });
                     }
-                    const kind = String(toolCall.kind ?? "");
-                    const tool = kind === "execute" ? "shell" : kind === "edit" ? "edit" : kind || "tool";
                     const summary = String(toolCall.rawInput?.command ?? toolCall.title ?? tool).slice(0, 200);
                     const requestId = newId();
                     const finish = (behavior) => {

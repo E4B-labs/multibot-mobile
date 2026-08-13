@@ -11,6 +11,7 @@ export const jobProgress = (job) => ({
     step: job.title,
     message: job.output.at(-1) ?? job.title,
     done: job.status === "succeeded",
+    ...(job.kind === "cli-login" ? { output: [...job.output] } : {}),
     ...(job.status === "failed" ? { error: job.error ?? "setup failed" } : {}),
 });
 export class SetupJobs {
@@ -19,6 +20,7 @@ export class SetupJobs {
     file;
     onUpdate;
     spawnFn;
+    interactive = new Map();
     constructor(file, onUpdate = () => { }, spawnFn = spawn) {
         this.file = file;
         this.onUpdate = onUpdate;
@@ -113,6 +115,69 @@ export class SetupJobs {
             this.finish(job, code, code === 0 ? undefined : `${spec.command} exited with code ${code}`);
         });
         return this.get(job.id);
+    }
+    /** Start fixed CLI login command with stdin kept open for OAuth prompts. */
+    startInteractive(spec) {
+        const running = this.jobs.find((job) => job.key === spec.key && job.status === "running");
+        if (running)
+            return { ...running, output: [...running.output] };
+        const command = [spec.command, ...spec.args].join(" ");
+        const job = {
+            id: newId(), key: spec.key, kind: spec.kind, title: spec.title, command,
+            status: "running", output: [`$ ${command}`], createdAt: Date.now(),
+        };
+        this.jobs.unshift(job);
+        this.jobs = this.jobs.slice(0, 20);
+        this.emit(job);
+        const resolved = resolveCliSpawn(spec.command, spec.args);
+        let child;
+        try {
+            child = this.spawnFn(resolved.command, resolved.args, {
+                cwd: spec.cwd,
+                env: { ...process.env, ...spec.env },
+                shell: false,
+                windowsHide: true,
+                windowsVerbatimArguments: resolved.windowsVerbatimArguments,
+                stdio: ["pipe", "pipe", "pipe"],
+            });
+        }
+        catch (error) {
+            this.finish(job, null, error instanceof Error ? error.message : String(error));
+            return this.get(job.id);
+        }
+        this.interactive.set(job.id, child);
+        for (const stream of [child.stdout, child.stderr]) {
+            if (!stream)
+                continue;
+            createInterface({ input: stream }).on("line", (line) => this.append(job, line));
+        }
+        let settled = false;
+        const done = (code, error) => {
+            if (settled)
+                return;
+            settled = true;
+            this.interactive.delete(job.id);
+            this.finish(job, code, error);
+        };
+        child.once("error", (error) => done(null, error.message));
+        child.once("exit", (code) => done(code, code === 0 ? undefined : `${spec.command} exited with code ${code}`));
+        return this.get(job.id);
+    }
+    input(id, text) {
+        if (text.length > 20_000)
+            throw new Error("input too large");
+        const child = this.interactive.get(id);
+        if (!child?.stdin?.writable)
+            return false;
+        child.stdin.write(text.endsWith("\n") ? text : `${text}\n`);
+        return true;
+    }
+    stop(id) {
+        const child = this.interactive.get(id);
+        if (!child)
+            return false;
+        child.kill();
+        return true;
     }
     append(job, line) {
         const text = line.trimEnd();

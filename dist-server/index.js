@@ -30,6 +30,7 @@ import { jobProgress, SetupJobs } from "./setup-jobs.js";
 import { chainDepth, mentionedBots, Store } from "./store.js";
 import { registerWindowsServerAutostart } from "./windows-autostart.js";
 import { WorkspaceStore } from "./workspace.js";
+import { canUseIntegration, clearTurnPolicy, setTurnPolicy } from "./turn-policy.js";
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -298,6 +299,7 @@ bus.subscribe((event) => {
             if (frame)
                 pushMessage({ role: "bot", kind: "screen", png: frame.png, mime: frame.mime });
             store.patchBot(bot.id, { busy: false, unread: true });
+            clearTurnPolicy(bot.threadId);
             activeCommsDepth.delete(bot.id); // multibot (F9): tura skończona — licznik też
             broadcast({ kind: "bot", bot: store.bot(bot.id) });
             break;
@@ -375,6 +377,84 @@ function readCuaConnection() {
     }
     return null;
 }
+// multibot: Hermes-compatible provider/model switch for chat. `/model` is a
+// harness command, not prose sent to whichever provider happens to be active.
+// Selection persists on bot, matching the model picker and surviving restart.
+async function handleModelCommand(bot, text) {
+    if (!bot || !/^\/model(?:\s|$)/i.test(text))
+        return null;
+    if (bot.busy)
+        throw Object.assign(new Error("the bot is already working — interrupt it first"), { status: 409 });
+    const raw = text.replace(/^\/model\s*/i, "").trim();
+    const providerFlag = raw.match(/(?:^|\s)--provider(?:=|\s+)([^\s]+)/i)?.[1]?.toLowerCase();
+    const target = raw
+        .replace(/(?:^|\s)--(?:provider(?:=|\s+)[^\s]+|global|session|once|refresh)(?=\s|$)/gi, "")
+        .trim();
+    const described = (await registry.describe()).filter((item) => item.instanceId !== "local");
+    const key = (value) => value.trim().toLowerCase().replace(/\s+/g, "");
+    const aliases = {
+        anthropic: "claude",
+        openai: "codex",
+        chatgpt: "codex",
+        google: "gemini",
+        xai: "grok",
+        moonshot: "kimi",
+        alibaba: "qwen",
+    };
+    const findProvider = (value) => {
+        const wanted = aliases[key(value)] ?? key(value);
+        return described.find((item) => [item.instanceId, item.driverKind, item.displayName].some((candidate) => key(candidate) === wanted));
+    };
+    const current = described.find((item) => item.instanceId === bot.modelSelection.instanceId);
+    if (!raw) {
+        const lines = described.map((item) => {
+            const models = item.models.options.map((model) => model.id).join(", ") || "no catalog";
+            const status = item.snapshot.state === "available" ? "ready" : `unavailable: ${item.snapshot.reason ?? "not ready"}`;
+            return `- ${item.displayName ?? item.instanceId}: ${models} (${status})`;
+        });
+        return `Current model: ${bot.modelSelection.model || "unknown"}\nProvider: ${current?.displayName ?? (bot.modelSelection.instanceId || "unknown")}\n\n${lines.join("\n")}\n\nUse /model <provider>/<model> or /model <model> --provider <provider>.`;
+    }
+    let provider = providerFlag ? findProvider(providerFlag) : undefined;
+    let model = target;
+    if (!provider && target.includes("/")) {
+        const slash = target.indexOf("/");
+        const candidate = findProvider(target.slice(0, slash));
+        if (candidate) {
+            provider = candidate;
+            model = target.slice(slash + 1);
+        }
+    }
+    if (!provider && target.includes(":")) {
+        const colon = target.indexOf(":");
+        const candidate = findProvider(target.slice(0, colon));
+        if (candidate) {
+            provider = candidate;
+            model = target.slice(colon + 1);
+        }
+    }
+    if (!provider && !providerFlag) {
+        provider = described.find((item) => item.instanceId === bot.modelSelection.instanceId &&
+            item.models.options.some((option) => option.id === target || option.label.toLowerCase() === target.toLowerCase()));
+        provider ??= described.find((item) => item.models.options.some((option) => option.id === target || option.label.toLowerCase() === target.toLowerCase()));
+    }
+    if (!provider && providerFlag)
+        return `Unknown provider: ${providerFlag}. Use /model to list providers.`;
+    if (!provider)
+        return `Unknown model: ${target}. Use /model to list providers and models.`;
+    if (provider.snapshot.state !== "available") {
+        return `${provider.displayName ?? provider.instanceId} unavailable: ${provider.snapshot.reason ?? "not ready"}`;
+    }
+    if (!model)
+        model = provider.models.default;
+    const known = provider.models.options.some((option) => option.id === model || option.label.toLowerCase() === model.toLowerCase());
+    if (!known && provider.models.options.length && provider.driverKind !== "slafy") {
+        return `Unknown ${provider.displayName ?? provider.instanceId} model: ${model}. Available: ${provider.models.options.map((option) => option.id).join(", ")}`;
+    }
+    const selectedModel = provider.models.options.find((option) => option.id === model || option.label.toLowerCase() === model.toLowerCase())?.id ?? model;
+    store.patchBot(bot.id, { modelSelection: { instanceId: provider.instanceId, model: selectedModel } });
+    broadcast({ kind: "bot", bot: store.bot(bot.id) });
+    return `Model switched to: ${selectedModel}\nProvider: ${provider.displayName ?? provider.instanceId}`;
+}
 // ── turn dispatch (upstream ProviderCommandReactor, miniature) ──────────
 async function startTurn(botId, text, opts) {
     const bot = store.bot(botId);
@@ -425,28 +505,33 @@ async function startTurn(botId, text, opts) {
     // in the background — box provisioning can take ~90s and must never
     // hang the HTTP request
     store.patchBot(bot.id, { busy: true, unread: false });
+    setTurnPolicy(bot.threadId, {
+        autonomy: workspace.autonomy(bot.id).autonomy,
+        permissions: workspace.permissions(bot.id),
+    });
     activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
     broadcast({ kind: "bot", bot: store.bot(bot.id) });
     void (async () => {
         try {
             const integrations = {};
-            if (cfg.composio?.key)
+            if (cfg.composio?.key && canUseIntegration(bot.threadId, "integrations")) {
                 integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
+            }
             const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'shared' | 'off' | undefined(auto)
             // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
             // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
             // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
             // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
-            if ((wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
+            if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
                 const mcp = await engineComputer(bot.threadId, undefined, wants === "shared" ? "shared" : "own");
                 if (mcp)
                     integrations.localComputer = mcp;
             }
-            else if ((wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
+            else if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
                 // Native browser tools still run inside this bot's engine profile.
                 await configureEngineComputer(bot.threadId, wants === "shared" ? "shared" : "own");
             }
-            if (wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
+            if (canUseIntegration(bot.threadId, "browser") && wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
                 let b = await box.findBox(cfg, bot.id).catch(() => null);
                 // the Computer driver runs ON the box — provision it on first use
                 if (!b && instance.driverKind === "boxAgent") {
@@ -460,7 +545,7 @@ async function startTurn(botId, text, opts) {
             // local computer (this Mac) via the Electron-hosted cua-driver: the
             // Electron main process owns the daemon (TCC attribution) and writes
             // its spawn contract to cua-connection.json; the harness only reads it
-            if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
+            if (canUseIntegration(bot.threadId, "browser") && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
                 const cua = readCuaConnection();
                 if (cua)
                     integrations.localComputer = cua;
@@ -473,6 +558,7 @@ async function startTurn(botId, text, opts) {
             // without it must not be told about tools it cannot call. Any bot can
             // still be the TARGET of ask_bot regardless of its driver.
             if (commsDepth < MAX_COMMS_DEPTH &&
+                canUseIntegration(bot.threadId, "delegation") &&
                 instance.adapter.capabilities.agentsMcp === true &&
                 store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0) {
                 integrations.agents = agentsIntegration(bot.id, commsDepth);
@@ -485,7 +571,7 @@ async function startTurn(botId, text, opts) {
             // get explicit peer delegation. Fetch replies before their turn and
             // attach them to the prompt; native MCP providers keep live tools.
             let taggedReplies = "";
-            if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH) {
+            if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH && canUseIntegration(bot.threadId, "delegation")) {
                 const replies = await Promise.all(tagged.map(async (peer) => ({
                     peer,
                     reply: await askBotAndWait(peer.id, `[Delegation from @${bot.name}] ${text}`, commsDepth),
@@ -536,6 +622,7 @@ async function startTurn(botId, text, opts) {
             });
             broadcast({ kind: "message", threadId: bot.threadId, message: failure });
             store.patchBot(bot.id, { busy: false });
+            clearTurnPolicy(bot.threadId);
             activeCommsDepth.delete(bot.id); // multibot (F9): tura padła — licznik też
             broadcast({ kind: "bot", bot: store.bot(bot.id) });
         }
@@ -634,6 +721,7 @@ async function cliToolsStatus() {
             version: instance?.snapshot.version ?? undefined,
             installCommand: installCommandText(tool.install),
             loginCommand: tool.loginCommand ?? null,
+            loginAvailable: Boolean(tool.login),
         };
     });
 }
@@ -728,6 +816,12 @@ const server = createServer(async (req, res) => {
                     return json(res, 400, { error: "toBotId and message required" });
                 if (toBotId === fromBotId)
                     return json(res, 400, { error: "a bot cannot message itself" });
+                const from = store.bot(fromBotId);
+                if (!from)
+                    return json(res, 404, { error: "no such caller bot" });
+                if (workspace.permissions(fromBotId).delegation === false) {
+                    return json(res, 403, { error: "bot-to-bot delegation is disabled for this bot" });
+                }
                 if (depth >= MAX_COMMS_DEPTH)
                     return json(res, 200, { error: "message chains are limited to one hop" });
                 const target = store.bot(toBotId);
@@ -737,7 +831,6 @@ const server = createServer(async (req, res) => {
                     return json(res, 200, { busy: true });
                 // visibility: surface the cross-talk on the caller's own thread so
                 // bot-to-bot turns are never invisible (they cost the user tokens)
-                const from = store.bot(fromBotId);
                 const fromName = from?.name ?? "another bot";
                 if (from) {
                     const note = store.appendMessage(from.threadId, {
@@ -806,12 +899,42 @@ const server = createServer(async (req, res) => {
                 bots: store.bots.map((b) => ({ ...b, messages: store.messagesFor(b.threadId) })),
             });
         }
+        let m;
+        // multibot: mixed-provider group rooms. Engine stores membership/shadow
+        // ids; harness owns actual turns so Claude/Codex/ACP bots answer through
+        // their selected provider instead of being silently replaced by engine.
+        m = path.match(/^\/api\/groups\/([\w-]+)\/chat$/);
+        if (m && method === "POST") {
+            const body = await readBody(req);
+            const message = String(body.message ?? "").trim();
+            if (!message)
+                return json(res, 422, { error: "message required" });
+            try {
+                const base = await ensureEngine();
+                const groupResponse = await fetch(`${base}/api/groups/${encodeURIComponent(m[1])}`);
+                if (!groupResponse.ok)
+                    return json(res, groupResponse.status === 404 ? 404 : 502, { error: "no such group" });
+                const group = await groupResponse.json();
+                const turns = [];
+                for (const rawId of group.bot_ids ?? []) {
+                    const engineId = String(rawId);
+                    const threadId = engineId.startsWith("mb-") ? engineId.slice(3) : engineId;
+                    const bot = store.botByThread(threadId);
+                    if (!bot)
+                        continue;
+                    turns.push({ bot_id: bot.id, reply: await askBotAndWait(bot.id, `[Group room] ${message}`, 0) });
+                }
+                return json(res, 200, { turns, owner: turns[0]?.bot_id ?? null });
+            }
+            catch (error) {
+                return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+            }
+        }
         if (method === "POST" && path === "/api/bots") {
             const bot = store.createBot();
             store.patchBot(bot.id, { modelSelection: await defaultSelection() });
             return json(res, 201, { bot: { ...store.bot(bot.id), messages: store.messagesFor(bot.threadId) } });
         }
-        let m;
         m = path.match(/^\/api\/bots\/([\w-]+)$/);
         if (m && method === "PATCH") {
             const body = await readBody(req);
@@ -875,6 +998,17 @@ const server = createServer(async (req, res) => {
             const text = String(body.text ?? "").trim();
             if (!text)
                 return json(res, 400, { error: "text required" });
+            const modelReply = await handleModelCommand(store.bot(m[1]), text);
+            if (modelReply !== null) {
+                const bot = store.bot(m[1]);
+                if (!bot)
+                    return json(res, 404, { error: "no such bot" });
+                const userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text });
+                const botMessage = store.appendMessage(bot.threadId, { role: "bot", kind: "text", text: modelReply });
+                broadcast({ kind: "message", threadId: bot.threadId, message: userMessage });
+                broadcast({ kind: "message", threadId: bot.threadId, message: botMessage });
+                return json(res, 200, { ok: true, command: "model" });
+            }
             await startTurn(m[1], text);
             return json(res, 202, { ok: true });
         }
@@ -908,7 +1042,7 @@ const server = createServer(async (req, res) => {
             if (!store.bot(m[1]))
                 return json(res, 404, { error: "no such bot" });
             if (method === "GET" && !m[2])
-                return json(res, 200, workspace.facts(m[1]));
+                return json(res, 200, workspace.facts(m[1], url.searchParams.get("q") ?? ""));
             if (method === "POST" && !m[2]) {
                 const body = await readBody(req);
                 return json(res, 201, workspace.addFact(m[1], body));
@@ -936,6 +1070,12 @@ const server = createServer(async (req, res) => {
                 return json(res, 200, workspace.putMarkdown(m[1], body.content));
             }
             return json(res, 405, { error: "method not allowed" });
+        }
+        m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/graph$/);
+        if (m && method === "GET") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            return json(res, 200, workspace.graph(m[1]));
         }
         m = path.match(/^\/api\/bots\/([\w-]+)\/skills(?:\/(.+))?$/);
         if (m) {
@@ -1203,6 +1343,41 @@ const server = createServer(async (req, res) => {
         if (method === "GET" && path === "/api/cli-tools") {
             return json(res, 200, { tools: await cliToolsStatus() });
         }
+        m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/login$/);
+        if (m && method === "POST") {
+            const toolId = m[1];
+            const tool = CLI_TOOLS.find((item) => item.id === toolId);
+            if (!tool)
+                return json(res, 404, { error: "no such command-line tool" });
+            if (!tool.login)
+                return json(res, 409, { error: "interactive login unavailable; use official CLI instructions" });
+            const temp = join(DATA_DIR, "tmp");
+            mkdirSync(temp, { recursive: true });
+            const job = setupJobs.startInteractive({
+                key: `cli-login:${tool.id}`,
+                kind: "cli-login",
+                title: `Sign in ${tool.displayName}`,
+                command: tool.login.command,
+                args: tool.login.args,
+                cwd: DATA_DIR,
+                env: { TMP: temp, TEMP: temp },
+            });
+            return json(res, 202, { id: job.id, job });
+        }
+        m = path.match(/^\/api\/progress\/([\w-]+)\/(input|stop)$/);
+        if (m && method === "POST") {
+            const job = setupJobs.get(m[1]);
+            if (!job)
+                return json(res, 404, { error: "no such setup job" });
+            if (job.kind !== "cli-login")
+                return json(res, 409, { error: "job does not accept interactive input" });
+            if (m[2] === "stop")
+                return json(res, setupJobs.stop(m[1]) ? 200 : 409, { ok: true });
+            const body = await readBody(req);
+            if (typeof body.text !== "string")
+                return json(res, 400, { error: "text required" });
+            return json(res, setupJobs.input(m[1], body.text) ? 200 : 409, { ok: true });
+        }
         m = path.match(/^\/api\/cli-tools\/([a-z0-9-]+)\/install$/);
         if (m && method === "POST") {
             const toolId = m[1];
@@ -1399,6 +1574,9 @@ server.listen(PORT, HOST, () => {
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
         harnessRoutines.stop();
-        void registry.disposeAll().finally(() => process.exit(0));
+        // taskkill /T is asynchronous on Windows. Exiting immediately abandoned
+        // CLI children (and kept their profile files locked), so give it one
+        // short reap window after all adapters requested disposal.
+        void registry.disposeAll().finally(() => setTimeout(() => process.exit(0), process.platform === "win32" ? 500 : 0));
     });
 }

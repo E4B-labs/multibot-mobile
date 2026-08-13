@@ -21,7 +21,7 @@ const COMPOSIO_URL = "https://connect.composio.dev/mcp";
  * `cfg` czytany PER TURĘ (domyślny argument), nie raz przy tworzeniu instancji:
  * konektor dodany w trakcie życia apki ma zadziałać od następnej tury.
  */
-export function mcpServers(integrations, cfg = loadConfig()) {
+export function mcpServers(integrations, cfg = loadConfig(), allowConnectors = true) {
     const servers = {};
     if (integrations?.composio?.key) {
         servers.composio = {
@@ -30,7 +30,7 @@ export function mcpServers(integrations, cfg = loadConfig()) {
             headers: { "x-consumer-api-key": integrations.composio.key },
         };
     }
-    for (const c of connectors(cfg)) {
+    for (const c of allowConnectors ? connectors(cfg) : []) {
         servers[c.id] =
             c.transport.type === "stdio"
                 ? { command: c.transport.command, args: c.transport.args ?? [], env: c.transport.env ?? {} }

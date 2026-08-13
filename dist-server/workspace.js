@@ -8,6 +8,7 @@ const DEFAULT_PERMISSIONS = {
     browser: true,
     delegation: true,
     file: true,
+    integrations: true,
     memory: true,
     skills: true,
     terminal: true,
@@ -47,14 +48,18 @@ export class WorkspaceStore {
         if (delete this.data[botId])
             this.save();
     }
-    facts(botId) {
-        return structuredClone(this.get(botId).facts);
+    facts(botId, query = "") {
+        const needle = query.trim().toLowerCase();
+        return structuredClone(this.get(botId).facts.filter((fact) => !needle || fact.text.toLowerCase().includes(needle)));
     }
     addFact(botId, value) {
+        const factText = text(value.text, "text", 20_000);
+        const entities = [...new Set([...factText.matchAll(/(?:^|\s)([@#][\p{L}\p{N}_-]{2,})/gu)].map((match) => match[1]))];
         const fact = {
             id: newId(),
-            text: text(value.text, "text", 20_000),
+            text: factText,
             ...(String(value.source ?? "").trim() ? { source: String(value.source).trim().slice(0, 200) } : {}),
+            ...(entities.length ? { entities } : {}),
             created_at: new Date().toISOString(),
         };
         this.get(botId).facts.unshift(fact);
@@ -87,6 +92,22 @@ export class WorkspaceStore {
     }
     markdown(botId) {
         return { content: this.get(botId).markdown };
+    }
+    graph(botId) {
+        const facts = this.get(botId).facts;
+        const entities = [...new Set(facts.flatMap((fact) => fact.entities ?? []))];
+        return {
+            nodes: [
+                ...facts.map((fact) => ({ id: `f${fact.id}`, type: "fact", label: fact.text, weight: 1 })),
+                ...entities.map((entity) => ({
+                    id: `e${entity}`,
+                    type: "entity",
+                    label: entity,
+                    weight: facts.filter((fact) => fact.entities?.includes(entity)).length,
+                })),
+            ],
+            edges: facts.flatMap((fact) => (fact.entities ?? []).map((entity) => ({ source: `f${fact.id}`, target: `e${entity}` }))),
+        };
     }
     putMarkdown(botId, content) {
         const value = String(content ?? "");
