@@ -98,6 +98,8 @@ interface AppState {
   pluginsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
+  // multibot: F6 — panel rutyn silnika slafy, ten sam prawy slot co settings/computer
+  routinesOpen: boolean;
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
   /** latest live frame of a bot's computer, per botId */
@@ -141,6 +143,8 @@ type Action =
   | { type: "togglePlugins"; open?: boolean }
   | { type: "toggleComputer"; open?: boolean }
   | { type: "toggleAppSettings"; open?: boolean }
+  // multibot: F6 — otwarcie/zamknięcie panelu rutyn
+  | { type: "toggleRoutines"; open?: boolean }
   | {
       type: "updateBot";
       botId: string;
@@ -314,7 +318,7 @@ function reducer(state: AppState, action: Action): AppState {
           : state),
         error: action.message,
       };
-    // bot settings, the computer panel, and app settings share the right slot
+    // bot settings, the computer panel, app settings, and routines share the right slot
     case "toggleSettings": {
       const open = action.open ?? !state.settingsOpen;
       return {
@@ -322,6 +326,7 @@ function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
       };
     }
     case "togglePlugins":
@@ -333,6 +338,7 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open,
         settingsOpen: open ? false : state.settingsOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
       };
     }
     case "toggleAppSettings": {
@@ -343,6 +349,18 @@ function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         pluginsOpen: open ? false : state.pluginsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+      };
+    }
+    // multibot: F6 — panel rutyn wypycha pozostałych lokatorów prawego slotu
+    case "toggleRoutines": {
+      const open = action.open ?? !state.routinesOpen;
+      return {
+        ...state,
+        routinesOpen: open,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
       };
     }
     case "updateBot": {
@@ -373,6 +391,7 @@ const initialState: AppState = {
   pluginsOpen: false,
   computerOpen: false,
   appSettingsOpen: false,
+  routinesOpen: false,
   streaming: {},
   screens: {},
   provisioning: {},

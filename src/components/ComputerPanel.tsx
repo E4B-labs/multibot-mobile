@@ -325,13 +325,25 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           <div className="mt-0.5 text-[13px] text-ink-secondary">
             Routines are recurring tasks this agent runs on a schedule.
           </div>
-          <button
-            disabled
-            className="mt-3 w-full cursor-not-allowed rounded-lg bg-raised py-2 text-[13px] text-ink-secondary opacity-60"
-            title="Coming soon"
-          >
-            Create Routine
-          </button>
+          {/* multibot: F6 — boty na driverze slafy dostają żywy panel rutyn
+              (gate jak w SettingsPanel); reszta floty zostaje na stubie. */}
+          {state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)
+            ?.driverKind === "slafy" ? (
+            <button
+              onClick={() => dispatch({ type: "toggleRoutines", open: true })}
+              className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+            >
+              Manage Routines
+            </button>
+          ) : (
+            <button
+              disabled
+              className="mt-3 w-full cursor-not-allowed rounded-lg bg-raised py-2 text-[13px] text-ink-secondary opacity-60"
+              title="Coming soon"
+            >
+              Create Routine
+            </button>
+          )}
         </div>
       </div>
     </aside>

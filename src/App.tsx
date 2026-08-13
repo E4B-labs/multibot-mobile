@@ -9,6 +9,8 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { PluginsPanel } from "@/components/PluginsPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
+// multibot: F6 — panel rutyn silnika slafy
+import { RoutinesPanel } from "@/components/RoutinesPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
@@ -16,6 +18,11 @@ import { CmdK } from "@/components/CmdK";
 function Shell() {
   const { state } = useStore();
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
+  // multibot: F6 — gate jak w SettingsPanel: rutyny tylko dla botów na driverze slafy
+  const slafyBot =
+    bot &&
+    state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
+      "slafy";
   return (
     <div className="flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
@@ -41,6 +48,8 @@ function Shell() {
       )}
       {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
+      {/* multibot: F6 — klucz per bot.id wymusza remount + świeży GET przy przełączeniu bota */}
+      {state.routinesOpen && slafyBot && <RoutinesPanel key={bot.id} bot={bot} />}
       {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
       </div>
