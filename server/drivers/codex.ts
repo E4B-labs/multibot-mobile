@@ -352,7 +352,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           let startedModel: string | null = null;
           if (cursor) {
             try {
-              const resumed = await request("thread/resume", { threadId: cursor });
+              const resumed = await request("thread/resume", {
+                threadId: cursor,
+                ...(turn.integrations?.agents ? { config: { mcp_servers: { agents: turn.integrations.agents } } } : {}),
+              });
               codexThreadId = resumed?.thread?.id ?? cursor;
             } catch {
               /* resume unsupported or thread gone — start fresh below */
@@ -365,6 +368,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               sandbox: fullAuto ? "danger-full-access" : policy?.permissions.file === false ? "read-only" : "workspace-write",
               approvalPolicy: fullAuto ? "never" : "on-request",
               ephemeral: false,
+              ...(turn.integrations?.agents ? { config: { mcp_servers: { agents: turn.integrations.agents } } } : {}),
             });
             codexThreadId = started?.thread?.id ?? null;
             startedModel = started?.model ?? null;
@@ -413,7 +417,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       snapshot,
       adapter: {
         provider: DRIVER_KIND,
-        capabilities: { sessionModelSwitch: "unsupported" },
+        capabilities: { sessionModelSwitch: "unsupported", agentsMcp: true },
         sendTurn,
         interruptTurn: async (threadId) => active.get(threadId)?.stop(),
         respondToRequest: async (threadId, requestId, decision) => {

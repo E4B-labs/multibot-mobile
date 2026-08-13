@@ -622,7 +622,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // get explicit peer delegation. Fetch replies before their turn and
       // attach them to the prompt; native MCP providers keep live tools.
       let taggedReplies = "";
-      if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH && canUseIntegration(bot.threadId, "delegation")) {
+      if ((!integrations.agents || instance.driverKind === "codex") && tagged.length && commsDepth < MAX_COMMS_DEPTH && canUseIntegration(bot.threadId, "delegation")) {
         const replies = await Promise.all(
           tagged.map(async (peer) => ({
             peer,

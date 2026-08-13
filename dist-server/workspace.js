@@ -18,9 +18,16 @@ const empty = () => ({
     markdown: "",
     skills: [],
     autonomy: "approval",
+    access: "approval",
     permissions: { ...DEFAULT_PERMISSIONS },
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 },
 });
+function normalizedAccess(workspace) {
+    if (workspace.access === "read-only" || workspace.access === "approval" || workspace.access === "full") {
+        return workspace.access;
+    }
+    return workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
+}
 function privateMode(path, mode) {
     if (process.platform !== "win32" && existsSync(path))
         chmodSync(path, mode);
@@ -164,12 +171,31 @@ export class WorkspaceStore {
         if (value !== "approval" && value !== "autonomous") {
             throw Object.assign(new Error("autonomy must be approval or autonomous"), { status: 422 });
         }
-        this.get(botId).autonomy = value;
+        const workspace = this.get(botId);
+        workspace.autonomy = value;
+        workspace.access = value === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
         this.save();
         return { autonomy: value };
     }
     permissions(botId) {
         return { ...this.get(botId).permissions };
+    }
+    access(botId) {
+        return { access: normalizedAccess(this.get(botId)) };
+    }
+    setAccess(botId, value) {
+        if (value !== "read-only" && value !== "approval" && value !== "full") {
+            throw Object.assign(new Error("access must be read-only, approval or full"), { status: 422 });
+        }
+        const access = value;
+        const workspace = this.get(botId);
+        workspace.access = access;
+        workspace.autonomy = access === "full" ? "autonomous" : "approval";
+        workspace.permissions = access === "read-only"
+            ? { ...DEFAULT_PERMISSIONS, browser: false, delegation: false, file: false, integrations: false, terminal: false }
+            : { ...DEFAULT_PERMISSIONS };
+        this.save();
+        return { access };
     }
     setPermissions(botId, patch) {
         if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
@@ -182,6 +208,7 @@ export class WorkspaceStore {
             }
             workspace.permissions[key] = enabled;
         }
+        workspace.access = workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
         this.save();
         return { ...workspace.permissions };
     }

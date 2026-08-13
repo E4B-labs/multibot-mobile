@@ -36,6 +36,24 @@ const TOOLS = [
             required: ["bot_id", "message"],
         },
     },
+    { name: "get_my_profile", description: "Read your complete bot profile.", inputSchema: { type: "object", properties: {} } },
+    { name: "update_my_profile", description: "Update your name, role, description, icon, notifications, computer or model selection.", inputSchema: { type: "object", properties: { name: { type: "string" }, title: { type: "string" }, description: { type: "string" }, computer: { type: "string" }, color: { type: "string" }, mascotShape: { type: "string" }, notifications: { type: "boolean" }, modelSelection: { type: "object" } } } },
+    { name: "remember", description: "Save a durable fact to your memory.", inputSchema: { type: "object", properties: { text: { type: "string" }, source: { type: "string" } }, required: ["text"] } },
+    { name: "recall", description: "Search your durable memory.", inputSchema: { type: "object", properties: { query: { type: "string" } } } },
+    { name: "read_memory", description: "Read your Graph Memory and markdown memory.", inputSchema: { type: "object", properties: {} } },
+    { name: "create_skill", description: "Create a reusable skill for yourself.", inputSchema: { type: "object", properties: { name: { type: "string" }, description: { type: "string" }, instructions: { type: "string" } }, required: ["name", "instructions"] } },
+    { name: "list_skills", description: "List your skills.", inputSchema: { type: "object", properties: {} } },
+    { name: "create_routine", description: "Create a durable scheduled routine for yourself.", inputSchema: { type: "object", properties: { name: { type: "string" }, prompt: { type: "string" }, schedule: { type: "string" } }, required: ["name", "prompt"] } },
+    { name: "list_routines", description: "List your routines.", inputSchema: { type: "object", properties: {} } },
+    { name: "run_routine", description: "Run one of your routines now.", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
+    { name: "create_agent", description: "Create another bot in this workspace.", inputSchema: { type: "object", properties: { name: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["name"] } },
+    { name: "update_agent", description: "Update another bot using its id.", inputSchema: { type: "object", properties: { botId: { type: "string" }, patch: { type: "object" } }, required: ["botId", "patch"] } },
+    { name: "list_groups", description: "List bot groups.", inputSchema: { type: "object", properties: {} } },
+    { name: "create_group", description: "Create a group conversation from bot ids.", inputSchema: { type: "object", properties: { name: { type: "string" }, bot_ids: { type: "array", items: { type: "string" } } }, required: ["name", "bot_ids"] } },
+    { name: "send_group_message", description: "Send a message to a group conversation.", inputSchema: { type: "object", properties: { groupId: { type: "string" }, message: { type: "string" } }, required: ["groupId", "message"] } },
+    { name: "read_file", description: "Read a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+    { name: "write_file", description: "Write a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
+    { name: "run_command", description: "Run a host command with arguments.", inputSchema: { type: "object", properties: { command: { type: "string" }, args: { type: "array", items: { type: "string" } }, cwd: { type: "string" } }, required: ["command"] } },
 ];
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
 const ok = (id, result) => send({ jsonrpc: "2.0", id, result });
@@ -77,6 +95,17 @@ async function callTool(name, args) {
         if (r.error)
             return { text: `Couldn't reach that bot: ${r.error}`, isError: true };
         return { text: `${r.botName ?? "Bot"} replied:\n${r.text ?? "(no reply)"}` };
+    }
+    const action = {
+        get_my_profile: "profile.get", update_my_profile: "profile.update", remember: "memory.add", recall: "memory.list",
+        read_memory: "memory.graph", create_skill: "skills.create", list_skills: "skills.list", create_routine: "routines.create",
+        list_routines: "routines.list", run_routine: "routines.run", create_agent: "agent.create", update_agent: "agent.update",
+        list_groups: "groups.list", create_group: "groups.create", send_group_message: "groups.send", read_file: "file.read",
+        write_file: "file.write", run_command: "terminal.run",
+    };
+    if (action[name]) {
+        const r = await api("/api/internal/agent-action", { method: "POST", body: JSON.stringify({ fromBotId: BOT_ID, action: action[name], ...args, ...(name === "recall" ? { query: args.query } : {}) }) });
+        return { text: JSON.stringify(r, null, 2) };
     }
     return { text: `Unknown tool: ${name}`, isError: true };
 }

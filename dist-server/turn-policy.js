@@ -1,13 +1,13 @@
 const active = new Map();
 export function setTurnPolicy(threadId, policy) {
-    active.set(threadId, { autonomy: policy.autonomy, permissions: { ...policy.permissions } });
+    active.set(threadId, { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } });
 }
 export function clearTurnPolicy(threadId) {
     active.delete(threadId);
 }
 export function turnPolicy(threadId) {
     const policy = active.get(threadId);
-    return policy ? { autonomy: policy.autonomy, permissions: { ...policy.permissions } } : undefined;
+    return policy ? { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } } : undefined;
 }
 export function toolsetFor(tool) {
     const name = tool.toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -29,11 +29,13 @@ export function toolAllowed(threadId, tool) {
     const policy = active.get(threadId);
     if (!policy)
         return true;
+    if (policy.access === "read-only" && ["browser", "delegation", "file", "integrations", "terminal"].includes(toolsetFor(tool)))
+        return false;
     return policy.permissions[toolsetFor(tool)] !== false;
 }
 export function autoApproveAllowed(threadId, tool) {
     const policy = active.get(threadId);
-    return policy?.autonomy === "autonomous" && toolAllowed(threadId, tool);
+    return (policy?.access === "full" || policy?.autonomy === "autonomous") && toolAllowed(threadId, tool);
 }
 export function canUseIntegration(threadId, kind) {
     const policy = active.get(threadId);

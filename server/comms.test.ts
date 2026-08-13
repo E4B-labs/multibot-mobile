@@ -208,7 +208,7 @@ describe("comms e2e (fake ACP fleet)", () => {
   );
 
   it(
-    "falls back to tagged peer replies for a provider without agents MCP and honors delegation policy",
+    "falls back to tagged peer replies for Codex and honors delegation policy",
     async () => {
       const selection = { instanceId: "grok", model: "fake-model" };
       const helper = (await api("POST", "/api/bots")).body.bot;
@@ -231,7 +231,7 @@ describe("comms e2e (fake ACP fleet)", () => {
       expect(routine.status).toBe(201);
 
       const instances = (await api("GET", "/api/instances")).body.instances;
-      expect(instances.find((item: any) => item.instanceId === "codex").capabilities.peerMessaging).toBe("mentions-only");
+      expect(instances.find((item: any) => item.instanceId === "codex").capabilities.peerMessaging).toBe("tools");
       expect(instances.find((item: any) => item.instanceId === "grok").capabilities.peerMessaging).toBe("tools");
 
       await api("PATCH", `/api/bots/${asker.id}/permissions`, { toolset: "delegation", enabled: false });
