@@ -14,7 +14,10 @@ import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE
 import type { RuntimeEvent } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
-import { ensureEngine } from "./engine/supervisor.ts"; // multibot: przelotka BYOK
+// multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
+import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.ts";
+import { watchEngineAttention } from "./engine/attention.ts";
+import { mountEngineProxy } from "./engine/proxy.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
@@ -324,6 +327,8 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     .filter(Boolean)
     .join(" ");
 
+  // multibot (D7): kolejna tura usera JEST odpowiedzią na to, na co bot czekał
+  if (bot.needsAttention != null) store.patchBot(bot.id, { needsAttention: null });
   // busy flips immediately so the composer locks; the dispatch itself runs
   // in the background — box provisioning can take ~90s and must never
   // hang the HTTP request
@@ -651,31 +656,6 @@ const server = createServer(async (req, res) => {
       return json(res, 200, status);
     }
 
-    // ── multibot: BYOK silnika (przelotka) ──
-    // Provider modelu ustawia się W SILNIKU, per bot (`providers.py`: config.yaml
-    // profilu + klucz do jego .env). UI BYOK gada z harnessem, nie z silnikiem
-    // wprost, więc idzie tędy. Pełny, generyczny proxy do silnika to faza F3 —
-    // tu wyłącznie te dwie trasy, których potrzebuje BYOK.
-    m = path.match(/^\/api\/engine\/provider\/([\w-]+)$/);
-    if (m && (method === "GET" || method === "POST")) {
-      const botId = m[1];
-      try {
-        const baseUrl = await ensureEngine();
-        const target = `${baseUrl}/api/bots/${encodeURIComponent(botId)}/provider`;
-        // GET czyta stan (silnik nigdy nie oddaje klucza — tylko `has_key`),
-        // POST zapisuje; po stronie silnika zapis to PUT.
-        const upstream = await fetch(target, {
-          method: method === "GET" ? "GET" : "PUT",
-          headers: { "content-type": "application/json" },
-          body: method === "GET" ? undefined : JSON.stringify(await readBody(req)),
-          signal: AbortSignal.timeout(30_000),
-        });
-        return json(res, upstream.status, await upstream.json().catch(() => ({})));
-      } catch (e) {
-        return json(res, 503, { error: e instanceof Error ? e.message : String(e) });
-      }
-    }
-
     // ── connectors (Composio) ──
     if (method === "GET" && path === "/api/connectors/catalog") {
       const { cards, source } = await composio.listToolkits(cfg);
@@ -742,6 +722,27 @@ const server = createServer(async (req, res) => {
     const status = (e as any)?.status ?? 500;
     return json(res, status, { error: e instanceof Error ? e.message : String(e) });
   }
+});
+
+// ── multibot: silnik — generyczny proxy `/api/engine/*` + pipe WS ──────
+// Wszystkie trasy silnika (łącznie z przelotką BYOK z F2, pod tym samym URL-em)
+// obsługuje `server/engine/proxy.ts`; montuje się opakowaniem listenera, więc
+// handler wyżej zostaje nietknięty.
+mountEngineProxy(server);
+
+// ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
+// Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);
+// harness zamienia to na `needsAttention` w store i rozsyła jak każdą inną
+// zmianę bota. Gaśnie przy następnej turze usera — patrz `startTurn`.
+watchEngineAttention({
+  engineBotIds: () => store.bots.map((b) => engineBotIdFor(b.threadId)),
+  onAttention: (engineBotId, reason) => {
+    const threadId = threadIdOfEngineBot(engineBotId);
+    const bot = threadId ? store.botByThread(threadId) : null;
+    if (!bot || (bot.needsAttention ?? null) === reason) return;
+    store.patchBot(bot.id, { needsAttention: reason });
+    broadcast({ kind: "bot", bot: store.bot(bot.id) });
+  },
 });
 
 server.listen(PORT, "127.0.0.1", () => {

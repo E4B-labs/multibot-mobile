@@ -1,8 +1,9 @@
 // multibot: kontraktowe testy drivera slafy na fake'owym silniku HTTP
 // (server/testing/fake-engine.ts). Pozostałe drivery testują się na fake CLI —
 // slafy jest driverem HTTP, więc fake'iem jest serwer.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { ensureDirs } from "../config.ts";
 import type { ProviderInstance } from "../contracts.ts";
 import { ensureEngine } from "../engine/supervisor.ts";
 import { startFakeEngine, type FakeEngine, type FakeEngineMode } from "../testing/fake-engine.ts";
@@ -141,6 +142,100 @@ describe("SlafyDriver turns (fake engine)", () => {
     const dead = await instance.snapshot();
     expect(dead.state).toBe("unavailable");
     expect(dead.reason).toContain(engine.url);
+  });
+});
+
+// D4: tury, które zaszły przy zamkniętej apce (rutyny, interbot), mają trafić
+// do transkryptu przy podłączeniu instancji — i ANI RAZU więcej.
+describe("SlafyDriver attach-sync (D4)", () => {
+  let engine: FakeEngine;
+  let instance: ProviderInstance | null = null;
+  let recorder: EventRecorder;
+
+  // attach-sync pisze kursor przez `appendNative` — bez katalogów cicho by go zgubił
+  beforeAll(() => ensureDirs());
+
+  const attach = async () => {
+    if (instance) await instance.dispose();
+    instance = await SlafyDriver.create({
+      instanceId: "slafy-sync",
+      displayName: "Slafy Sync",
+      environment: {},
+      enabled: true,
+      config: SlafyDriver.defaultConfig(),
+    });
+    recorder = recordEvents(instance.adapter);
+    return instance;
+  };
+
+  const seedBot = (botId: string, history: Array<{ role: string; content: string }>) => {
+    engine.createdBots.push(botId);
+    engine.history[botId] = [...history];
+  };
+
+  beforeEach(async () => {
+    engine = await startFakeEngine();
+    process.env.ENGINE_URL = engine.url;
+    instance = null;
+  });
+
+  afterEach(async () => {
+    delete process.env.ENGINE_URL;
+    recorder?.stop();
+    await instance?.dispose();
+    await engine?.close();
+  });
+
+  it("replays engine turns the harness never saw", async () => {
+    seedBot("mb-t-attach", [
+      { role: "user", content: "[rutyna 07:00]" },
+      { role: "assistant", content: "raport gotowy" },
+    ]);
+    await attach();
+
+    const replayed = await recorder.until((e) => e.type === "item.completed");
+    expect(replayed).toMatchObject({ itemType: "assistant_text", text: "raport gotowy", threadId: "t-attach" });
+    // znacznik pochodzenia zostaje w evencie (i w NDJSON) — sync ≠ tura na żywo
+    expect((replayed as any).raw?.source).toBe("slafy.sync");
+    // domknięcie turą, żeby sidebar zapalił `unread`
+    await recorder.until((e) => e.type === "turn.completed");
+    // prompt rutyny zostaje po stronie silnika: strumień kanoniczny nie ma
+    // eventu tworzącego wiadomość USERA
+    expect(recorder.events.filter((e) => e.type === "item.completed")).toHaveLength(1);
+  });
+
+  it("resumes from its own cursor instead of replaying the whole history", async () => {
+    seedBot("mb-t-cursor", [
+      { role: "user", content: "[rutyna]" },
+      { role: "assistant", content: "pierwsza" },
+    ]);
+    await attach();
+    await recorder.until((e) => e.type === "turn.completed");
+    recorder.stop();
+
+    // silnik dorobił jeszcze jedną turę, zanim apka wstała drugi raz
+    engine.history["mb-t-cursor"].push({ role: "assistant", content: "druga" });
+    await attach();
+
+    const next = await recorder.until((e) => e.type === "item.completed");
+    expect(next).toMatchObject({ text: "druga" });
+    // gdyby kursor nie przeżył, "pierwsza" byłaby TU, przed "drugą"
+    expect(recorder.events.filter((e) => e.type === "item.completed")).toHaveLength(1);
+  });
+
+  it("does not replay a turn the harness itself sent", async () => {
+    const live = await attach();
+    await live.adapter.sendTurn({ threadId: "t-live", text: "czesc" });
+    await recorder.until((e) => e.type === "turn.completed");
+    recorder.stop();
+    // fake silnik dopisał turę do historii (user + assistant), jak prawdziwy
+    expect(engine.history["mb-t-live"]).toHaveLength(2);
+
+    engine.history["mb-t-live"].push({ role: "assistant", content: "po godzinach" });
+    await attach();
+
+    await recorder.until((e) => e.type === "item.completed" && (e as any).text === "po godzinach");
+    expect(recorder.events.filter((e) => e.type === "item.completed")).toHaveLength(1);
   });
 });
 

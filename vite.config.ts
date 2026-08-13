@@ -35,6 +35,10 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: `http://127.0.0.1:${process.env.OGB_PORT || 8799}`,
+        // multibot: pipe WS silnika (`/api/engine/ws`) też idzie tą przelotką —
+        // bez tego dev-serwer nie przepuszcza upgrade'u i kanał eventów działa
+        // wyłącznie w apce pakowanej
+        ws: true,
       },
     },
   },

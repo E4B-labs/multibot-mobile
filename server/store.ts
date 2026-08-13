@@ -70,6 +70,10 @@ export interface BotRecord {
   pinned?: boolean;
   hidden?: boolean;
   busy?: boolean;
+  /** multibot (D7): bot silnika czeka na człowieka (login, captcha, pytanie) —
+   * treść powodu prosto z eventu `attention`, `null`/brak = nie czeka. Jedzie
+   * w bots.json, więc powód przeżywa restart tak samo jak po stronie silnika. */
+  needsAttention?: string | null;
   createdAt: number;
 }
 

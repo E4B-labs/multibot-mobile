@@ -30,6 +30,12 @@ export function venvPython(engineDir = ENGINE_DIR): string {
     : join(engineDir, ".venv", "bin", "python");
 }
 
+/** Adres silnika BEZ podnoszenia go — dla nasłuchów, które mają czekać, aż
+ * silnik pojawi się sam (attach-sync, WS uwagi), a nie go zapalać. */
+export function engineBaseUrl(): string {
+  return (process.env.ENGINE_URL ?? DEFAULT_URL).replace(/\/$/, "");
+}
+
 async function healthy(baseUrl: string, timeoutMs = 1_500): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(timeoutMs) });
@@ -80,7 +86,7 @@ export function ensureEngine(): Promise<string> {
 
 async function run(): Promise<string> {
   const external = process.env.ENGINE_URL;
-  const baseUrl = (external ?? DEFAULT_URL).replace(/\/$/, "");
+  const baseUrl = engineBaseUrl();
 
   if (await healthy(baseUrl)) return baseUrl;
   if (external) {

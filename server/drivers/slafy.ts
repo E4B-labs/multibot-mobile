@@ -9,6 +9,9 @@
 //
 // Transkrypt harnessu (NDJSON) zostaje jedynym źródłem renderu; silnik trzyma
 // swój własny, równoległy stan rozmowy i to jest w porządku — nikt ich nie scala.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -20,10 +23,21 @@ import type {
   SendTurnInput,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
-import { EngineUnavailableError, ensureEngine } from "../engine/supervisor.ts";
+import { NATIVE_DIR } from "../config.ts";
+import { EngineUnavailableError, ensureEngine, engineBaseUrl } from "../engine/supervisor.ts";
 import { appendNative } from "./native.ts";
 
 const DRIVER_KIND = "slafy";
+
+/** Domyślny prefiks id bota w silniku. Odwzorowanie `mb-<threadId>` jest
+ * wyliczalne w obie strony, więc nikt (ani driver, ani harness przy uwadze
+ * D7) nie musi trzymać mapy wątek↔bot silnika. */
+export const ENGINE_BOT_PREFIX = "mb-";
+/** Odstęp między `create()` a attach-syncem — patrz kickoff na końcu `create`. */
+const ATTACH_SYNC_DELAY_MS = 500;
+export const engineBotIdFor = (threadId: string, prefix = ENGINE_BOT_PREFIX) => `${prefix}${threadId}`;
+export const threadIdOfEngineBot = (botId: string, prefix = ENGINE_BOT_PREFIX) =>
+  botId.startsWith(prefix) ? botId.slice(prefix.length) : null;
 
 // D5: katalog budowany per-instancja w `create()`, nie współdzielona stała.
 // Jedna pozycja i to nie przypadek: model wybiera się w silniku, per bot, przez
@@ -41,7 +55,7 @@ export interface SlafyConfig {
 
 function decodeConfig(raw: unknown): SlafyConfig {
   const o = (raw ?? {}) as Record<string, unknown>;
-  return { botPrefix: typeof o.botPrefix === "string" ? o.botPrefix : "mb-" };
+  return { botPrefix: typeof o.botPrefix === "string" ? o.botPrefix : ENGINE_BOT_PREFIX };
 }
 
 /** Jedna ramka SSE: `event:` (opcjonalnie) + `data:` z JSON-em. */
@@ -90,11 +104,12 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
     const { instanceId, config } = input;
     const listeners = new Set<RuntimeEventListener>();
     const active = new Map<string, { abort: AbortController; turnId: string }>();
+    let disposed = false;
     // Bot silnika per WĄTEK, nie per instancja: jedna instancja `slafy` obsługuje
     // całą flotę botów harnessu, a każdy z nich musi mieć własny, stanowy profil.
     // Id jest wyliczane z threadId, więc przeżywa restart bez zapisywania czegokolwiek.
     const ensuredBots = new Set<string>();
-    const engineBotId = (threadId: string) => `${config.botPrefix}${threadId}`;
+    const engineBotId = (threadId: string) => engineBotIdFor(threadId, config.botPrefix);
 
     const emit = (event: RuntimeEvent) => {
       for (const l of [...listeners]) l(event);
@@ -126,6 +141,94 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       return botId;
     };
 
+    // ── D4: attach-sync ────────────────────────────────────────────────────
+    // Rutyny (cron/webhook) i rozmowy międzybotowe chodzą w silniku także przy
+    // zamkniętej apce. Przy podłączeniu instancji dosyłamy to, czego transkrypt
+    // harnessu nie widział — zwykłymi eventami kanonicznymi, więc NDJSON i store
+    // zapisują się dokładnie tą samą drogą co tura na żywo.
+    //
+    // Kursor = LICZBA wiadomości silnika, które harness już zna, wyliczona z
+    // natywnego logu drivera (`native/<threadId>.ndjson`) — jedynego stanu, jaki
+    // driver i tak persystuje. `resumeCursors` odpada: driver dostaje je dopiero
+    // w `sendTurn`, a sync ma zajść PRZED pierwszą turą.
+    const seenCount = (threadId: string): number => {
+      let log: string;
+      try {
+        log = readFileSync(join(NATIVE_DIR, `${threadId}.ndjson`), "utf8");
+      } catch {
+        return 0; // wątek, którego ten driver jeszcze nie dotykał
+      }
+      let seen = 0;
+      for (const line of log.split("\n")) {
+        if (!line.trim()) continue;
+        let entry: { dir?: string; source?: string; msg?: any };
+        try {
+          entry = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        // znacznik ostatniego syncu niesie wartość BEZWZGLĘDNĄ i kasuje zliczanie
+        if (entry.source === "slafy.sync") seen = Number(entry.msg?.seen) || 0;
+        else if (entry.source === "slafy.chat" && entry.dir === "out") seen++;
+        else if (entry.source === "slafy.chat" && entry.dir === "in" && String(entry.msg?.reply ?? "").trim()) seen++;
+      }
+      return seen;
+    };
+
+    const syncThread = async (baseUrl: string, botId: string, threadId: string) => {
+      // Instancja po `dispose()` NIE dosyła: emit poszedłby do pustego zbioru
+      // słuchaczy, a kursor i tak by się przesunął — wiadomości zniknęłyby na
+      // zawsze. Dotyczy każdego przeładowania floty (`reloadProviders`).
+      if (disposed) return;
+      // tura w locie sama dopisze swój wynik — sync wszedłby jej w słowo
+      if (active.has(threadId)) return;
+      const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/messages`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return;
+      const history = (await res.json()) as Array<{ role?: string; content?: string }>;
+      const seen = seenCount(threadId);
+      // ponytail: kursor pozycyjny, bo wiadomości silnika nie mają id (gateway
+      // oddaje role/content/ts). Ceiling: historia jest ucinana do ostatnich 500,
+      // więc po przekroczeniu okna pozycje się przesuwają — wtedy odpuszczamy.
+      // Upgrade: id albo `since` po stronie silnika, gdy to okno zacznie boleć.
+      if (!Array.isArray(history) || seen > history.length) return;
+      const turnId = newId();
+      let emitted = 0;
+      for (const msg of history.slice(seen)) {
+        // Tylko asystent: kanoniczny strumień nie ma eventu tworzącego wiadomość
+        // USERA (te dopisuje harness przy wysyłce), więc prompt rutyny zostaje po
+        // stronie silnika. Kursor liczy obie role, bo liczy pozycje w historii.
+        if (msg?.role !== "assistant" || !String(msg.content ?? "").trim()) continue;
+        emit({
+          ...base(threadId, turnId),
+          type: "item.completed",
+          itemType: "assistant_text",
+          text: msg.content!,
+          raw: { source: "slafy.sync", payload: msg },
+        });
+        emitted++;
+      }
+      if (history.length > seen) {
+        appendNative(threadId, { dir: "in", source: "slafy.sync", msg: { seen: history.length } });
+      }
+      // domknięcie jak przy zwykłej turze — w sidebarze zapala `unread`
+      if (emitted) emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, cost: null });
+    };
+
+    const attachSync = async () => {
+      // Silnika NIE podnosimy (`engineBaseUrl`, nie `ensureEngine`): stoi = rutyny
+      // mogły coś zrobić, nie stoi = nie miały kiedy. Leniwy kontrakt z F2 zostaje.
+      const baseUrl = engineBaseUrl();
+      const res = await fetch(`${baseUrl}/api/bots`, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return;
+      const bots = (await res.json()) as Array<{ id?: string }>;
+      for (const bot of Array.isArray(bots) ? bots : []) {
+        const threadId = bot?.id ? threadIdOfEngineBot(bot.id, config.botPrefix) : null;
+        if (threadId) await syncThread(baseUrl, bot.id!, threadId);
+      }
+    };
+
     const sendTurn = async (turn: SendTurnInput) => {
       const { threadId } = turn;
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
@@ -138,7 +241,6 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
 
       emit({ ...base(threadId, turnId), type: "turn.started" });
       emit({ ...base(threadId, turnId), type: "session.started", sessionId: botId, model: turn.model ?? null });
-      appendNative(threadId, { dir: "out", source: "slafy.chat", msg: { botId, message: turn.text } });
 
       void (async () => {
         // D4: TYLKO nowa tura. `turn.transcript` celowo nieużyte — silnik ma własną historię.
@@ -156,6 +258,10 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
           if (!res.ok || !res.body) {
             throw new Error(`engine chat → HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
           }
+          // Log natywny DOPIERO po przyjęciu tury przez silnik: to z niego liczy
+          // się kursor attach-syncu (D4), a wysyłka, która nie doszła, zawyżyłaby
+          // go o jeden i skasowała prawdziwą wiadomość z historii na zawsze.
+          appendNative(threadId, { dir: "out", source: "slafy.chat", msg: { botId, message: turn.text } });
           for await (const { name, payload } of sseFrames(res.body, abort.signal)) {
             switch (name) {
               case "delta":
@@ -239,6 +345,12 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       }
     };
 
+    // Zwłoka daje harnessowi czas na wpięcie magistrali: `bus.attach`/`subscribe`
+    // (index.ts) idzie PO `registry.load`, a to ono nas tworzy — bez niej
+    // dosyłane eventy poszłyby w próżnię.
+    const syncTimer = setTimeout(() => void attachSync().catch(() => {}), ATTACH_SYNC_DELAY_MS);
+    syncTimer.unref?.();
+
     return {
       instanceId,
       driverKind: DRIVER_KIND,
@@ -270,6 +382,8 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       dispose: async () => {
         // Silnika NIE ubijamy: chodzi detached, żeby rutyny botów przeżyły
         // zamknięcie aplikacji (patrz server/engine/supervisor.ts).
+        disposed = true;
+        clearTimeout(syncTimer);
         for (const { abort } of active.values()) abort.abort();
         listeners.clear();
       },
