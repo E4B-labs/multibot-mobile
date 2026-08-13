@@ -1,12 +1,12 @@
 // multibot (G7): onboarding's explicit 24/7 choice registers packaged Windows
 // app as a per-user ONLOGON server. No shell, elevation or development runtime.
 import { execFile } from "node:child_process";
-import { isAbsolute } from "node:path";
+import { win32 } from "node:path";
 
 const TASK_NAME = "Multibot Server";
 
 export function windowsAutostartArgs(packagedExe: string): string[] {
-  if (!isAbsolute(packagedExe) || !packagedExe.toLowerCase().endsWith(".exe")) {
+  if (!win32.isAbsolute(packagedExe) || !packagedExe.toLowerCase().endsWith(".exe")) {
     throw new Error("packaged Windows executable must be an absolute .exe path");
   }
   return [
