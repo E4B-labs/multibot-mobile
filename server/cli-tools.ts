@@ -39,8 +39,11 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     driverKind: "claudeAgent",
     displayName: "Claude Code",
     installStrategy: "claude-native",
-    loginCommand: "claude",
-    login: { command: "claude", args: [] },
+    // Official non-TTY flow: prints OAuth URL and accepts pasted callback code
+    // on stdin. `/login` belongs to the interactive REPL and is unavailable
+    // when the harness owns stdin through HTTP.
+    loginCommand: "claude auth login",
+    login: { command: "claude", args: ["auth", "login"] },
     install: { command: "npm", args: ["install", "-g", "@anthropic-ai/claude-code@latest"] },
   },
   {

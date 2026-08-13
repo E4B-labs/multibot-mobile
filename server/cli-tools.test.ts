@@ -7,7 +7,7 @@ describe("CLI tool metadata", () => {
     const byId = Object.fromEntries(CLI_TOOLS.map((tool) => [tool.id, tool]));
     expect(byId.kimi).toMatchObject({ driverKind: "kimiAgent", install: { command: "uv", args: ["tool", "install", "--python", "3.13", "kimi-cli"] } });
     expect(byId.qwen).toMatchObject({ driverKind: "qwenAgent", install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] } });
-    expect(byId.claude).toMatchObject({ loginCommand: "claude", login: { command: "claude", args: [] } });
+    expect(byId.claude).toMatchObject({ loginCommand: "claude auth login", login: { command: "claude", args: ["auth", "login"] } });
     expect(byId.claude.installStrategy).toBe("claude-native");
     expect(byId.codex).toMatchObject({ loginCommand: "codex --login", login: { command: "codex", args: ["--login"] } });
     expect(byId.grok.install).toBeUndefined();

@@ -617,6 +617,8 @@ function CommandLineTools() {
     await api(`/api/progress/${encodeURIComponent(login.jobId)}/stop`, { method: "POST" }).catch(() => {});
   };
 
+  const closeLogin = () => setLogin(null);
+
   const followInstall = async (jobId: string, toolId: string) => {
     const response = await authFetch(`/api/progress/${encodeURIComponent(jobId)}`);
     if (!response.ok || !response.body) throw new Error(`Install stream failed (${response.status})`);
@@ -665,6 +667,7 @@ function CommandLineTools() {
   };
 
   return (
+    <>
     <div className="mt-4 rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">Command-line tools</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">Allow tools that can run bots on this device.</div>
@@ -709,31 +712,49 @@ function CommandLineTools() {
                 {installJob.error && <div className="mt-1 text-[11px] text-danger">{installJob.error}</div>}
               </div>
             )}
-            {login?.toolId === item.id && (
-              <div className="mx-2 mb-2 rounded-lg bg-inset p-2">
-                <div className="mb-1 text-[11px] text-ink-secondary">
-                  Follow official login in this terminal. Browser OAuth URL can be opened from any device.
-                </div>
-                <pre className="max-h-36 overflow-auto whitespace-pre-wrap text-[11px] text-ink">{login.output.join("\n")}</pre>
-                {!login.done && <div className="mt-2 flex gap-2">
-                  <input
-                    className="min-w-0 flex-1 rounded-md border border-hairline/40 bg-card px-2 py-1 text-[12px] text-ink"
-                    placeholder={item.id === "claude" ? "Type /login or answer prompt" : "Answer CLI prompt"}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      const input = event.currentTarget;
-                      void sendLoginInput(input.value).then(() => { input.value = ""; });
-                    }}
-                  />
-                  <button onClick={() => void stopLogin()} className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink">Stop</button>
-                </div>}
-                {login.error && <div className="mt-1 text-[11px] text-danger">{login.error}</div>}
-              </div>
-            )}
           </div>
         ))}
       </div>
     </div>
+    {login && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="presentation">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cli-login-title"
+          className="w-full max-w-xl rounded-2xl border border-hairline/40 bg-card p-5 shadow-2xl"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div id="cli-login-title" className="text-[16px] font-semibold text-ink">Sign in {cli.find((item) => item.id === login.toolId)?.displayName ?? login.toolId}</div>
+              <div className="mt-1 text-[12px] text-ink-secondary">
+                Open OAuth link below, sign in, then paste returned code here. This is official CLI login flow.
+              </div>
+            </div>
+            {login.done && <button onClick={closeLogin} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised">Close</button>}
+          </div>
+          <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-inset p-3 text-[12px] leading-5 text-ink">{login.output.join("\n") || "Starting Claude Code login…"}</pre>
+          {!login.done && (
+            <div className="mt-3 flex gap-2">
+              <input
+                autoFocus
+                className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-card px-3 py-2 text-[13px] text-ink"
+                placeholder={login.toolId === "claude" ? "Paste OAuth code" : "Answer CLI prompt"}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  const input = event.currentTarget;
+                  void sendLoginInput(input.value).then(() => { input.value = ""; });
+                }}
+              />
+              <button onClick={() => void stopLogin()} className="rounded-lg bg-raised px-3 py-2 text-[12px] text-ink">Stop</button>
+            </div>
+          )}
+          {login.error && <div className="mt-2 text-[12px] text-danger">{login.error}</div>}
+          {login.done && !login.error && <div className="mt-2 text-[12px] text-success">Signed in. You can close this window.</div>}
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

@@ -358,7 +358,7 @@ describe("harness HTTP API", () => {
   it("exposes official interactive login commands without starting them in metadata", async () => {
     const listed = await api("GET", "/api/cli-tools");
     expect(listed.body.tools.find((tool: { id: string }) => tool.id === "claude")).toMatchObject({
-      loginCommand: "claude",
+      loginCommand: "claude auth login",
       loginAvailable: true,
       installCommand: "Native installer for this device",
     });
