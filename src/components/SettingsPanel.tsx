@@ -9,6 +9,7 @@ import {
 } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { EngineProviderCard } from "./EngineProvider"; // multibot: BYOK silnika slafy
+import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
 
 function Field({
@@ -159,11 +160,17 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <ModelPicker bot={bot} />
           </div>
 
-          {/* multibot: BYOK silnika slafy — karta tylko dla botów jeżdżących na
+          {/* multibot: karty silnika slafy — tylko dla botów jeżdżących na
               driverze slafy; reszta floty widzi stockowy panel. Klucz per bot.id
-              wymusza remount + świeży GET przy przełączeniu bota. */}
+              wymusza remount + świeży GET przy przełączeniu bota (prefiks w
+              drugiej karcie, bo klucze rodzeństwa muszą być unikalne). */}
           {state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
-            "slafy" && <EngineProviderCard key={bot.id} bot={bot} />}
+            "slafy" && (
+            <>
+              <EngineProviderCard key={bot.id} bot={bot} />
+              <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
+            </>
+          )}
 
           <div className="rounded-xl bg-card p-4">
             <div className="text-[15px] font-medium text-ink">Computer</div>
