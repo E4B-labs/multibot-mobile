@@ -145,6 +145,25 @@ def test_tier2_shares_one_browser_and_refcounts(root, provider, fake_launch, mon
     assert not (root / "shared-browser.json").exists()
 
 
+def test_profile_marker_selects_shared_without_global_tier(root, provider, fake_launch, monkeypatch):
+    """G4 selection is per bot; global tier env is no longer required."""
+    monkeypatch.delenv("SLAFY_COMPUTER_TIER", raising=False)
+    alfa, beta = root / "profiles" / "alfa", root / "profiles" / "beta"
+    for profile in (alfa, beta):
+        profile.mkdir(parents=True)
+        (profile / "computer.json").write_text('{"mode":"shared"}', encoding="utf-8")
+
+    first = _session_for(provider, alfa, "t1")
+    second = _session_for(provider, beta, "t2")
+
+    assert len(fake_launch) == 1
+    assert first["cdp_url"] == second["cdp_url"]
+    assert json.loads((alfa / "browser.json").read_text(encoding="utf-8"))["mode"] == "shared"
+    assert json.loads((beta / "browser.json").read_text(encoding="utf-8"))["mode"] == "shared"
+    assert provider.close_session(first["bb_session_id"]) is True
+    assert provider.close_session(second["bb_session_id"]) is True
+
+
 def test_tier2_root_falls_back_to_profile_grandparent(root, provider, fake_launch, monkeypatch):
     """Bez `SLAFY_DATA_DIR` root wychodzi z układu `<root>/profiles/<id>`."""
     monkeypatch.setenv("HERMES_HOME", str(root))

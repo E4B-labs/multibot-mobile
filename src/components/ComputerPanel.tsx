@@ -40,6 +40,7 @@ type Phase =
   | "local-unavailable"
   // multibot (F5): the bot's engine browser — live view + take-over over WS
   | "playwright"
+  | "shared"
   | "off"
   | "error";
 
@@ -89,6 +90,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     // box endpoints below are never touched (the WS effect owns this phase)
     if (bot.computer === "playwright") {
       setPhase("playwright");
+      return;
+    }
+    // multibot: G4 — all bots using shared browser address one stable engine
+    // profile; backend serializes concurrent access and reports busy state.
+    if (bot.computer === "shared") {
+      setPhase("shared");
       return;
     }
     // cloud, or auto (cloud box wins when one exists, else local in-app)
@@ -179,7 +186,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   // first (idempotent) — which also heals close 4404 (browser gone). Engine
   // offline surfaces as a failed upgrade → onclose → the same backoff loop.
   useEffect(() => {
-    if (phase !== "playwright") return;
+    if (phase !== "playwright" && phase !== "shared") return;
     let alive = true;
     let ws: WebSocket | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -189,6 +196,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     setPwStatus("connecting");
     setTakeover(false);
     // default botPrefix "mb-", same pattern as local runtime controls
+    // Each bot keeps its engine bridge; shared mode makes those bridges point
+    // at one Chromium profile, so live view works before and during turns.
     const engineBotId = `mb-${bot.threadId}`;
     const connect = async () => {
       if (!alive) return;
@@ -319,7 +328,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     phase === "local"
       ? localFrame
       : // multibot (F5): engine screencast frames are always jpeg
-        phase === "playwright"
+        (phase === "playwright" || phase === "shared")
         ? pwFrame && `data:image/jpeg;base64,${pwFrame.data}`
         : phase === "ready" || phase === "starting"
           ? cloudFrame && `data:${cloudFrame.mime};base64,${cloudFrame.png}`
@@ -338,7 +347,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       .finally(() => setPending(null));
   };
 
-  const emptyState: Record<Exclude<Phase, "ready" | "local" | "playwright">, string> = {
+  const emptyState: Record<Exclude<Phase, "ready" | "local" | "playwright" | "shared">, string> = {
     checking: "Checking…",
     starting: "Starting your bot's computer…",
     unconfigured: "No cloud computer configured",
@@ -373,10 +382,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           <span>{bot.name}'s screen</span>
           {phase === "local" && <span className="text-[11px]">this Mac</span>}
           {/* multibot (F5): connection state + take-over toggle, above the preview */}
-          {phase === "playwright" && (
+          {(phase === "playwright" || phase === "shared") && (
             <span className="flex items-center gap-2">
               <span className="text-[11px]">
-                {pwStatus === "live" ? "bot browser" : pwStatus === "connecting" ? "connecting…" : "reconnecting…"}
+                {pwStatus === "live" ? phase === "shared" ? "shared browser" : "bot browser" : pwStatus === "connecting" ? "connecting…" : "reconnecting…"}
               </span>
               {pwStatus === "live" && pwFrame && (
                 <button
@@ -399,17 +408,17 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         <div
           className={cn(
             "flex w-full items-center justify-center overflow-hidden rounded-xl bg-card",
-            phase !== "playwright" && "aspect-[16/10]",
-            phase === "playwright" && takeover && "ring-2 ring-accent",
+            phase !== "playwright" && phase !== "shared" && "aspect-[16/10]",
+            (phase === "playwright" || phase === "shared") && takeover && "ring-2 ring-accent",
           )}
           style={
-            phase === "playwright"
+            phase === "playwright" || phase === "shared"
               ? { aspectRatio: pwFrame?.w && pwFrame?.h ? `${pwFrame.w} / ${pwFrame.h}` : "16 / 10" }
               : undefined
           }
         >
           {frameSrc ? (
-            phase === "playwright" ? (
+            phase === "playwright" || phase === "shared" ? (
               <img
                 ref={pwImg}
                 src={frameSrc}
@@ -429,7 +438,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             )
           ) : (
             <div className="flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
-              {phase === "checking" || phase === "starting" || phase === "local" || phase === "playwright" ? (
+              {phase === "checking" || phase === "starting" || phase === "local" || phase === "playwright" || phase === "shared" ? (
                 <Loader2 size={18} className="animate-spin" />
               ) : phase === "off" ? (
                 <Power size={22} />
@@ -441,7 +450,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                   ? "Waiting for the first frame…"
                   : // multibot (F5): engine offline and browser-not-yet-up land in
                     // the same reconnect loop; name the state, keep spinning
-                    phase === "playwright"
+                    phase === "playwright" || phase === "shared"
                     ? pwStatus === "reconnecting"
                       ? "Engine offline or browser restarting — reconnecting…"
                       : "Starting the bot's browser…"
@@ -514,8 +523,16 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             {/* multibot (F5): one-line pitch for the engine browser when picked */}
             {bot.computer === "playwright"
               ? "The bot's own local browser, with logins that persist between runs."
+              : bot.computer === "shared"
+                ? "One shared browser for all bots. Access is queued while another bot is using it."
               : `${bot.computer ? "" : "Auto: the cloud box when one exists, else this Mac. "}Pick where this bot's computer lives.`}
           </div>
+          {bot.computer === "shared" && (
+            <div className="mt-2 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+              Shared browser access is serialized. If another bot is using it, this bot waits in queue;
+              both bots see same profile and session.
+            </div>
+          )}
           <div className="mt-3 flex overflow-hidden rounded-lg border border-hairline/40">
             {(
               [
@@ -523,6 +540,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                 ["local", "This Mac"],
                 // multibot (F5): the bot's engine browser — all drivers, all platforms
                 ["playwright", "Bot browser"],
+                // multibot: G4 — fixed profile shared by whole fleet.
+                ["shared", "Shared browser"],
                 ["off", "Off"],
               ] as const
             ).map(([mode, label], i) => (

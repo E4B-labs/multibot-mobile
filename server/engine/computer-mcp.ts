@@ -26,6 +26,29 @@ export interface McpSpawn {
   env: Record<string, string>;
 }
 
+export type EngineComputerMode = "own" | "shared";
+
+/** Ensure engine-side bot exists and persist which browser profile it uses.
+ * Slafy-native bots need this too; their browser tools do not ride this MCP. */
+export async function configureEngineComputer(threadId: string, mode: EngineComputerMode): Promise<void> {
+  const baseUrl = await ensureEngine();
+  const botId = engineBotIdFor(threadId);
+  const created = await fetch(`${baseUrl}/api/bots`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: botId, name: botId }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!created.ok && created.status !== 409) throw new Error(`engine computer bot -> HTTP ${created.status}`);
+  const configured = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/computer/mode`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!configured.ok) throw new Error(`engine computer mode -> HTTP ${configured.status}`);
+}
+
 /** Kontrakt spawnu serwera MCP komputera dla wątku — bez sprawdzania, czy silnik
  * stoi (to robi `engineComputer`). Wydzielone, żeby dało się je sprawdzić bez sieci. */
 export function computerMcpSpawn(threadId: string, engineDir = ENGINE_DIR): McpSpawn {
@@ -48,11 +71,15 @@ export function computerMcpSpawn(threadId: string, engineDir = ENGINE_DIR): McpS
  * nadzorcą. `null` degraduje turę do bota bez komputera, dokładnie jak brak
  * `cua-connection.json` na ścieżce lokalnego CUA — tura nie może się wywrócić.
  */
-export async function engineComputer(threadId: string, engineDir = ENGINE_DIR): Promise<McpSpawn | null> {
+export async function engineComputer(
+  threadId: string,
+  engineDir = ENGINE_DIR,
+  mode: EngineComputerMode = "own",
+): Promise<McpSpawn | null> {
   const spawn = computerMcpSpawn(threadId, engineDir);
   if (!existsSync(spawn.command)) return null;
   try {
-    await ensureEngine();
+    await configureEngineComputer(threadId, mode);
   } catch {
     return null;
   }

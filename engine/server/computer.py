@@ -326,18 +326,62 @@ class _Bridge:
 
 _bridges: dict[str, _Bridge] = {}
 _lock = asyncio.Lock()
+_shared_operation_lock = asyncio.Lock()
+
+
+def mode(bot_id: str) -> str:
+    """Persistent per-bot browser choice; missing marker means private browser."""
+    try:
+        value = json.loads((profile_dir(bot_id) / "computer.json").read_text(encoding="utf-8"))["mode"]
+        return "shared" if value == "shared" else "own"
+    except (OSError, ValueError, KeyError):
+        return "own"
+
+
+async def set_mode(bot_id: str, value: str) -> dict:
+    """Switch future browser sessions; close a running session of other mode."""
+    if value not in ("own", "shared"):
+        raise ValueError("computer mode must be own or shared")
+    home = profile_dir(bot_id)
+    browser_state: dict = {}
+    try:
+        browser_state = json.loads((home / "browser.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    if browser_state.get("mode", "own") != value and browser_state.get("session_id"):
+        from server.browser_plugin.provider import SlafyBrowserProvider
+
+        await asyncio.to_thread(SlafyBrowserProvider().close_session, browser_state["session_id"])
+    (home / "computer.json").write_text(json.dumps({"mode": value}), encoding="utf-8")
+    return await status(bot_id)
+
+
+@asynccontextmanager
+async def _operation(bot_id: str):
+    """Shared browser operations queue; private browsers remain independent."""
+    if mode(bot_id) == "shared":
+        async with _shared_operation_lock:
+            yield
+    else:
+        yield
 
 
 async def status(bot_id: str) -> dict:
     """`running` = przeglądarka bota odpowiada; `url` = adres karty na wierzchu."""
+    browser_mode = mode(bot_id)
+    extra = {
+        "mode": browser_mode,
+        "concurrency": "queue" if browser_mode == "shared" else "independent",
+        "busy": browser_mode == "shared" and _shared_operation_lock.locked(),
+    }
     url = _cdp_url(bot_id)
     if url is None:
-        return {"running": False, "url": None}
+        return {"running": False, "url": None, **extra}
     try:
         targets = await _page_targets(url)
     except (httpx.HTTPError, ValueError):
-        return {"running": False, "url": None}
-    return {"running": True, "url": targets[0].get("url") if targets else None}
+        return {"running": False, "url": None, **extra}
+    return {"running": True, "url": targets[0].get("url") if targets else None, **extra}
 
 
 @asynccontextmanager
@@ -364,11 +408,12 @@ async def _attached(bot_id: str):
 
 async def screenshot(bot_id: str) -> str:
     """Base64 JPEG karty na wierzchu — do computer card w czacie."""
-    async with _attached(bot_id) as (cdp, session):
-        result = await cdp.call(
-            "Page.captureScreenshot", {"format": "jpeg", "quality": _JPEG_QUALITY}, session_id=session
-        )
-        return result["data"]
+    async with _operation(bot_id):
+        async with _attached(bot_id) as (cdp, session):
+            result = await cdp.call(
+                "Page.captureScreenshot", {"format": "jpeg", "quality": _JPEG_QUALITY}, session_id=session
+            )
+            return result["data"]
 
 
 async def send_input(bot_id: str, events: list[dict]) -> None:
@@ -379,20 +424,22 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
     `call`, nie `send`: połączenie zamyka się zaraz po żądaniu, więc odpowiedź
     CDP jest jedynym dowodem, że przeglądarka zdążyła zdarzenie przetworzyć.
     """
-    async with _attached(bot_id) as (cdp, session):
-        for event in events:
-            kind = event.get("kind")
-            if kind == "mouse":
-                await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
-            elif kind == "key":
-                await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)
-            elif kind == "text":  # wpisanie ciągu jednym zdarzeniem (bez VK per znak)
-                await cdp.call("Input.insertText", {"text": str(event.get("text") or "")}, session_id=session)
+    async with _operation(bot_id):
+        async with _attached(bot_id) as (cdp, session):
+            for event in events:
+                kind = event.get("kind")
+                if kind == "mouse":
+                    await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
+                elif kind == "key":
+                    await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)
+                elif kind == "text":  # wpisanie ciągu jednym zdarzeniem (bez VK per znak)
+                    await cdp.call("Input.insertText", {"text": str(event.get("text") or "")}, session_id=session)
 
 
 async def navigate(bot_id: str, url: str) -> None:
-    async with _attached(bot_id) as (cdp, session):
-        await cdp.call("Page.navigate", {"url": url}, session_id=session)
+    async with _operation(bot_id):
+        async with _attached(bot_id) as (cdp, session):
+            await cdp.call("Page.navigate", {"url": url}, session_id=session)
 
 
 # `innerText`, nie `innerHTML`: model dostaje to, co widzi człowiek, a nie znaczniki.
@@ -404,11 +451,12 @@ _PAGE_JS = (
 
 async def page_text(bot_id: str) -> dict:
     """Adres, tytuł i tekst karty na wierzchu — czytanie strony dla agenta."""
-    async with _attached(bot_id) as (cdp, session):
-        result = await cdp.call(
-            "Runtime.evaluate", {"expression": _PAGE_JS, "returnByValue": True}, session_id=session
-        )
-        return result["result"].get("value") or {}
+    async with _operation(bot_id):
+        async with _attached(bot_id) as (cdp, session):
+            result = await cdp.call(
+                "Runtime.evaluate", {"expression": _PAGE_JS, "returnByValue": True}, session_id=session
+            )
+            return result["result"].get("value") or {}
 
 
 _start_lock = asyncio.Lock()
@@ -466,7 +514,8 @@ async def serve(bot_id: str, ws: WebSocket) -> None:
         while True:
             msg = await ws.receive_json()
             if msg.get("type") == "input":
-                await bridge.send_input(msg.get("event") or {})
+                async with _operation(bot_id):
+                    await bridge.send_input(msg.get("event") or {})
             elif msg.get("type") == "quality":
                 await bridge.set_fps(int(msg.get("fps") or _DEFAULT_FPS))
     except Exception:  # noqa: BLE001 — rozłączenie albo śmieciowa ramka = koniec klienta

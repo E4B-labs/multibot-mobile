@@ -13,6 +13,7 @@ mostek celowo nie umie nawigować (przeglądaniem steruje Hermes, nie my).
 """
 
 import base64
+import asyncio
 import json
 import os
 import shutil
@@ -190,6 +191,9 @@ def test_status_reports_running_browser_and_url(client, page):
     assert client.get(f"/api/bots/{_BOT}/computer/status").json() == {
         "running": True,
         "url": page.eval("location.href"),
+        "mode": "own",
+        "concurrency": "independent",
+        "busy": False,
     }
 
 
@@ -198,7 +202,13 @@ def test_status_false_without_browser(client):
     other = Path(os.environ["SLAFY_DATA_DIR"]) / "profiles" / "bezkompa"
     other.mkdir(parents=True, exist_ok=True)
     (other / "bot.json").write_text(json.dumps({"id": "bezkompa"}), encoding="utf-8")
-    assert client.get("/api/bots/bezkompa/computer/status").json() == {"running": False, "url": None}
+    assert client.get("/api/bots/bezkompa/computer/status").json() == {
+        "running": False,
+        "url": None,
+        "mode": "own",
+        "concurrency": "independent",
+        "busy": False,
+    }
 
 
 def test_screenshot_returns_jpeg(client, page):
@@ -373,3 +383,43 @@ def test_http_input_404_without_browser(client):
     other.mkdir(parents=True, exist_ok=True)
     (other / "bot.json").write_text(json.dumps({"id": "bezkompa3"}), encoding="utf-8")
     assert client.post("/api/bots/bezkompa3/computer/input", json={"events": []}).status_code == 404
+
+
+def test_shared_operations_queue_but_private_browsers_do_not(tmp_path, monkeypatch):
+    """Second shared user waits and completes; private browser work stays parallel."""
+    root = tmp_path / "queue-data"
+    for bot_id, mode in (("shared-a", "shared"), ("shared-b", "shared"), ("own-a", "own"), ("own-b", "own")):
+        profile = root / "profiles" / bot_id
+        profile.mkdir(parents=True)
+        (profile / "computer.json").write_text(json.dumps({"mode": mode}), encoding="utf-8")
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+
+    async def run_pair(a: str, b: str, serialized: bool) -> None:
+        entered: list[str] = []
+        first_entered = asyncio.Event()
+        both_entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def operation(bot_id: str) -> None:
+            async with app_module.computer._operation(bot_id):
+                entered.append(bot_id)
+                first_entered.set()
+                if len(entered) == 2:
+                    both_entered.set()
+                await release.wait()
+
+        first = asyncio.create_task(operation(a))
+        await asyncio.wait_for(first_entered.wait(), 1)
+        second = asyncio.create_task(operation(b))
+        if serialized:
+            await asyncio.sleep(0.05)
+            assert entered == [a]
+        else:
+            await asyncio.wait_for(both_entered.wait(), 1)
+            assert entered == [a, b]
+        release.set()
+        await asyncio.wait_for(asyncio.gather(first, second), 1)
+        assert entered == [a, b]
+
+    asyncio.run(run_pair("shared-a", "shared-b", True))
+    asyncio.run(run_pair("own-a", "own-b", False))

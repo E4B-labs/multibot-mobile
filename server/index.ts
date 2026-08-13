@@ -30,7 +30,7 @@ import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
 import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.ts";
 import { watchEngineAttention } from "./engine/attention.ts";
-import { engineComputer } from "./engine/computer-mcp.ts";
+import { configureEngineComputer, engineComputer } from "./engine/computer-mcp.ts";
 import { mountEngineProxy } from "./engine/proxy.ts";
 import { EventBus } from "./harness/bus.ts";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
@@ -380,16 +380,19 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     try {
       const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
       if (cfg.composio?.key) integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
-      const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'off' | undefined(auto)
+      const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'shared' | 'off' | undefined(auto)
       // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
       // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
       // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
       // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
-      if (wants === "playwright" && instance.driverKind !== "slafy") {
-        const mcp = await engineComputer(bot.threadId);
+      if ((wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
+        const mcp = await engineComputer(bot.threadId, undefined, wants === "shared" ? "shared" : "own");
         if (mcp) integrations.localComputer = mcp;
+      } else if ((wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
+        // Native browser tools still run inside this bot's engine profile.
+        await configureEngineComputer(bot.threadId, wants === "shared" ? "shared" : "own");
       }
-      if (wants !== "off" && wants !== "local" && wants !== "playwright" && box.boxConfigured(cfg)) {
+      if (wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
         // the Computer driver runs ON the box — provision it on first use
         if (!b && instance.driverKind === "boxAgent") {
@@ -402,7 +405,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // local computer (this Mac) via the Electron-hosted cua-driver: the
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
-      if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright") {
+      if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
@@ -443,8 +446,8 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
             : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
               // użytkownika — opis pulpitu wysyłałby agenta po narzędzia, których
               // ten serwer MCP nie ma (a11y, exec).
-              wants === "playwright" && integrations.localComputer
-              ? " You have your own browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text."
+              (wants === "playwright" || wants === "shared") && integrations.localComputer
+              ? ` You have ${wants === "shared" ? "the fleet's shared" : "your own"} browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text.`
               : integrations.localComputer
                 ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
                 : "") +
@@ -709,6 +712,9 @@ const server = createServer(async (req, res) => {
       }
       const bot = store.patchBot(m[1], patch);
       if (!bot) return json(res, 404, { error: "no such bot" });
+      if (body.computer === "playwright" || body.computer === "shared") {
+        await configureEngineComputer(bot.threadId, body.computer === "shared" ? "shared" : "own").catch(() => {});
+      }
       broadcast({ kind: "bot", bot });
       return json(res, 200, { bot });
     }

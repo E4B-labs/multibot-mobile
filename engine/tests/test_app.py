@@ -126,6 +126,21 @@ def test_health(client):
     assert client.get("/health").status_code == 200
 
 
+def test_computer_mode_route_persists_per_bot_choice(client, monkeypatch):
+    client.post("/api/bots", json={"id": "modebot", "name": "Mode bot"})
+    seen: list[tuple[str, str]] = []
+
+    async def set_mode(bot_id: str, mode: str):
+        seen.append((bot_id, mode))
+        return {"running": False, "url": None, "mode": mode, "concurrency": "queue", "busy": False}
+
+    monkeypatch.setattr(app_module.computer, "set_mode", set_mode)
+    response = client.put("/api/bots/modebot/computer/mode", json={"mode": "shared"})
+    assert response.status_code == 200
+    assert response.json()["mode"] == "shared"
+    assert seen == [("modebot", "shared")]
+
+
 def test_bot_crud_roundtrip(client):
     created = client.post(
         "/api/bots", json={"id": "ala", "name": "Ala", "title": "Researcher"}

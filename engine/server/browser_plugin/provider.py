@@ -75,9 +75,12 @@ def _hermes_home() -> Path:
     return Path(get_hermes_home())
 
 
-def _tier2() -> bool:
-    """Czytane PRZY WYWOŁANIU, nie przy imporcie — env zmienia się w testach."""
-    return os.environ.get("SLAFY_COMPUTER_TIER", "").strip() == "2"
+def _tier2(home: Path) -> bool:
+    """Per-profile choice wins; legacy env remains for old deployments/tests."""
+    try:
+        return json.loads((home / "computer.json").read_text(encoding="utf-8"))["mode"] == "shared"
+    except (OSError, ValueError, KeyError):
+        return os.environ.get("SLAFY_COMPUTER_TIER", "").strip() == "2"
 
 
 def _data_root(home: Path) -> Path:
@@ -251,7 +254,7 @@ class SlafyBrowserProvider(BrowserProvider):
 
     def create_session(self, task_id: str) -> dict:
         home = _hermes_home()
-        shared = _tier2()
+        shared = _tier2(home)
         headless = shared or _headless()  # tier 2 jest headless z definicji
         if shared:
             port, stop, thread = _acquire_shared(_data_root(home))
@@ -267,7 +270,14 @@ class SlafyBrowserProvider(BrowserProvider):
             _sessions[session_id] = _Session(home, port, stop, thread, shared)
         # Namiar dla mostka CDP (live view / take-over) — czytany z profilu bota.
         (home / "browser.json").write_text(
-            json.dumps({"port": port, "cdp_url": cdp_url, "pid": None}), encoding="utf-8"
+            json.dumps({
+                "port": port,
+                "cdp_url": cdp_url,
+                "pid": None,
+                "mode": "shared" if shared else "own",
+                "session_id": session_id,
+            }),
+            encoding="utf-8",
         )
         logger.info("Sesja przeglądarki %s dla %s (task %s) → %s", session_id, home.name, task_id, cdp_url)
         return {

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { startFakeEngine, type FakeEngine } from "../testing/fake-engine.ts";
-import { computerMcpSpawn, engineComputer } from "./computer-mcp.ts";
+import { computerMcpSpawn, configureEngineComputer, engineComputer } from "./computer-mcp.ts";
 import { engineBaseUrl, engineServerArgs, venvPython } from "./supervisor.ts";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -69,6 +69,19 @@ describe("computerMcpSpawn", () => {
       "--port",
       "8700",
     ]);
+  });
+
+  it("persists shared mode on the engine bot used by any driver", async () => {
+    const engine = await startFakeEngine();
+    process.env.ENGINE_URL = engine.url;
+    try {
+      await configureEngineComputer("t-shared", "shared");
+      expect(engine.createdBots).toContain("mb-t-shared");
+      expect(engine.computerModes["mb-t-shared"]).toBe("shared");
+    } finally {
+      delete process.env.ENGINE_URL;
+      await engine.close();
+    }
   });
 });
 
@@ -187,4 +200,12 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
     // i agent dostaje opis SWOJEJ przeglądarki, nie pulpitu użytkownika
     expect(seen.argv[seen.argv.indexOf("--append-system-prompt") + 1]).toContain("your own browser");
   }, 45_000);
+
+  it.skipIf(!hasVenv)("configures shared profile on selection before the first turn", async () => {
+    const bot = (await api("POST", "/api/bots")).body.bot;
+    const patched = await api("PATCH", `/api/bots/${bot.id}`, { computer: "shared" });
+    expect(patched).toMatchObject({ status: 200, body: { bot: { computer: "shared" } } });
+    expect(engine.createdBots).toContain(`mb-${bot.threadId}`);
+    expect(engine.computerModes[`mb-${bot.threadId}`]).toBe("shared");
+  });
 });

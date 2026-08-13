@@ -29,6 +29,8 @@ export interface FakeEngine {
   chats: Array<{ botId: string; message: string }>;
   /** ostatnio ustawiony provider (BYOK), bez klucza. */
   provider: { provider?: string; model?: string; base_url?: string; has_key: boolean };
+  /** per-bot browser mode synchronized by harness (G4). */
+  computerModes: Record<string, "own" | "shared">;
   /** historia wątku bota — to, co silnik oddaje na GET /api/bots/:id/messages. */
   history: Record<string, EngineMessage[]>;
   /** stan uwagi (D7) czytany przy podłączeniu klienta WS. */
@@ -79,6 +81,7 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     createdBots: [],
     chats: [],
     provider: { has_key: false },
+    computerModes: {},
     history: {},
     attention: {},
     approvals: [],
@@ -169,6 +172,15 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
         has_key: Boolean(body.api_key),
       } as FakeEngine["provider"];
       return json(200, state.provider);
+    }
+    const computerMode = path.match(/^\/api\/bots\/([^/]+)\/computer\/mode$/);
+    if (computerMode && method === "PUT") {
+      const botId = decodeURIComponent(computerMode[1]);
+      if (!state.createdBots.includes(botId)) return json(404, { detail: "no such bot" });
+      const body = await readBody(req);
+      if (body.mode !== "own" && body.mode !== "shared") return json(422, { detail: "bad mode" });
+      state.computerModes[botId] = body.mode;
+      return json(200, { running: false, url: null, mode: body.mode, concurrency: body.mode === "shared" ? "queue" : "independent", busy: false });
     }
 
     // F4: odpowiedź na zgodę odwiesza turę stojącą w `chat` (patrz `pending`).

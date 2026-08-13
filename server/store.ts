@@ -68,7 +68,7 @@ export interface BotRecord {
    * or none. Unset = auto (box when it exists, else local when available).
    * multibot (F5): "playwright" = przeglądarka bota w silniku (trwały profil,
    * take-over) — wyklucza box i CUA, patrz `startTurn` w server/index.ts. */
-  computer?: "cloud" | "local" | "playwright" | "off";
+  computer?: "cloud" | "local" | "playwright" | "shared" | "off";
   pinned?: boolean;
   hidden?: boolean;
   busy?: boolean;

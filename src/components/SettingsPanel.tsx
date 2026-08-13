@@ -375,7 +375,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             </div>
             <div className="mt-3 flex overflow-hidden rounded-lg border border-hairline/40">
               {/* multibot (F5): fourth mode — the bot's own engine browser */}
-              {(["cloud", "local", "playwright", "off"] as const).map((mode, i) => (
+              {(["cloud", "local", "playwright", "shared", "off"] as const).map((mode, i) => (
                 <button
                   key={mode}
                   onClick={() => patch({ computer: mode })}
@@ -387,7 +387,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                       : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
                   )}
                 >
-                  {mode}
+                  {mode === "shared" ? "Shared browser" : mode}
                 </button>
               ))}
             </div>

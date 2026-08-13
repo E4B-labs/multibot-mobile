@@ -134,6 +134,10 @@ class NavigateIn(BaseModel):
     url: str
 
 
+class ComputerModeIn(BaseModel):
+    mode: str
+
+
 class GroupCreate(BaseModel):
     name: str
     bot_ids: list[str]
@@ -336,6 +340,12 @@ async def ws_computer(ws: WebSocket, bot_id: str) -> None:
 async def computer_status(bot_id: str) -> dict:
     _require(bot_id)
     return await computer.status(bot_id)
+
+
+@app.put("/api/bots/{bot_id}/computer/mode")
+async def computer_mode(bot_id: str, body: ComputerModeIn) -> dict:
+    _require(bot_id)
+    return await computer.set_mode(bot_id, body.mode)
 
 
 @app.post("/api/bots/{bot_id}/computer/screenshot")
