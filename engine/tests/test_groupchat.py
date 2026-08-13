@@ -39,6 +39,15 @@ def test_create_persists_and_list_get(monkeypatch, tmp_path):
     assert groups.get("nie-ma-takiej") is None
 
 
+def test_delete_group(monkeypatch, tmp_path):
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(bots, "get_bot", lambda bid: {"id": bid} if bid == "a" else None)
+    group = groups.create("room", ["a"])
+    assert groups.delete(group["id"]) is True
+    assert groups.get(group["id"]) is None
+    assert groups.delete(group["id"]) is False
+
+
 def test_create_rejects_empty_and_unknown_bot(monkeypatch, tmp_path):
     monkeypatch.setenv("SLAFY_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(bots, "get_bot", lambda bid: {"id": bid} if bid == "known" else None)
@@ -137,6 +146,10 @@ def test_api_group_crud_and_chat_emits_ws(monkeypatch, tmp_path):
             assert all(e["type"] == "group" and e["group_id"] == gid for e in evs)
             assert [e["bot_id"] for e in evs] == ["ala", "bob"]
             assert evs[0]["msg"] == "ala:czesc"
+
+        assert c.delete(f"/api/groups/{gid}").status_code == 204
+        assert c.get(f"/api/groups/{gid}").status_code == 404
+        assert c.delete(f"/api/groups/{gid}").status_code == 404
 
 
 def test_api_group_chat_missing_group_is_404(monkeypatch, tmp_path):

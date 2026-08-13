@@ -944,6 +944,19 @@ const server = createServer(async (req, res) => {
                     case "groups.list": {
                         return json(res, 200, groupStore.list());
                     }
+                    case "groups.delete": {
+                        requireFull();
+                        const id = String(body.groupId ?? "");
+                        if (!groupStore.get(id))
+                            return json(res, 404, { error: "no such group" });
+                        const base = await ensureEngine();
+                        const removed = await fetch(`${base}/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+                        if (!removed.ok)
+                            return json(res, removed.status, { error: "no such group" });
+                        groupStore.delete(id);
+                        broadcast({ kind: "group", deleted: id });
+                        return json(res, 200, { ok: true });
+                    }
                     case "device.info": return json(res, 200, await deviceInfo());
                     case "groups.create": {
                         requireFull();
@@ -1148,6 +1161,23 @@ const server = createServer(async (req, res) => {
         if (m && method === "GET") {
             const group = groupStore.get(m[1]);
             return group ? json(res, 200, group) : json(res, 404, { error: "no such group" });
+        }
+        if (m && method === "DELETE") {
+            if (!groupStore.get(m[1]))
+                return json(res, 404, { error: "no such group" });
+            try {
+                const base = await ensureEngine();
+                const removed = await fetch(`${base}/api/groups/${encodeURIComponent(m[1])}`, { method: "DELETE" });
+                if (!removed.ok)
+                    return json(res, removed.status === 404 ? 404 : 502, { error: "no such group" });
+                if (!groupStore.delete(m[1]))
+                    return json(res, 404, { error: "no such group" });
+                broadcast({ kind: "group", deleted: m[1] });
+                return json(res, 200, { ok: true });
+            }
+            catch (error) {
+                return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+            }
         }
         // multibot: mixed-provider group rooms. Engine stores membership/shadow
         // ids; harness owns actual turns so Claude/Codex/ACP bots answer through

@@ -51,6 +51,14 @@ export class GroupStore {
     return group ? { ...group, bot_ids: [...group.bot_ids], messages: [...group.messages] } : null;
   }
 
+  delete(id: string): boolean {
+    const before = this.groups.length;
+    this.groups = this.groups.filter((group) => group.id !== id);
+    if (this.groups.length === before) return false;
+    this.save();
+    return true;
+  }
+
   upsert(input: { id?: string; name: string; bot_ids: string[] }): GroupRecord {
     const existing = input.id ? this.groups.find((g) => g.id === input.id) : undefined;
     if (existing) {

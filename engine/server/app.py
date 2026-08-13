@@ -772,6 +772,12 @@ def get_group(group_id: str) -> dict:
     return group
 
 
+@app.delete("/api/groups/{group_id}", status_code=204)
+def delete_group(group_id: str) -> None:
+    if not groups.delete(group_id):
+        raise KeyError(f"no such group: {group_id}")
+
+
 @app.post("/api/groups/{group_id}/chat")
 async def group_chat(group_id: str, body: ChatIn) -> dict:
     """Jedna runda pokoju: `groups.run` odpytuje każdego bota, potem emitujemy

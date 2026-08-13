@@ -18,5 +18,8 @@ describe("durable group store", () => {
     first.append(group.id, { from: "you", text: "hej" });
     first.append(group.id, { from: "bot-a", text: "cześć" });
     expect(new GroupStore(file).get("g1")?.messages.map((m) => m.text)).toEqual(["hej", "cześć"]);
+    expect(first.delete("g1")).toBe(true);
+    expect(new GroupStore(file).get("g1")).toBeNull();
+    expect(first.delete("g1")).toBe(false);
   });
 });

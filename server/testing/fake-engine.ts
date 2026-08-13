@@ -292,6 +292,13 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
       return json(201, group);
     }
     if (method === "GET" && path === "/api/groups") return json(200, state.groups);
+    const groupDelete = path.match(/^\/api\/groups\/([^/]+)$/);
+    if (groupDelete && method === "DELETE") {
+      const id = decodeURIComponent(groupDelete[1]);
+      const before = state.groups.length;
+      state.groups = state.groups.filter((group) => group.id !== id);
+      return before === state.groups.length ? json(404, { detail: "no such group" }) : json(200, { ok: true });
+    }
     const groupChat = path.match(/^\/api\/groups\/([^/]+)\/chat$/);
     if (groupChat && method === "POST") {
       const group = state.groups.find((g) => g.id === decodeURIComponent(groupChat[1]));

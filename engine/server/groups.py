@@ -63,6 +63,15 @@ def get(group_id: str) -> dict | None:
     return _load().get(group_id)
 
 
+def delete(group_id: str) -> bool:
+    groups = _load()
+    if group_id not in groups:
+        return False
+    del groups[group_id]
+    _save(groups)
+    return True
+
+
 def run(group_id: str, message: str) -> dict:
     """Roześlij `message` do każdego bota pokoju i wskaż `owner` po opisie.
 

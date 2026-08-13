@@ -54,6 +54,7 @@ const TOOLS = [
   { name: "update_agent", description: "Update another bot using its id.", inputSchema: { type: "object", properties: { botId: { type: "string" }, patch: { type: "object" } }, required: ["botId", "patch"] } },
   { name: "list_groups", description: "List bot groups.", inputSchema: { type: "object", properties: {} } },
   { name: "create_group", description: "Create a group conversation from bot ids.", inputSchema: { type: "object", properties: { name: { type: "string" }, bot_ids: { type: "array", items: { type: "string" } } }, required: ["name", "bot_ids"] } },
+  { name: "delete_group", description: "Delete a bot group.", inputSchema: { type: "object", properties: { groupId: { type: "string" } }, required: ["groupId"] } },
   { name: "send_group_message", description: "Send a message to a group conversation.", inputSchema: { type: "object", properties: { groupId: { type: "string" }, message: { type: "string" } }, required: ["groupId", "message"] } },
   { name: "read_file", description: "Read a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
   { name: "write_file", description: "Write a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
@@ -108,7 +109,7 @@ async function callTool(name: string, args: Json): Promise<{ text: string; isErr
     get_my_profile: "profile.get", update_my_profile: "profile.update", remember: "memory.add", recall: "memory.list",
     read_memory: "memory.graph", create_skill: "skills.create", list_skills: "skills.list", create_routine: "routines.create",
     list_routines: "routines.list", run_routine: "routines.run", create_agent: "agent.create", update_agent: "agent.update",
-    list_groups: "groups.list", create_group: "groups.create", send_group_message: "groups.send", get_device_info: "device.info", read_file: "file.read",
+    list_groups: "groups.list", create_group: "groups.create", delete_group: "groups.delete", send_group_message: "groups.send", get_device_info: "device.info", read_file: "file.read",
     write_file: "file.write", run_command: "terminal.run",
   };
   if (action[name]) {

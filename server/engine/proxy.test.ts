@@ -210,6 +210,8 @@ describe("engine proxy (/api/engine/*)", () => {
     expect(round.status).toBe(200);
     expect(round.body.turns.map((t: any) => t.bot_id)).toEqual(["mb-grp-a", "mb-grp-b"]);
     expect(round.body.owner).toBe("mb-grp-a");
+    expect((await api("DELETE", `/api/engine/groups/${made.body.id}`)).status).toBe(200);
+    expect((await api("GET", "/api/engine/groups")).body.map((g: any) => g.id)).not.toContain(made.body.id);
 
     // TRANSPARENCY: wypowiedź grupowa siada w historii KAŻDEGO bota pokoju, czyli
     // w tym samym `GET /api/bots/<id>/messages`, z którego attach-sync (D4) dosyła

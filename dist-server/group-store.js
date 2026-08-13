@@ -29,6 +29,14 @@ export class GroupStore {
         const group = this.groups.find((g) => g.id === id);
         return group ? { ...group, bot_ids: [...group.bot_ids], messages: [...group.messages] } : null;
     }
+    delete(id) {
+        const before = this.groups.length;
+        this.groups = this.groups.filter((group) => group.id !== id);
+        if (this.groups.length === before)
+            return false;
+        this.save();
+        return true;
+    }
     upsert(input) {
         const existing = input.id ? this.groups.find((g) => g.id === input.id) : undefined;
         if (existing) {
