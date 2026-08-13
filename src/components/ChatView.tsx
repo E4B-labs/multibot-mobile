@@ -10,6 +10,7 @@ import { Composer } from "./Composer";
 import { SpeakButton } from "./SpeakButton";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
+import { useLanguage } from "@/lib/language";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
  * bury the conversation; bots get full markdown. */
@@ -122,6 +123,7 @@ function WorkingTimer({ since }: { since: number }) {
 
 export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const streaming = state.streaming[bot.threadId];
@@ -159,7 +161,7 @@ export function ChatView({ bot }: { bot: Bot }) {
         <button
           onClick={() => dispatch({ type: "toggleSettings" })}
           className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 hover:bg-raised/50"
-          title="Bot settings"
+          title={polish ? "Ustawienia bota" : "Bot settings"}
         >
           <MausAvatar
             color={bot.color}
@@ -177,10 +179,10 @@ export function ChatView({ bot }: { bot: Bot }) {
             <button
               onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
               className="flex items-center gap-1.5 rounded-full border border-hairline/40 bg-raised/60 px-2.5 py-1 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
-              title="Stop this turn"
+              title={polish ? "Zatrzymaj turę" : "Stop this turn"}
             >
               <Square size={12} className="fill-current" />
-              Stop
+              {polish ? "Stop" : "Stop"}
             </button>
           )}
           <ModelPicker bot={bot} />
@@ -190,7 +192,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               "rounded-md p-1.5 hover:bg-raised",
               state.computerOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
-            title="Bot's computer"
+            title={polish ? "Komputer bota" : "Bot's computer"}
           >
             <Monitor size={18} />
           </button>
@@ -200,8 +202,8 @@ export function ChatView({ bot }: { bot: Bot }) {
               "rounded-md p-1.5 hover:bg-raised",
               state.memoryOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
-            title="Bot memory"
-            aria-label="Bot memory"
+            title={polish ? "Pamięć bota" : "Bot memory"}
+            aria-label={polish ? "Pamięć bota" : "Bot memory"}
           >
             <Brain size={18} />
           </button>
@@ -211,8 +213,8 @@ export function ChatView({ bot }: { bot: Bot }) {
               "rounded-md p-1.5 hover:bg-raised",
               state.routinesOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
-            title="Bot routines"
-            aria-label="Bot routines"
+            title={polish ? "Rutyny bota" : "Bot routines"}
+            aria-label={polish ? "Rutyny bota" : "Bot routines"}
           >
             <CalendarClock size={18} />
           </button>
@@ -222,8 +224,8 @@ export function ChatView({ bot }: { bot: Bot }) {
               "rounded-md p-1.5 hover:bg-raised",
               state.skillsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
-            title="Bot skills"
-            aria-label="Bot skills"
+            title={polish ? "Skille bota" : "Bot skills"}
+            aria-label={polish ? "Skille bota" : "Bot skills"}
           >
             <Wand2 size={18} />
           </button>

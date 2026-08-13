@@ -52,11 +52,14 @@ function EngineUsage({ bot }: { bot: Bot }) {
   // Ten sam wzorzec id co EngineAutonomy: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
+  const { state } = useStore();
+  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
+  const usagePath = localBacked ? `/api/engine/bots/${engineBotId}/usage` : `/api/bots/${bot.id}/usage`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [usage, setUsage] = useState<EngineUsageOut>(ZERO_USAGE);
 
   useEffect(() => {
-    authFetch(`/api/engine/bots/${engineBotId}/usage`)
+    authFetch(usagePath)
       .then((res) => {
         if (res.status === 404) return ZERO_USAGE; // brak bota = brak użycia
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -67,8 +70,7 @@ function EngineUsage({ bot }: { bot: Bot }) {
         setStatus("ready");
       })
       .catch(() => setStatus("offline"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [usagePath]);
 
   const fmt = (n: number) => n.toLocaleString("en-US");
   const stat = (value: string, label: string) => (
@@ -111,8 +113,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
-  const driverKind = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind;
-  const mentionDelegationOnly = driverKind === "codex" || driverKind === "grok";
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -238,14 +238,12 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           {/* multibot: workspace controls apply to every provider. Bot-to-bot
               delegation is automatic; no per-bot switch exists. */}
           <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
-          {mentionDelegationOnly && (
-            <div className="rounded-xl bg-card p-4 text-[13px] text-ink-secondary">
-              <div className="text-[15px] font-medium text-ink">Bot-to-bot delegation</div>
-              <div className="mt-1 leading-relaxed">
-                Always on. Mention another bot with <code className="rounded bg-inset px-1">@name</code> to send it the task and include its reply. This provider has no native peer-tool channel.
-              </div>
+          <div className="rounded-xl bg-card p-4 text-[13px] text-ink-secondary">
+            <div className="text-[15px] font-medium text-ink">Bot-to-bot delegation</div>
+            <div className="mt-1 leading-relaxed">
+              Always on. Mention another bot with <code className="rounded bg-inset px-1">@name</code> to delegate. Native peer tools are used when provider supports them; otherwise harness routes request and reply.
             </div>
-          )}
+          </div>
           <EngineUsage key={`usage-${bot.id}`} bot={bot} />
 
           <div className="rounded-xl bg-card p-4">

@@ -12,6 +12,7 @@ type CliTool = {
   reason?: string;
   version?: string;
   installCommand?: string | null;
+  loginCommand?: string | null;
 };
 
 type DeviceInfo = {
@@ -230,7 +231,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <h1 className="text-[18px] font-semibold text-ink">Command-line tools</h1>
           <p className="mt-1 text-[13.5px] text-ink-secondary">Detected tools can run bots here. Missing tools can be installed from this screen.</p>
           {!cli ? <div className="flex items-center gap-2 py-6 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> Checking…</div> : <div className="mt-4 flex flex-col gap-2.5">
-            {cli.length ? cli.map((item) => <StatusRow key={item.id} ok={item.detected} warn title={item.displayName} detail={item.detected ? item.version ?? "Installed. Sign in from its terminal." : item.reason ?? "Not found."} action={!item.detected && item.installCommand ? <label className="flex shrink-0 items-center gap-2 text-[12px] text-ink"><input type="checkbox" checked={selectedCli.includes(item.id)} onChange={() => setSelectedCli((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id])} disabled={installing !== null} /> Install</label> : undefined} />) : <div className="rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">No tools detected yet.</div>}
+            {cli.length ? cli.map((item) => <StatusRow key={item.id} ok={item.detected} warn title={item.displayName} detail={item.detected ? `${item.version ?? "Installed"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not found."} action={!item.detected && item.installCommand ? <label className="flex shrink-0 items-center gap-2 text-[12px] text-ink"><input type="checkbox" checked={selectedCli.includes(item.id)} onChange={() => setSelectedCli((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id])} disabled={installing !== null} /> Install</label> : undefined} />) : <div className="rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">No tools detected yet.</div>}
             {selectedCli.length > 0 && <button onClick={() => void installSelected()} disabled={installing !== null} className="mt-1 w-full rounded-lg bg-raised py-2.5 text-[13px] font-medium text-ink disabled:opacity-50">{installing ? `Installing ${installing}…` : `Install selected (${selectedCli.length})`}</button>}
           </div>}
           <ProgressBox progress={cliProgress} />

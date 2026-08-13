@@ -11,7 +11,7 @@
 // GET, ani DELETE wpisu) — sekcja niżej to notka do czasu, aż backend ją wystawi.
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type Bot } from "@/state/store";
+import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 
 type Autonomy = "approval" | "autonomous";
@@ -51,6 +51,9 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
   // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
+  const { state } = useStore();
+  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
+  const botRoot = localBacked ? `/api/engine/bots/${engineBotId}` : `/api/bots/${bot.id}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [autonomy, setAutonomy] = useState<Autonomy>("approval");
   const [perms, setPerms] = useState<Record<string, boolean>>({});
@@ -60,8 +63,10 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
   // karta jest keyowana bot.id w SettingsPanel, więc mount = jeden bot
   useEffect(() => {
     Promise.all([
-      api(`/api/engine/bots/${engineBotId}`),
-      api(`/api/engine/bots/${engineBotId}/permissions`),
+      localBacked
+        ? api(`/api/engine/bots/${engineBotId}`)
+        : api(`${botRoot}/autonomy`),
+      api(`${botRoot}/permissions`),
     ])
       .then(([b, p]: [{ autonomy?: string }, Record<string, boolean>]) => {
         setAutonomy(b.autonomy === "autonomous" ? "autonomous" : "approval");
@@ -69,8 +74,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
         setStatus("ready");
       })
       .catch(() => setStatus("offline"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [botRoot, engineBotId, localBacked]);
 
   // Optimistic + revert przy błędzie; po sukcesie stan zawsze z odpowiedzi
   // silnika (PATCH oddaje zaktualizowanego bota / pełną mapę toolsetów).
@@ -79,7 +83,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
     const next: Autonomy = prev === "autonomous" ? "approval" : "autonomous";
     setAutonomy(next);
     setError(null);
-    api(`/api/engine/bots/${engineBotId}`, {
+    api(localBacked ? `/api/engine/bots/${engineBotId}` : `${botRoot}/autonomy`, {
       method: "PATCH",
       body: JSON.stringify({ autonomy: next }),
     })
@@ -97,7 +101,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
     const enabled = !prev[toolset];
     setPerms({ ...prev, [toolset]: enabled });
     setError(null);
-    api(`/api/engine/bots/${engineBotId}/permissions`, {
+    api(`${botRoot}/permissions`, {
       method: "PATCH",
       body: JSON.stringify({ toolset, enabled }),
     })

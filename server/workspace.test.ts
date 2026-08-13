@@ -1,0 +1,50 @@
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { WorkspaceStore } from "./workspace.ts";
+
+const roots: string[] = [];
+const make = () => {
+  const root = mkdtempSync(join(tmpdir(), "omb-workspace-"));
+  roots.push(root);
+  const file = join(root, "workspace.json");
+  return { file, store: new WorkspaceStore(file) };
+};
+
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+
+describe("driver-neutral workspace", () => {
+  it("persists memory, skills and policy per bot", () => {
+    const { file, store } = make();
+    const fact = store.addFact("cli", { text: "Prefers local models", source: "user" });
+    store.putMarkdown("cli", "# Durable memory");
+    store.addSkill("cli", { name: "review", description: "Review code", instructions: "Check tests." });
+    store.setAutonomy("cli", "autonomous");
+    store.setPermissions("cli", { terminal: false });
+
+    const restored = new WorkspaceStore(file);
+    expect(restored.facts("cli")).toEqual([fact]);
+    expect(restored.markdown("cli")).toEqual({ content: "# Durable memory" });
+    expect(restored.skills("cli")[0]).toMatchObject({ name: "review", enabled: true });
+    expect(restored.autonomy("cli")).toEqual({ autonomy: "autonomous" });
+    expect(restored.permissions("cli").terminal).toBe(false);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it("normalizes usage and deletes scoped records", () => {
+    const { store } = make();
+    store.recordTokens("bot", 12, 5);
+    store.recordTokens("bot", -1, 3);
+    store.recordTurn("bot");
+    expect(store.usage("bot")).toEqual({ prompt_tokens: 12, completion_tokens: 8, total_tokens: 20, turns: 1 });
+
+    const fact = store.addFact("bot", { text: "temporary" });
+    expect(store.patchFact("bot", fact.id, { text: "updated" })?.text).toBe("updated");
+    expect(store.deleteFact("bot", fact.id)).toBe(true);
+    const skill = store.addSkill("bot", { name: "one", instructions: "Do one." });
+    expect(store.patchSkill("bot", skill.name, { enabled: false })?.enabled).toBe(false);
+    expect(store.deleteSkill("bot", skill.name)).toBe(true);
+  });
+});

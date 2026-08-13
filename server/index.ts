@@ -42,6 +42,7 @@ import { HarnessRoutines, type HarnessRoutine } from "./routines.ts";
 import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 import { registerWindowsServerAutostart } from "./windows-autostart.ts";
+import { WorkspaceStore } from "./workspace.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
@@ -174,6 +175,7 @@ async function defaultSelection(described?: Awaited<ReturnType<ProviderRegistry[
 }
 let bootSelection = { instanceId: "claude", model: "sonnet" };
 const store = new Store(() => bootSelection);
+const workspace = new WorkspaceStore();
 const bootFleet = await registry.describe();
 bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
@@ -233,6 +235,12 @@ bus.subscribe((event: RuntimeEvent) => {
   broadcast({ kind: "runtime", event });
   const bot = store.botByThread(event.threadId);
   if (!bot) return;
+
+  if (event.type === "thread.token-usage.updated") {
+    workspace.recordTokens(bot.id, event.input, event.output);
+  } else if (event.type === "turn.completed") {
+    workspace.recordTurn(bot.id);
+  }
 
   const pushMessage = (m: Omit<Message, "id" | "at">) => {
     const message = store.appendMessage(event.threadId, m);
@@ -420,6 +428,22 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
   ]
     .filter(Boolean)
     .join(" ");
+  // Driver-neutral workspace context. Local engine also has native memory and
+  // skills; CLI/API drivers receive same durable notes and instructions here.
+  const sharedMemory = workspace.markdown(bot.id).content.trim();
+  const sharedFacts = workspace.facts(bot.id).slice(0, 40).map((fact) => `- ${fact.text}`).join("\n");
+  const sharedSkills = workspace.skills(bot.id).filter((skill) => skill.enabled)
+    .map((skill) => `## ${skill.name}\n${skill.instructions}`).join("\n\n");
+  const sharedPolicy = workspace.autonomy(bot.id).autonomy === "autonomous"
+    ? "Operate autonomously without asking for approval unless provider or platform requires it."
+    : "Ask for approval before consequential actions.";
+  const workspaceContext = [
+    "Shared MultiBot workspace context:",
+    sharedPolicy,
+    sharedFacts && `Memory facts:\n${sharedFacts}`,
+    sharedMemory && `Memory notes:\n${sharedMemory}`,
+    sharedSkills && `Reusable skills:\n${sharedSkills}`,
+  ].filter(Boolean).join("\n\n");
 
   // multibot (D7): kolejna tura usera JEST odpowiedzią na to, na co bot czekał
   if (bot.needsAttention != null) store.patchBot(bot.id, { needsAttention: null });
@@ -508,7 +532,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
         resumeCursor: bot.resumeCursors[bot.modelSelection.instanceId],
         transcript,
         system:
-          persona +
+          persona + "\n\n" + workspaceContext +
           (integrations.computer && instance.driverKind !== "boxAgent"
             ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
             : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
@@ -651,6 +675,7 @@ async function cliToolsStatus() {
       reason: instance?.snapshot.reason,
       version: instance?.snapshot.version ?? undefined,
       installCommand: installCommandText(tool.install),
+      loginCommand: tool.loginCommand ?? null,
     };
   });
 }
@@ -853,6 +878,7 @@ const server = createServer(async (req, res) => {
       await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => {});
       stopScreenPoller(bot.id);
       harnessRoutines.deleteBot(bot.id);
+      workspace.deleteBot(bot.id);
       store.deleteBot(bot.id);
       for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
         try {
@@ -909,6 +935,86 @@ const server = createServer(async (req, res) => {
       const instance = registry.get(bot.modelSelection.instanceId);
       await instance?.adapter.interruptTurn(bot.threadId);
       return json(res, 200, { ok: true });
+    }
+
+    // ── multibot: provider-neutral workspace ───────────────────────────
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/facts(?:\/([\w-]+))?$/);
+    if (m) {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      if (method === "GET" && !m[2]) return json(res, 200, workspace.facts(m[1]));
+      if (method === "POST" && !m[2]) {
+        const body = await readBody(req);
+        return json(res, 201, workspace.addFact(m[1], body));
+      }
+      if (method === "PATCH" && m[2]) {
+        const body = await readBody(req);
+        const fact = workspace.patchFact(m[1], m[2], body);
+        return fact ? json(res, 200, fact) : json(res, 404, { error: "no such fact" });
+      }
+      if (method === "DELETE" && m[2]) {
+        return workspace.deleteFact(m[1], m[2])
+          ? json(res, 200, { ok: true })
+          : json(res, 404, { error: "no such fact" });
+      }
+      return json(res, 405, { error: "method not allowed" });
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/markdown$/);
+    if (m) {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      if (method === "GET") return json(res, 200, workspace.markdown(m[1]));
+      if (method === "PUT" || method === "PATCH") {
+        const body = await readBody(req);
+        return json(res, 200, workspace.putMarkdown(m[1], body.content));
+      }
+      return json(res, 405, { error: "method not allowed" });
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/skills(?:\/(.+))?$/);
+    if (m) {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      const name = m[2] ? decodeURIComponent(m[2]) : null;
+      if (method === "GET" && !name) return json(res, 200, workspace.skills(m[1]));
+      if (method === "POST" && !name) {
+        const body = await readBody(req);
+        return json(res, 201, workspace.addSkill(m[1], body));
+      }
+      if (method === "PATCH" && name) {
+        const body = await readBody(req);
+        const skill = workspace.patchSkill(m[1], name, body);
+        return skill ? json(res, 200, skill) : json(res, 404, { error: "no such skill" });
+      }
+      if (method === "DELETE" && name) {
+        return workspace.deleteSkill(m[1], name)
+          ? json(res, 200, { ok: true })
+          : json(res, 404, { error: "no such skill" });
+      }
+      return json(res, 405, { error: "method not allowed" });
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/(autonomy|permissions|usage)$/);
+    if (m) {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      if (m[2] === "usage") {
+        return method === "GET"
+          ? json(res, 200, workspace.usage(m[1]))
+          : json(res, 405, { error: "method not allowed" });
+      }
+      if (m[2] === "autonomy") {
+        if (method === "GET") return json(res, 200, workspace.autonomy(m[1]));
+        if (method === "PATCH") {
+          const body = await readBody(req);
+          return json(res, 200, workspace.setAutonomy(m[1], body.autonomy));
+        }
+      } else {
+        if (method === "GET") return json(res, 200, workspace.permissions(m[1]));
+        if (method === "PATCH") {
+          const body = await readBody(req);
+          const patch = typeof body.toolset === "string" ? { [body.toolset]: body.enabled } : body;
+          return json(res, 200, workspace.setPermissions(m[1], patch));
+        }
+      }
+      return json(res, 405, { error: "method not allowed" });
     }
 
     // ── multibot: driver-neutral routines ──────────────────────────────

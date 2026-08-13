@@ -51,7 +51,7 @@ interface Skill {
   command: string;
   description: string;
   instructions: string;
-  path: string;
+  path?: string;
 }
 
 const inputCls =
@@ -59,10 +59,12 @@ const inputCls =
 
 function SkillForm({
   skill,
+  skillsRoot,
   onSaved,
   onCancel,
 }: {
   skill: Skill;
+  skillsRoot: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -75,7 +77,7 @@ function SkillForm({
     if (saving) return;
     setSaving(true);
     setError(null);
-    api(`/api/engine/skills/${encodeURIComponent(skill.name)}`, {
+    api(`${skillsRoot}/${encodeURIComponent(skill.name)}`, {
       method: "PATCH",
       body: JSON.stringify({ description, instructions }),
     })
@@ -316,10 +318,12 @@ function TeachCard({
 }
 
 export function SkillsPanel({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
+  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
+  const skillsRoot = localBacked ? "/api/engine/skills" : `/api/bots/${bot.id}/skills`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -328,7 +332,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
-    api(`/api/engine/skills`).then((ss: Skill[]) => {
+    api(skillsRoot).then((ss: Skill[]) => {
       setSkills(ss);
       setStatus("ready");
     });
@@ -338,11 +342,14 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   // idempotentny POST /api/bots (409 = już jest = sukces).
   useEffect(() => {
     let alive = true;
-    authFetch(`/api/engine/bots`, {
+    const ensure = localBacked
+      ? authFetch(`/api/engine/bots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: engineBotId, name: engineBotId }),
     })
+      : Promise.resolve(new Response(null, { status: 204 }));
+    ensure
       .then((res) => {
         if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
         return load();
@@ -352,7 +359,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }, [localBacked, skillsRoot, engineBotId]);
 
   const showError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -361,7 +368,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   const remove = (name: string) => {
     setBusy(`delete:${name}`);
     setError(null);
-    api(`/api/engine/skills/${encodeURIComponent(name)}`, { method: "DELETE" })
+    api(`${skillsRoot}/${encodeURIComponent(name)}`, { method: "DELETE" })
       .then(() => setSkills((ss) => ss.filter((s) => s.name !== name)))
       .catch(showError)
       .finally(() => setBusy(null));
@@ -395,6 +402,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
         ) : editing ? (
           <SkillForm
             skill={editing}
+            skillsRoot={skillsRoot}
             onSaved={() => {
               setEditing(null);
               load().catch(() => setStatus("offline"));
@@ -403,10 +411,10 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
           />
         ) : (
           <>
-            <TeachCard
+            {localBacked && <TeachCard
               engineBotId={engineBotId}
               onSkillCreated={() => load().catch(() => setStatus("offline"))}
-            />
+            />}
 
             {skills.length === 0 ? (
               <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
@@ -426,7 +434,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                       <button
                         onClick={() => setExpanded(open ? null : s.name)}
                         className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
-                        title={s.path}
+                        title={s.path ?? s.name}
                       >
                         {open ? (
                           <ChevronDown size={15} className="mt-0.5 shrink-0 text-ink-secondary" />
@@ -466,8 +474,8 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                     </div>
                     {open && (
                       <div className="mt-3 border-t border-hairline/40 pt-3 text-[13px]">
-                        <div className="mb-2 truncate text-[11px] text-ink-secondary" title={s.path}>
-                          {s.path}
+                        <div className="mb-2 truncate text-[11px] text-ink-secondary" title={s.path ?? s.name}>
+                          {s.path ?? "Shared bot skill"}
                         </div>
                         {s.instructions ? (
                           <ChatMarkdown text={s.instructions} />

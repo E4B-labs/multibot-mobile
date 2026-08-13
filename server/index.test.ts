@@ -196,6 +196,45 @@ describe("harness HTTP API", () => {
     expect((await api("GET", `/api/bots/${bot.id}/routines`)).body).toEqual([]);
   });
 
+  it("serves a provider-neutral workspace for every harness bot", async () => {
+    const created = await api("POST", "/api/bots");
+    const bot = created.body.bot;
+
+    const fact = await api("POST", `/api/bots/${bot.id}/memory/facts`, {
+      text: "Prefers local models",
+      source: "user",
+    });
+    expect(fact.status).toBe(201);
+    expect((await api("GET", `/api/bots/${bot.id}/memory/facts`)).body).toEqual([fact.body]);
+    expect((await api("PATCH", `/api/bots/${bot.id}/memory/facts/${fact.body.id}`, { text: "Prefers private models" })).body.text).toBe("Prefers private models");
+
+    expect((await api("PUT", `/api/bots/${bot.id}/memory/markdown`, { content: "# Notes" })).body).toEqual({ content: "# Notes" });
+    expect((await api("GET", `/api/bots/${bot.id}/memory/markdown`)).body).toEqual({ content: "# Notes" });
+
+    const skill = await api("POST", `/api/bots/${bot.id}/skills`, {
+      name: "review",
+      description: "Review code",
+      instructions: "Run tests.",
+    });
+    expect(skill.status).toBe(201);
+    expect((await api("PATCH", `/api/bots/${bot.id}/skills/review`, { enabled: false })).body.enabled).toBe(false);
+    expect((await api("GET", `/api/bots/${bot.id}/skills`)).body).toHaveLength(1);
+
+    expect((await api("PATCH", `/api/bots/${bot.id}/autonomy`, { autonomy: "autonomous" })).body).toEqual({ autonomy: "autonomous" });
+    expect((await api("PATCH", `/api/bots/${bot.id}/permissions`, { terminal: false })).body.terminal).toBe(false);
+    expect((await api("GET", `/api/bots/${bot.id}/usage`)).body).toEqual({
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      turns: 0,
+    });
+
+    expect((await api("DELETE", `/api/bots/${bot.id}/skills/review`)).status).toBe(200);
+    expect((await api("DELETE", `/api/bots/${bot.id}/memory/facts/${fact.body.id}`)).status).toBe(200);
+    expect((await api("GET", "/api/bots/missing/workspace")).status).toBe(404);
+    expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
+  });
+
   it("describes the configured fleet, shadows included", async () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);

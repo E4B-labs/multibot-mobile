@@ -25,6 +25,7 @@ import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
+import { useLanguage } from "@/lib/language";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -370,6 +371,7 @@ function GroupsSection({
 
 export function Sidebar() {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
@@ -441,7 +443,7 @@ export function Sidebar() {
             onClick={() => setAddMenuOpen((v) => !v)}
             className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title="Add bot or group"
+            title={polish ? "Dodaj bota albo grupę" : "Add bot or group"}
             aria-expanded={addMenuOpen}
           >
             <Plus size={20} strokeWidth={2} />
@@ -457,7 +459,7 @@ export function Sidebar() {
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised"
               >
                 <BotIcon size={15} className="text-ink-secondary" />
-                New bot
+                {polish ? "Nowy bot" : "New bot"}
               </button>
               <button
                 onClick={() => {
@@ -468,7 +470,7 @@ export function Sidebar() {
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Users size={15} className="text-ink-secondary" />
-                New group
+                {polish ? "Nowa grupa" : "New group"}
               </button>
             </div>
           )}
@@ -480,7 +482,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2 rounded-lg bg-raised/70 px-3 py-2">
           <Search size={16} className="text-ink-secondary" />
           <input
-            placeholder="Search"
+            placeholder={polish ? "Szukaj" : "Search"}
             className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-secondary focus:outline-none"
           />
         </div>
@@ -522,7 +524,7 @@ export function Sidebar() {
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
         >
           <Puzzle size={20} className="text-ink-secondary" />
-          <span className="text-[14px] text-ink">Plugins</span>
+            <span className="text-[14px] text-ink">{polish ? "Wtyczki" : "Plugins"}</span>
         </button>
         <div className="flex items-center">
           <button
@@ -537,7 +539,7 @@ export function Sidebar() {
           <button
             onClick={() => dispatch({ type: "toggleAppSettings" })}
             className="rounded-md p-2 text-ink-secondary hover:bg-raised hover:text-ink"
-            title="App settings"
+            title={polish ? "Ustawienia aplikacji" : "App settings"}
           >
             <Settings size={18} />
           </button>

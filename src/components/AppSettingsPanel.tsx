@@ -546,8 +546,9 @@ function CustomModels() {
 }
 
 function CommandLineTools() {
-  const [cli, setCli] = useState<Array<{ id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string }>>([]);
+  const [cli, setCli] = useState<Array<{ id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null }>>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
 
   useEffect(() => {
     void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {});
@@ -563,6 +564,26 @@ function CommandLineTools() {
       .finally(() => setBusy(null));
   };
 
+  const install = async (tool: (typeof cli)[number]) => {
+    if (installing) return;
+    setInstalling(tool.id);
+    try {
+      const response = await api(`/api/cli-tools/${encodeURIComponent(tool.id)}/install`, { method: "POST" });
+      // Onboarding owns live SSE progress. App Settings only starts the same
+      // durable job, then refreshes detection after a short grace period.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const refreshed = await api("/api/cli-tools");
+      setCli(refreshed.tools ?? []);
+      if (response.id && !refreshed.tools?.some((item: (typeof cli)[number]) => item.id === tool.id && item.detected)) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const latest = await api("/api/cli-tools");
+        setCli(latest.tools ?? []);
+      }
+    } finally {
+      setInstalling(null);
+    }
+  };
+
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">Command-line tools</div>
@@ -571,21 +592,28 @@ function CommandLineTools() {
         {cli.length === 0 ? (
           <div className="py-2 text-[13px] text-ink-secondary">No command-line tools detected.</div>
         ) : cli.map((item) => (
-          <label key={item.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
             <div className="min-w-0">
               <div className="truncate text-[13px] text-ink">{item.displayName}</div>
               <div className="truncate text-[11px] text-ink-secondary">
-                {item.detected ? item.version ?? "Detected" : item.reason ?? "Not detected"}
+                {item.detected ? `${item.version ?? "Detected"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
               </div>
             </div>
-            <input
-              type="checkbox"
-              checked={item.enabled}
-              disabled={busy === item.id}
-              onChange={() => toggle(item)}
-              className="size-4 accent-[var(--color-accent)]"
-            />
-          </label>
+            <div className="flex shrink-0 items-center gap-2">
+              {!item.detected && item.installCommand && <button
+                onClick={() => void install(item)}
+                disabled={installing !== null}
+                className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
+              >{installing === item.id ? "Installing…" : "Install"}</button>}
+              <input
+                type="checkbox"
+                checked={item.enabled}
+                disabled={busy === item.id}
+                onChange={() => toggle(item)}
+                className="size-4 accent-[var(--color-accent)]"
+              />
+            </div>
+          </div>
         ))}
       </div>
     </div>

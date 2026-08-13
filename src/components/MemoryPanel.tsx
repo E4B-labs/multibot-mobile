@@ -29,11 +29,11 @@ async function api(path: string, init?: RequestInit): Promise<any> {
 
 /** Mirror of engine `memory.facts()` (engine/server/memory.py). */
 interface Fact {
-  id: number;
+  id: number | string;
   text: string;
-  trust_score: number | null;
-  created_at: string | null;
-  entities: string[];
+  trust_score?: number | null;
+  created_at?: string | null;
+  entities?: string[];
 }
 
 /** Mirror of engine `memory.graph()`. */
@@ -177,10 +177,12 @@ function MemoryGraph({ graph }: { graph: Graph }) {
 }
 
 export function MemoryPanel({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
   // decodeConfig w server/drivers/slafy.ts.
   const engineBotId = `mb-${bot.threadId}`;
+  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
+  const memoryRoot = localBacked ? `/api/engine/bots/${engineBotId}/memory` : `/api/bots/${bot.id}/memory`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [tab, setTab] = useState<Tab>("facts");
   const [facts, setFacts] = useState<Fact[]>([]);
@@ -195,17 +197,20 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   // najpierw idempotentny POST /api/bots (409 = już jest = sukces).
   useEffect(() => {
     let alive = true;
-    authFetch(`/api/engine/bots`, {
+    const ensure = localBacked
+      ? authFetch(`/api/engine/bots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: engineBotId, name: engineBotId }),
     })
+      : Promise.resolve(new Response(null, { status: 204 }));
+    ensure
       .then((res) => {
         if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
         return Promise.all([
-          api(`/api/engine/bots/${engineBotId}/memory/facts`),
-          api(`/api/engine/bots/${engineBotId}/memory/markdown`),
-          api(`/api/engine/bots/${engineBotId}/memory/graph`),
+          api(`${memoryRoot}/facts`),
+          api(`${memoryRoot}/markdown`),
+          localBacked ? api(`${memoryRoot}/graph`) : Promise.resolve({ nodes: [], edges: [] }),
         ]);
       })
       .then(([fs, md, g]: [Fact[], { content: string }, Graph]) => {
@@ -220,21 +225,21 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [localBacked, memoryRoot, engineBotId]);
 
   // Filtr faktów po treści (silnik robi LIKE po `q`), debounce jak przy PATCH-ach bota.
   useEffect(() => {
     if (status !== "ready") return;
     setSearching(true);
     const timer = setTimeout(() => {
-      api(`/api/engine/bots/${engineBotId}/memory/facts?q=${encodeURIComponent(query)}`)
+      api(`${memoryRoot}/facts?q=${encodeURIComponent(query)}`)
         .then((fs: Fact[]) => setFacts(fs))
         .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
         .finally(() => setSearching(false));
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, memoryRoot, status]);
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -323,7 +328,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                             trust {f.trust_score.toFixed(2)}
                           </span>
                         )}
-                        {f.entities.map((name) => (
+                        {(f.entities ?? []).map((name) => (
                           <span key={name} className="rounded bg-inset px-1.5 py-0.5">
                             {name}
                           </span>
