@@ -14,8 +14,6 @@ import type { Duplex } from "node:stream";
 import { ensureEngine } from "./supervisor.ts";
 
 const PREFIX = "/api/engine";
-/** Pipe WS: `/api/engine/ws` ↔ `ws://<silnik>/api/ws`. */
-const WS_PATH = `${PREFIX}/ws`;
 
 /** Nagłówki wyłącznie dla jednego skoku — kopiowanie ich psuje ramkowanie. */
 const HOP_BY_HOP = ["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection"];
@@ -85,7 +83,7 @@ function bail(socket: Duplex, status: number, why: string) {
  * gniazda bajt w bajt. Ramek nie parsujemy — maskowanie klienta i brak
  * maskowania serwera zostają nietknięte, więc każdy klient WS działa.
  */
-async function pipeWs(req: IncomingMessage, socket: Duplex, head: Buffer) {
+async function pipeWs(req: IncomingMessage, socket: Duplex, head: Buffer, path: string) {
   let baseUrl: string;
   try {
     baseUrl = await ensureEngine();
@@ -97,7 +95,7 @@ async function pipeWs(req: IncomingMessage, socket: Duplex, head: Buffer) {
     hostname: target.hostname,
     port: target.port,
     method: "GET",
-    path: "/api/ws",
+    path,
     headers: { ...(req.headers as any), host: target.host },
   });
   upstream.on("upgrade", (upRes, upSocket, upHead) => {
@@ -130,8 +128,14 @@ export function mountEngineProxy(server: Server) {
     (req.url ?? "").startsWith(`${PREFIX}/`) ? void proxyHttp(req, res) : app(req, res),
   );
   server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
-    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-    if (path !== WS_PATH) return socket.destroy();
-    void pipeWs(req, socket, head);
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (!url.pathname.startsWith(`${PREFIX}/`)) return socket.destroy();
+    // multibot (F5): WS silnika jest więcej niż jeden. `/api/engine/ws` →
+    // `/api/ws` (kanał eventów) wychodzi z tego samego `rewrite()` co HTTP, a
+    // `/api/engine/bots/<id>/computer` → `/api/bots/<id>/computer` daje UI live
+    // view i take-over jednym gniazdem. Klatki NIE idą przez SSE harnessu: to
+    // strumień JPEG-ów, a most w silniku wstaje z pierwszym klientem WS i
+    // schodzi z ostatnim — nikt nie ogląda, nikt nie koduje.
+    void pipeWs(req, socket, head, rewrite(url.pathname, "GET").path + url.search);
   });
 }

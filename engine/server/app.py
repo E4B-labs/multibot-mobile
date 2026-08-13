@@ -123,6 +123,17 @@ class SpeakIn(BaseModel):
     voice: str | None = None
 
 
+class InputIn(BaseModel):
+    # Ten sam kształt zdarzenia co kanał WS komputera (`server/computer.py`):
+    # `{"kind": "mouse"|"key"|"text", ...}`. Nie zawężamy do modelu per rodzaj —
+    # walidację i tak robi mapowanie na parametry CDP.
+    events: list[dict]
+
+
+class NavigateIn(BaseModel):
+    url: str
+
+
 class GroupCreate(BaseModel):
     name: str
     bot_ids: list[str]
@@ -324,6 +335,36 @@ async def computer_status(bot_id: str) -> dict:
 async def computer_screenshot(bot_id: str) -> dict:
     _require(bot_id)
     return {"data": await computer.screenshot(bot_id)}  # KeyError → 404, gdy brak przeglądarki
+
+
+# Faza F5: te trzy trasy to komputer bota BEZ kanału WS — żeby dostał się do
+# niego także agent spoza silnika (stdio MCP `server.computer_mcp`, montowany
+# przez harness driverom claude/codex) i take-over po zwykłym HTTP przez
+# przelotkę `/api/engine/*`. Live view i tak zostaje na WS: to strumień.
+@app.post("/api/bots/{bot_id}/computer/start")
+async def computer_start(bot_id: str) -> dict:
+    _require(bot_id)
+    return await computer.ensure_browser(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/computer/input")
+async def computer_input(bot_id: str, body: InputIn) -> dict:
+    _require(bot_id)
+    await computer.send_input(bot_id, body.events)  # KeyError → 404, gdy brak przeglądarki
+    return {"ok": True}
+
+
+@app.post("/api/bots/{bot_id}/computer/navigate")
+async def computer_navigate(bot_id: str, body: NavigateIn) -> dict:
+    _require(bot_id)
+    await computer.navigate(bot_id, body.url)
+    return await computer.status(bot_id)
+
+
+@app.get("/api/bots/{bot_id}/computer/page")
+async def computer_page(bot_id: str) -> dict:
+    _require(bot_id)
+    return await computer.page_text(bot_id)
 
 
 @app.get("/health")

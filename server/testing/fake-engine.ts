@@ -40,6 +40,8 @@ export interface FakeEngine {
   mode: FakeEngineMode;
   /** liczba żywych klientów `/api/ws`. */
   wsClients(): number;
+  /** ścieżki, na których silnik przyjął upgrade WS, w kolejności (F5). */
+  upgradePaths: string[];
   /** wypchnij event na wszystkie klienty WS (jak `_broadcast` silnika). */
   push(event: unknown): void;
   close(): Promise<void>;
@@ -72,6 +74,7 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     approvals: [],
     approvalRequestId: "req-1",
     mode,
+    upgradePaths: [],
     wsClients: () => sockets.size,
     push: (event) => {
       const frame = wsTextFrame(JSON.stringify(event));
@@ -235,9 +238,16 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
   // Kanał eventów: handshake RFC 6455 i echo bajtów z powrotem — echo wystarczy,
   // by test przepustowy udowodnił, że pipe harnessu jest przezroczysty w obie
   // strony, a `push()` udaje `_broadcast` silnika.
+  //
+  // F5: drugi WS silnika to komputer bota (`/api/bots/<id>/computer` — klatki
+  // live view i take-over), więc handshake przyjmujemy na obu ścieżkach, a
+  // `upgradePaths` mówi testowi, DOKĄD przelotka trafiła.
+  const WS_PATHS = [/^\/api\/ws$/, /^\/api\/bots\/[^/]+\/computer$/];
   server.on("upgrade", (req, socket: Duplex) => {
     const key = req.headers["sec-websocket-key"];
-    if (!key || new URL(req.url ?? "/", "http://127.0.0.1").pathname !== "/api/ws") return socket.destroy();
+    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    if (!key || !WS_PATHS.some((re) => re.test(path))) return socket.destroy();
+    state.upgradePaths.push(path);
     const accept = createHash("sha1")
       .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
       .digest("base64");

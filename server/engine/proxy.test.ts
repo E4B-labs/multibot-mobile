@@ -195,6 +195,37 @@ describe("engine WS pipe (/api/engine/ws)", () => {
     socket.destroy();
   });
 
+  // F5: klatki komputera bota NIE jadą przez SSE harnessu — front bierze je
+  // wprost z WS silnika przez tę samą przelotkę, więc ten test jest całym
+  // dowodem na "klatka dociera do UI" po stronie harnessu.
+  it("pipes the per-bot computer WS (live view frames + take-over)", async () => {
+    const key = randomBytes(16).toString("base64");
+    const socket: Socket = connect(PORT, "127.0.0.1");
+    const chunks: Buffer[] = [];
+    const seen = () => Buffer.concat(chunks).toString("binary");
+
+    await new Promise<void>((resolve, reject) => {
+      socket.on("connect", resolve);
+      socket.on("error", reject);
+    });
+    socket.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    socket.write(
+      `GET /api/engine/bots/mb-t-pre/computer HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\n` +
+        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+    );
+
+    await waitFor(async () => seen().includes("\r\n\r\n") || null, "the 101 handshake");
+    expect(seen()).toContain("101 Switching Protocols");
+    // przelotka zdjęła prefiks: silnik zobaczył SWOJĄ ścieżkę komputera
+    expect(engine.upgradePaths).toContain("/api/bots/mb-t-pre/computer");
+
+    chunks.length = 0;
+    // take-over: to, co UI wysyła w tę stronę, dochodzi do silnika bajt w bajt
+    socket.write(Buffer.from('{"type":"input","event":{"kind":"mouse"}}'));
+    await waitFor(async () => seen().includes('"kind":"mouse"') || null, "the take-over input echo");
+    socket.destroy();
+  });
+
   it("drops upgrades on any other path", async () => {
     const socket: Socket = connect(PORT, "127.0.0.1");
     await new Promise<void>((resolve, reject) => {

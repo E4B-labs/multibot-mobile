@@ -330,3 +330,46 @@ def test_ws_closes_4404_for_unknown_bot(client):
         with client.websocket_connect("/api/bots/niematakiego/computer") as ws:
             ws.receive_json()
     assert getattr(exc.value, "code", None) == 4404
+
+
+# ── faza F5: komputer po HTTP (bez WS) ────────────────────────────────────────
+# Tymi trasami chodzi serwer MCP (`server/computer_mcp.py`) montowany driverom
+# spoza silnika ORAZ take-over przez przelotkę harnessu, więc nie mogą zależeć
+# od otwartego live view: `_attached` robi własne, krótkie połączenie CDP.
+
+
+def test_http_input_types_and_clicks(client, page):
+    """`text` wchodzi jednym zdarzeniem (bez VK per znak), a klik trafia w stronę."""
+    assert client.post(
+        f"/api/bots/{_BOT}/computer/input", json={"events": [{"kind": "text", "text": "f5"}]}
+    ).json() == {"ok": True}
+    assert page.wait_for("document.getElementById('i').value === 'f5'") is True
+
+    hit = {"kind": "mouse", "x": 100, "y": 100, "button": "left", "clickCount": 1}
+    client.post(
+        f"/api/bots/{_BOT}/computer/input",
+        json={"events": [
+            {"kind": "mouse", "type": "mouseMoved", "x": 100, "y": 100},
+            {**hit, "type": "mousePressed"},
+            {**hit, "type": "mouseReleased"},
+        ]},
+    )
+    assert page.wait_for("document.title === 'clicked'") is True
+
+
+def test_http_navigate_and_read_page(client, page):
+    state = client.post(f"/api/bots/{_BOT}/computer/navigate", json={"url": _PAGE2}).json()
+    assert state["running"] is True
+    assert page.wait_for("document.getElementById('b2') !== null") is True
+
+    body = client.get(f"/api/bots/{_BOT}/computer/page").json()
+    assert body["url"] == _PAGE2
+    assert body["text"].strip() == "y"  # innerText, nie znaczniki
+
+
+def test_http_input_404_without_browser(client):
+    """Brak przeglądarki = 404 z `KeyError`, nie 500 — MCP ma z czego zrobić błąd."""
+    other = Path(os.environ["SLAFY_DATA_DIR"]) / "profiles" / "bezkompa3"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "bot.json").write_text(json.dumps({"id": "bezkompa3"}), encoding="utf-8")
+    assert client.post("/api/bots/bezkompa3/computer/input", json={"events": []}).status_code == 404

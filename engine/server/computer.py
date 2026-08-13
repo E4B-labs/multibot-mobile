@@ -30,6 +30,7 @@ bota; most wstaje przy pierwszym kliencie i schodzi z ostatnim.
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import Any, Callable, Coroutine
 
 import httpx
@@ -148,7 +149,7 @@ class _Cdp:
 def _mouse_params(event: dict) -> dict:
     kind = str(event.get("type") or "mouseMoved")
     button = str(event.get("button") or "none")
-    return {
+    params = {
         "type": kind,
         "x": float(event.get("x") or 0),
         "y": float(event.get("y") or 0),
@@ -157,6 +158,11 @@ def _mouse_params(event: dict) -> dict:
         "clickCount": int(event.get("clickCount") or 0),
         "modifiers": int(event.get("modifiers") or 0),
     }
+    # `deltaX/deltaY` są WYMAGANE dla `mouseWheel` i nielegalne dla reszty typów.
+    if kind == "mouseWheel":
+        params["deltaX"] = float(event.get("deltaX") or 0)
+        params["deltaY"] = float(event.get("deltaY") or 0)
+    return params
 
 
 def _key_params(event: dict) -> dict:
@@ -334,10 +340,13 @@ async def status(bot_id: str) -> dict:
     return {"running": True, "url": targets[0].get("url") if targets else None}
 
 
-async def screenshot(bot_id: str) -> str:
-    """Base64 JPEG karty na wierzchu — do computer card w czacie.
+@asynccontextmanager
+async def _attached(bot_id: str):
+    """Krótkie połączenie CDP + sesja na karcie na wierzchu.
 
-    Osobne, krótkie połączenie CDP: żeby zrzut działał też bez otwartego live view.
+    Osobne od mostka `_Bridge`, żeby operacje bezstanowe (zrzut, input z MCP,
+    nawigacja) działały też przy zamkniętym live view — i żeby nie zależały od
+    tego, czy ktoś akurat ogląda.
     """
     url = _cdp_url(bot_id)
     try:
@@ -348,13 +357,89 @@ async def screenshot(bot_id: str) -> str:
         raise KeyError(f"bot {bot_id} nie ma uruchomionej przeglądarki")
     cdp = await _Cdp.open(url)
     try:
-        session = await cdp.attach(targets[0]["id"])
+        yield cdp, await cdp.attach(targets[0]["id"])
+    finally:
+        await cdp.close()
+
+
+async def screenshot(bot_id: str) -> str:
+    """Base64 JPEG karty na wierzchu — do computer card w czacie."""
+    async with _attached(bot_id) as (cdp, session):
         result = await cdp.call(
             "Page.captureScreenshot", {"format": "jpeg", "quality": _JPEG_QUALITY}, session_id=session
         )
         return result["data"]
-    finally:
-        await cdp.close()
+
+
+async def send_input(bot_id: str, events: list[dict]) -> None:
+    """Take-over bez WS: N zdarzeń w jednej sesji CDP (faza F5).
+
+    Ten sam kształt zdarzenia co kanał WS (`{"kind": "mouse"|"key"|"text"}`) i te
+    same mapowania parametrów — różnica jest wyłącznie w transporcie. Tutaj
+    `call`, nie `send`: połączenie zamyka się zaraz po żądaniu, więc odpowiedź
+    CDP jest jedynym dowodem, że przeglądarka zdążyła zdarzenie przetworzyć.
+    """
+    async with _attached(bot_id) as (cdp, session):
+        for event in events:
+            kind = event.get("kind")
+            if kind == "mouse":
+                await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
+            elif kind == "key":
+                await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)
+            elif kind == "text":  # wpisanie ciągu jednym zdarzeniem (bez VK per znak)
+                await cdp.call("Input.insertText", {"text": str(event.get("text") or "")}, session_id=session)
+
+
+async def navigate(bot_id: str, url: str) -> None:
+    async with _attached(bot_id) as (cdp, session):
+        await cdp.call("Page.navigate", {"url": url}, session_id=session)
+
+
+# `innerText`, nie `innerHTML`: model dostaje to, co widzi człowiek, a nie znaczniki.
+_PAGE_JS = (
+    "({url: location.href, title: document.title, "
+    "text: ((document.body && document.body.innerText) || '').slice(0, 20000)})"
+)
+
+
+async def page_text(bot_id: str) -> dict:
+    """Adres, tytuł i tekst karty na wierzchu — czytanie strony dla agenta."""
+    async with _attached(bot_id) as (cdp, session):
+        result = await cdp.call(
+            "Runtime.evaluate", {"expression": _PAGE_JS, "returnByValue": True}, session_id=session
+        )
+        return result["result"].get("value") or {}
+
+
+_start_lock = asyncio.Lock()
+
+
+async def ensure_browser(bot_id: str) -> dict:
+    """Podnieś przeglądarkę bota, jeśli jeszcze nie stoi (faza F5).
+
+    Dla bota prowadzonego przez Hermesa sesję zakłada jego toolset (`browser_*`
+    → provider `slafy` → `browser.json`). Bota prowadzonego z harnessu przez
+    obcy CLI (claude/codex) NIKT tak nie obsłuży, więc wołamy TEGO SAMEGO
+    providera wprost — zero drugiej implementacji przeglądarki.
+
+    `HERMES_HOME` idzie contextvarem, nie przez `os.environ`: override jest
+    per-task, a `asyncio.to_thread` kopiuje kontekst do wątku, więc
+    `create_session` widzi katalog TEGO bota i niczyjego innego.
+    """
+    async with _start_lock:  # dwa równoległe tool calle = dwa chromium na tym samym profilu
+        state = await status(bot_id)
+        if state["running"]:
+            return state
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+        from server.browser_plugin.provider import SlafyBrowserProvider
+
+        token = set_hermes_home_override(profile_dir(bot_id))
+        try:
+            await asyncio.to_thread(SlafyBrowserProvider().create_session, f"computer-{bot_id}")
+        finally:
+            reset_hermes_home_override(token)
+        return await status(bot_id)
 
 
 async def serve(bot_id: str, ws: WebSocket) -> None:

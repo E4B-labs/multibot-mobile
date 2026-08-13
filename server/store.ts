@@ -65,8 +65,10 @@ export interface BotRecord {
   /** provider-native continuation per instance (e.g. claude session id) */
   resumeCursors: Record<string, unknown>;
   /** which computer the bot acts on: its cloud box, this Mac (local CUA),
-   * or none. Unset = auto (box when it exists, else local when available). */
-  computer?: "cloud" | "local" | "off";
+   * or none. Unset = auto (box when it exists, else local when available).
+   * multibot (F5): "playwright" = przeglądarka bota w silniku (trwały profil,
+   * take-over) — wyklucza box i CUA, patrz `startTurn` w server/index.ts. */
+  computer?: "cloud" | "local" | "playwright" | "off";
   pinned?: boolean;
   hidden?: boolean;
   busy?: boolean;

@@ -17,6 +17,7 @@ import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
 import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.ts";
 import { watchEngineAttention } from "./engine/attention.ts";
+import { engineComputer } from "./engine/computer-mcp.ts";
 import { mountEngineProxy } from "./engine/proxy.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
@@ -339,8 +340,16 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     try {
       const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
       if (cfg.composio?.key) integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
-      const wants = bot.computer; // 'cloud' | 'local' | 'off' | undefined(auto)
-      if (wants !== "off" && wants !== "local" && box.boxConfigured(cfg)) {
+      const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'off' | undefined(auto)
+      // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
+      // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
+      // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
+      // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
+      if (wants === "playwright" && instance.driverKind !== "slafy") {
+        const mcp = await engineComputer(bot.threadId);
+        if (mcp) integrations.localComputer = mcp;
+      }
+      if (wants !== "off" && wants !== "local" && wants !== "playwright" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
         // the Computer driver runs ON the box — provision it on first use
         if (!b && instance.driverKind === "boxAgent") {
@@ -353,7 +362,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       // local computer (this Mac) via the Electron-hosted cua-driver: the
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
-      if (!integrations.computer && wants !== "off" && wants !== "cloud") {
+      if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright") {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
@@ -391,9 +400,14 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
           persona +
           (integrations.computer && instance.driverKind !== "boxAgent"
             ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
-            : integrations.localComputer
-              ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
-              : "") +
+            : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
+              // użytkownika — opis pulpitu wysyłałby agenta po narzędzia, których
+              // ten serwer MCP nie ma (a11y, exec).
+              wants === "playwright" && integrations.localComputer
+              ? " You have your own browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text."
+              : integrations.localComputer
+                ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
+                : "") +
           (integrations.agents
             ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
             : "") +
