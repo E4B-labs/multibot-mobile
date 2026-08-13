@@ -209,11 +209,9 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
   );
 }
 
-// multibot: F9-FE — grupy silnika w sidebarze: grupa = wpis na liście, klik
-// otwiera pokój w prawym slocie (store `toggleGroup`). Widoczne wyłącznie, gdy
-// GET /api/engine/groups przeszedł (boty slafy istnieją, silnik żyje) — offline
-// pokrywa kropka "Engine offline" w stopce, więc sekcja po prostu znika.
-function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
+// multibot: F9-FE — grupy w sidebarze: każdy bot ma trwałą reprezentację
+// `mb-<threadId>` w transporcie grupowym, niezależnie od wybranego drivera.
+function GroupsSection({ bots }: { bots: Bot[] }) {
   const { state, dispatch } = useStore();
   // null = nie załadowano (silnik offline / jeszcze nie sprawdzono)
   const [groups, setGroups] = useState<EngineGroup[] | null>(null);
@@ -251,10 +249,8 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
     setBusy(true);
     setError(null);
     try {
-      // Boty silnika wstają leniwie (slafy.ts `ensureBot`) — bez tego POST grupy
-      // odbiłby się 422 "unknown bot". Idempotentny POST jak w RoutinesPanel
-      // (409 = już jest = sukces).
-      for (const bot of slafyBots) {
+      // Shadowy silnika wstają leniwie — bez tego POST grupy odbiłby się 422.
+      for (const bot of bots) {
         const engineBotId = `mb-${bot.threadId}`;
         if (!picked.has(engineBotId)) continue;
         const res = await authFetch("/api/engine/bots", {
@@ -266,7 +262,7 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
       }
       // Kolejność `bot_ids` = kolejność floty; pierwszy bot to owner pokoju
       // (engine groups.py: fallback routingu rundy).
-      const bot_ids = slafyBots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
+      const bot_ids = bots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
       const res = await authFetch("/api/engine/groups", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -329,7 +325,7 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
             onChange={(e) => setName(e.target.value)}
           />
           <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-            {slafyBots.map((b) => {
+            {bots.map((b) => {
               const engineBotId = `mb-${b.threadId}`;
               return (
                 <label
@@ -405,13 +401,9 @@ export function Sidebar() {
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
 
-  // multibot: F9-FE — kandydaci do grup: cała flota slafy (także ukryci — skład
-  // pokoju to nie kosmetyka sidebaru). Kolejność stabilna z listy botów.
-  const slafyBots = state.bots.filter(
-    (b) =>
-      state.instances.find((i) => i.instanceId === b.modelSelection.instanceId)?.driverKind ===
-      "slafy",
-  );
+  // multibot: F9-FE — kandydaci do grup: cała flota, także ukryci. Kolejność
+  // stabilna z listy botów; wybrany driver nie usuwa bota z grup.
+  const groupBots = state.bots;
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-hairline/40 bg-panel">
@@ -459,8 +451,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* multibot: F9-FE — grupy silnika, tylko gdy flota ma boty slafy */}
-      {slafyBots.length > 0 && <GroupsSection slafyBots={slafyBots} />}
+      {/* multibot: F9-FE — grupy dostępne dla całej floty */}
+      {groupBots.length > 0 && <GroupsSection bots={groupBots} />}
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
