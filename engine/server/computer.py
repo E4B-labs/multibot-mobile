@@ -29,8 +29,9 @@ bota; most wstaje przy pierwszym kliencie i schodzi z ostatnim.
 
 import asyncio
 import json
+import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Callable, Coroutine
 
 import httpx
@@ -326,7 +327,7 @@ class _Bridge:
 
 _bridges: dict[str, _Bridge] = {}
 _lock = asyncio.Lock()
-_shared_operation_lock = asyncio.Lock()
+_shared_operation_lock = threading.Lock()
 
 
 def mode(bot_id: str) -> str:
@@ -358,9 +359,27 @@ async def set_mode(bot_id: str, value: str) -> dict:
 
 @asynccontextmanager
 async def _operation(bot_id: str):
-    """Shared browser operations queue; private browsers remain independent."""
+    """Shared browser operations queue; private browsers remain independent.
+
+    A threading lock is intentional: native Hermes browser tools are sync and
+    share this same gate for their entire agent turn.
+    """
     if mode(bot_id) == "shared":
-        async with _shared_operation_lock:
+        while not _shared_operation_lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
+            yield
+        finally:
+            _shared_operation_lock.release()
+    else:
+        yield
+
+
+@contextmanager
+def native_turn(bot_id: str):
+    """Serialize a native engine turn that may issue multiple browser tools."""
+    if mode(bot_id) == "shared":
+        with _shared_operation_lock:
             yield
     else:
         yield

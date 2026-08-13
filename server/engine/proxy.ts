@@ -26,6 +26,7 @@ const HOP_BY_HOP = ["connection", "keep-alive", "transfer-encoding", "upgrade", 
  * ruszać frontend.
  */
 function rewrite(pathname: string, method: string): { path: string; method: string } {
+  if (/^\/webhooks\/[^/]+$/.test(pathname)) return { path: pathname, method };
   const byok = pathname.match(/^\/api\/engine\/provider\/([^/]+)$/);
   if (byok) return { path: `/api/bots/${byok[1]}/provider`, method: method === "GET" ? "GET" : "PUT" };
   return { path: `/api${pathname.slice(PREFIX.length)}`, method };
@@ -135,9 +136,12 @@ async function pipeWs(req: IncomingMessage, socket: Duplex, head: Buffer, path: 
 export function mountEngineProxy(server: Server) {
   const app = server.listeners("request")[0] as (req: IncomingMessage, res: ServerResponse) => void;
   server.removeAllListeners("request");
-  server.on("request", (req, res) =>
-    (req.url ?? "").startsWith(`${PREFIX}/`) ? void proxyHttp(req, res) : app(req, res),
-  );
+  server.on("request", (req, res) => {
+    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    return path.startsWith(`${PREFIX}/`) || (req.method === "POST" && /^\/webhooks\/[^/]+$/.test(path))
+      ? void proxyHttp(req, res)
+      : app(req, res);
+  });
   server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (!url.pathname.startsWith(`${PREFIX}/`)) return socket.destroy();

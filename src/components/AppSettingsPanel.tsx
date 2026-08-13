@@ -84,7 +84,7 @@ function summary(p: InspectOut): string {
   return parts.length ? parts.join(" · ") : "empty profile";
 }
 
-function ProfileImport() {
+export function ProfileImport() {
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState<"inspect" | "import" | null>(null);
   // found[0] = źródło; przy ROOT-cie dalej idą podprofile z `profiles/`
@@ -168,7 +168,7 @@ function ProfileImport() {
           className={inputClass}
           value={source}
           onChange={(e) => setSource(e.target.value)}
-          placeholder="~/.hermes  or  C:\Users\you\AppData\Local\hermes"
+          placeholder="Path to an existing profile"
         />
         <button
           onClick={inspect}
@@ -182,7 +182,7 @@ function ProfileImport() {
       {offline && (
         <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className="size-1.5 rounded-full bg-raised-hover" />
-          Engine offline
+          Service offline
         </div>
       )}
 

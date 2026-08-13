@@ -36,10 +36,15 @@ describe("Windows one-command server installer", () => {
 
   it("packages a no-window server mode with loopback harness resources", () => {
     const main = readFileSync(join(process.cwd(), "electron", "main.mjs"), "utf8");
+    const auth = readFileSync(join(process.cwd(), "src", "lib", "auth.ts"), "utf8");
     const builder = readFileSync(join(process.cwd(), "electron-builder.yml"), "utf8");
     expect(main).toContain('process.argv.includes("--server-only")');
     expect(main).toContain('OMB_HOST: "127.0.0.1"');
+    expect(main).toContain('OMB_SERVER_SERVICE: SERVER_ONLY ? "1" : ""');
+    expect(main).toContain("body?.service === true");
     expect(main).toContain("await provisionEngineRuntime()");
+    expect(main).toContain("#access_token=");
+    expect(auth).toContain('history.replaceState(null, ""');
     expect(main).toMatch(/if \(SERVER_ONLY\)[\s\S]+startServerPackaged\(\)[\s\S]+return;/);
     expect(builder).toContain("from: dist-server");
     expect(builder).toContain("from: scripts/provision-engine.mjs");

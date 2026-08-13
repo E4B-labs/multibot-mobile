@@ -74,6 +74,7 @@ export function mountAuth(server: Server, getToken: () => string) {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const publicRoute =
       (req.method === "GET" && url.pathname === "/api/health") ||
+      (req.method === "POST" && /^\/webhooks\/[^/]+$/.test(url.pathname)) ||
       ((req.method === "GET" || req.method === "HEAD") &&
         !url.pathname.startsWith("/api/") &&
         !url.pathname.startsWith("/webhooks/"));

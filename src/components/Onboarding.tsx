@@ -3,6 +3,7 @@ import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { authFetch } from "@/lib/auth";
+import { ProfileImport } from "./AppSettingsPanel";
 
 type CliTool = {
   id: string;
@@ -94,6 +95,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [modelError, setModelError] = useState<string | null>(null);
+  const [showProfileImport, setShowProfileImport] = useState(false);
   const [perms, setPerms] = useState<{ mic: string } | null>(null);
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
@@ -183,7 +185,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app py-6">
-      <div className="flex w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
+      <div role="dialog" aria-modal="true" aria-label="Multibot setup" className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
         {step === 0 && <div className="flex flex-col">
           <MausAvatar color="green" state="happy" size={72} />
           <h1 className="mt-4 text-[20px] font-semibold text-ink">Set up this device</h1>
@@ -232,7 +234,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" autoComplete="off" className={`mt-2 ${inputClass}`} />
           <button onClick={() => void saveCustomModel()} disabled={!modelName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink disabled:opacity-40">Save model</button>
           {modelError && <div className="mt-2 text-[12px] text-danger">{modelError}</div>}
-          <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">Need to import an existing profile? Open App Settings after onboarding and choose <span className="text-ink">Import existing profile</span>.</div>
+          <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
+            <div>Have an existing profile? Import it now or do this later from App Settings.</div>
+            <button onClick={() => setShowProfileImport((open) => !open)} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">
+              {showProfileImport ? "Hide profile import" : "Import existing profile"}
+            </button>
+          </div>
+          {showProfileImport && <ProfileImport />}
           <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">Continue</button>
           <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">Skip for now</button>
         </div>}

@@ -38,15 +38,19 @@ def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _put_env_var(path: Path, var: str, value: str) -> None:
+def _harden(path: Path, mode: int) -> None:
+    if os.name != "nt" and path.exists():
+        path.chmod(mode)
+
+
+def _set_env_var(path: Path, var: str, value: str) -> None:
+    _harden(path, 0o600)
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    for i, line in enumerate(lines):
-        if line.startswith(f"{var}="):
-            lines[i] = f"{var}={value}"
-            break
-    else:
+    lines = [line for line in lines if not line.startswith(f"{var}=")]
+    if value:
         lines.append(f"{var}={value}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text(("\n".join(lines) + "\n") if lines else "", encoding="utf-8")
+    _harden(path, 0o600)
 
 
 def set_provider(
@@ -60,20 +64,26 @@ def set_provider(
         raise ValueError(f"unknown provider {provider!r}; expected one of {sorted(_ENV_VARS)}")
     var = _ENV_VARS[provider]
     d = _profile_dir(bot_id)
+    _harden(d, 0o700)
 
     cfg = _load_yaml(d / "config.yaml")
     # rebuilt, not merged — a stale base_url must not survive a provider switch
     cfg["model"] = {"provider": provider, "default": model}
     if base_url:
         cfg["model"]["base_url"] = base_url
-    (d / "config.yaml").write_text(
+    config_path = d / "config.yaml"
+    _harden(config_path, 0o600)
+    config_path.write_text(
         yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
+    _harden(config_path, 0o600)
 
     if api_key is None and _REPO_ENV.exists():
         api_key = dotenv_values(_REPO_ENV).get(var)
-    if api_key:
-        _put_env_var(d / ".env", var, api_key)
+    if api_key is not None:
+        _set_env_var(d / ".env", var, api_key)
+    else:
+        _harden(d / ".env", 0o600)
 
     return get_provider(bot_id)
 

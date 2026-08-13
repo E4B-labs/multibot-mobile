@@ -350,7 +350,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
           // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
-            Engine offline
+            Service offline
           </div>
         ) : status === "loading" ? (
           <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-secondary">

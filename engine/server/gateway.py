@@ -148,7 +148,7 @@ from pathlib import Path
 import httpx
 import yaml
 
-from server import approvals, permissions, plugins, skills, usage
+from server import approvals, computer, permissions, plugins, skills, usage
 from server.bots import data_dir, profile_dir
 
 GATEWAY_URL = os.environ.get("SLAFY_GATEWAY_URL", "http://127.0.0.1:8642")
@@ -280,6 +280,30 @@ def is_running() -> bool:
         return False
 
 
+def _harden(path: Path, mode: int) -> None:
+    if os.name != "nt" and path.exists():
+        path.chmod(mode)
+
+
+def _write_secret(path: Path, content: str) -> None:
+    _harden(path, 0o600)
+    path.write_text(content, encoding="utf-8")
+    _harden(path, 0o600)
+
+
+def _harden_existing_profiles(home: Path) -> None:
+    profiles = home / "profiles"
+    _harden(profiles, 0o700)
+    if not profiles.is_dir():
+        return
+    for profile in profiles.iterdir():
+        if not profile.is_dir() or profile.is_symlink():
+            continue
+        _harden(profile, 0o700)
+        _harden(profile / "config.yaml", 0o600)
+        _harden(profile / ".env", 0o600)
+
+
 def write_config(port: int | None = None) -> None:
     # Port bierzemy z GATEWAY_URL, nie na sztywno: inaczej `SLAFY_GATEWAY_URL`
     # na niestandardowym porcie kazałby gatewayowi słuchać na 8642, a nam sondować
@@ -288,7 +312,10 @@ def write_config(port: int | None = None) -> None:
         port = httpx.URL(GATEWAY_URL).port or 8642
     home = data_dir()
     home.mkdir(parents=True, exist_ok=True)
-    (home / "config.yaml").write_text(_CONFIG_YAML.format(port=port), encoding="utf-8")
+    _harden(home, 0o700)
+    _harden(home / ".env", 0o600)
+    _harden_existing_profiles(home)
+    _write_secret(home / "config.yaml", _CONFIG_YAML.format(port=port))
     for src, dst in (
         (_PLUGIN_SRC, home / "plugins" / "browser" / "slafy"),
         (_APPROVAL_PLUGIN_SRC, home / "plugins" / "slafy_approvals"),
@@ -303,12 +330,14 @@ def _ensure_browser_config(bot_id: str) -> None:
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
+    _harden(path.parent, 0o700)
+    _harden(path, 0o600)
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
     merged = {**(cfg.get("browser") or {}), **_BROWSER_CFG}
     if merged == cfg.get("browser"):
         return
     cfg["browser"] = merged
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _write_secret(path, yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
 
 
 def _ensure_memory_config(bot_id: str) -> None:
@@ -320,13 +349,15 @@ def _ensure_memory_config(bot_id: str) -> None:
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
+    _harden(path.parent, 0o700)
+    _harden(path, 0o600)
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
     mem = {**(cfg.get("memory") or {}), **_MEMORY_CFG}
     plug = {**(cfg.get("plugins") or {}), **_MEMORY_PLUGIN_CFG}
     if mem == cfg.get("memory") and plug == cfg.get("plugins"):
         return
     cfg["memory"], cfg["plugins"] = mem, plug
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _write_secret(path, yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
 
 
 def _ensure_stt_config(bot_id: str) -> None:
@@ -343,12 +374,14 @@ def _ensure_stt_config(bot_id: str) -> None:
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
+    _harden(path.parent, 0o700)
+    _harden(path, 0o600)
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
     stt = {**(cfg.get("stt") or {}), **_STT_CFG}
     if stt == cfg.get("stt"):
         return
     cfg["stt"] = stt
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _write_secret(path, yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
 
 
 def _approvals_cfg() -> dict:
@@ -372,12 +405,14 @@ def _ensure_approvals_config(bot_id: str) -> None:
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
+    _harden(path.parent, 0o700)
+    _harden(path, 0o600)
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
     block = {**(cfg.get("approvals") or {}), **_approvals_cfg()}
     if block == cfg.get("approvals"):
         return
     cfg["approvals"] = block
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _write_secret(path, yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
 
 
 def _ensure_skills_config(bot_id: str) -> None:
@@ -394,12 +429,14 @@ def _ensure_skills_config(bot_id: str) -> None:
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
+    _harden(path.parent, 0o700)
+    _harden(path, 0o600)
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
     curator = {**(cfg.get("curator") or {}), **_CURATOR_CFG}
     if curator == cfg.get("curator"):
         return
     cfg["curator"] = curator
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _write_secret(path, yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
 
 
 def _ensure_profile_key(bot_id: str) -> None:
@@ -409,17 +446,22 @@ def _ensure_profile_key(bot_id: str) -> None:
     (c) w docstringu modułu. Dopisujemy, nie nadpisujemy: w tym samym `.env`
     siedzi klucz providera od `server/providers.py`.
     """
-    key = api_key()
     d = profile_dir(bot_id)
-    if not key or not d.is_dir():
+    if not d.is_dir():
         return
+    _harden(d, 0o700)
     env_path = d / ".env"
+    _harden(env_path, 0o600)
+    key = api_key()
+    if not key:
+        return
     current = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
     if "API_SERVER_KEY=" in current:
         return
     prefix = "" if current.endswith("\n") or not current else "\n"
     with env_path.open("a", encoding="utf-8") as f:
         f.write(f"{prefix}API_SERVER_KEY={key}\n")
+    _harden(env_path, 0o600)
 
 
 def ensure_running(timeout: float = 90.0) -> None:
@@ -547,7 +589,7 @@ def _approval(bot_id: str, run_id: str, event: dict) -> Iterator[dict]:
     yield {"type": "approval_resolved", "request_id": request_id, "decision": decision}
 
 
-def chat_stream(bot_id: str, message: str) -> Iterator[dict]:
+def _chat_stream_unlocked(bot_id: str, message: str) -> Iterator[dict]:
     """Jedna tura rozmowy z botem jako generator eventów.
 
     multibot (faza F4): tura idzie przez `/v1/runs` — patrz (e) w docstringu
@@ -622,6 +664,12 @@ def chat_stream(bot_id: str, message: str) -> Iterator[dict]:
         "session_id": sid,
         "finish_reason": finish_reason,
     }
+
+
+def chat_stream(bot_id: str, message: str) -> Iterator[dict]:
+    """Run one turn behind shared-browser queue; private bots stay parallel."""
+    with computer.native_turn(bot_id):
+        yield from _chat_stream_unlocked(bot_id, message)
 
 
 def chat(bot_id: str, message: str) -> dict:

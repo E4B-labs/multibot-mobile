@@ -127,13 +127,13 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
       {status === "offline" ? (
         <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className="size-1.5 rounded-full bg-raised-hover" />
-          Engine offline
+          Service offline
         </div>
       ) : status === "loading" ? null : (
         <>
           <SectionLabel>Tool rules</SectionLabel>
           <div className="text-[13px] text-ink-secondary">
-            Disabled tools are refused by the engine in every mode
+            Disabled tools are refused in every mode
           </div>
           <div className="mt-1 flex flex-col">
             {Object.entries(perms).map(([toolset, enabled]) => (
@@ -153,7 +153,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
 
           <SectionLabel>Always allowed</SectionLabel>
           <div className="text-[13px] text-ink-secondary">
-            Tools you approve with &ldquo;Always&rdquo; are enforced by the engine, but it
+            Tools you approve with &ldquo;Always&rdquo; are enforced, but the service
             doesn&rsquo;t expose the list yet
           </div>
         </>

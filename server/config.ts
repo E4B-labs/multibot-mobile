@@ -1,7 +1,7 @@
 // Config + data dirs. One file, ~/.openmausbot/config.json, env fallbacks:
 //   { "xai": {"key":"xai-…"}, "composio": {"key":"ck_…"}, "box": {"token":"…"},
 //     "instances": { "<instanceId>": {"driver":"grok", …} } }
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -35,6 +35,10 @@ const LEGACY_DATA_DIR = join(homedir(), ".opengrokbot");
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
 
+function chmodPrivate(path: string, mode: number): void {
+  if (process.platform !== "win32" && existsSync(path)) chmodSync(path, mode);
+}
+
 export function ensureDirs() {
   // one-time migration from the pre-rename data dir — bots, transcripts,
   // config and keys all carry over
@@ -45,7 +49,11 @@ export function ensureDirs() {
       /* cross-device or busy — fall through to a fresh dir */
     }
   }
-  for (const dir of [DATA_DIR, EVENTS_DIR, NATIVE_DIR]) mkdirSync(dir, { recursive: true });
+  for (const dir of [DATA_DIR, EVENTS_DIR, NATIVE_DIR]) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    chmodPrivate(dir, 0o700);
+  }
+  chmodPrivate(join(DATA_DIR, "config.json"), 0o600);
 }
 
 export function loadConfig(): AppConfig {
@@ -83,8 +91,11 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   // DELETE real (object merge cannot remove an instance) while preserving all
   // unrelated top-level config and secrets.
   if (patch.instances !== undefined) disk.instances = patch.instances;
-  mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(p, JSON.stringify(disk, null, 2));
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+  chmodPrivate(DATA_DIR, 0o700);
+  chmodPrivate(p, 0o600);
+  writeFileSync(p, JSON.stringify(disk, null, 2), { mode: 0o600 });
+  chmodPrivate(p, 0o600);
 }
 
 // multibot (G1): stable built-in ids double as reserved custom-model ids and

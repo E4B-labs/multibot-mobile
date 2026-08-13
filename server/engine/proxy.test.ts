@@ -130,6 +130,38 @@ afterAll(async () => {
 });
 
 describe("engine proxy (/api/engine/*)", () => {
+  it("exposes only exact POST webhooks and leaves HMAC validation to the engine", async () => {
+    const payload = '{"event":"push","spacing": true}';
+    const unsigned = await fetch(`${BASE}/webhooks/routine-1`, { method: "POST", body: payload });
+    expect(unsigned.status).toBe(401);
+    expect(engine.webhooks).toHaveLength(1);
+    expect(engine.webhooks[0]).toMatchObject({ rid: "routine-1", body: payload, signature: "" });
+
+    const signed = await fetch(`${BASE}/webhooks/routine-1?source=test`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-delivery-id": "delivery-42",
+        "x-slafy-signature": "valid-signature",
+      },
+      body: payload,
+    });
+    expect(signed.status).toBe(200);
+    expect(engine.webhooks[1]).toEqual({
+      rid: "routine-1",
+      body: payload,
+      signature: "valid-signature",
+      contentType: "application/json",
+      deliveryId: "delivery-42",
+    });
+
+    expect((await fetch(`${BASE}/webhooks/routine-1`)).status).toBe(401);
+    expect((await fetch(`${BASE}/webhooks/routine-1`, { method: "PUT" })).status).toBe(401);
+    expect((await fetch(`${BASE}/webhooks/routine-1/`, { method: "POST" })).status).toBe(401);
+    expect((await fetch(`${BASE}/webhooks/routine-1/extra`, { method: "POST" })).status).toBe(401);
+    expect(engine.webhooks).toHaveLength(2);
+  });
+
   it("forwards GET and POST verbatim, body and status included", async () => {
     const created = await api("POST", "/api/engine/bots", { id: "mb-proxy", name: "Proxy" });
     expect(created.status).toBe(201);

@@ -63,6 +63,27 @@ def test_env_key_replaced_not_duplicated(tmp_path, monkeypatch):
     assert "API_SERVER_KEY=keep" in lines
 
 
+def test_explicit_empty_key_removes_stale_value(tmp_path, monkeypatch):
+    d = _profile(tmp_path, monkeypatch)
+    (d / ".env").write_text("API_SERVER_KEY=keep\nOPENAI_API_KEY=stale\n", encoding="utf-8")
+
+    out = providers.set_provider("ala", "custom", "local-model", api_key="")
+
+    assert out["has_key"] is False
+    assert (d / ".env").read_text(encoding="utf-8") == "API_SERVER_KEY=keep\n"
+
+
+def test_none_preserves_existing_key_without_fallback(tmp_path, monkeypatch):
+    d = _profile(tmp_path, monkeypatch)
+    (d / ".env").write_text("OPENAI_API_KEY=keep\n", encoding="utf-8")
+    monkeypatch.setattr(providers, "_REPO_ENV", tmp_path / "missing.env")
+
+    out = providers.set_provider("ala", "custom", "local-model", api_key=None)
+
+    assert out["has_key"] is True
+    assert (d / ".env").read_text(encoding="utf-8") == "OPENAI_API_KEY=keep\n"
+
+
 def test_missing_api_key_falls_back_to_repo_env(tmp_path, monkeypatch):
     d = _profile(tmp_path, monkeypatch)
     repo_env = tmp_path / "repo.env"

@@ -423,3 +423,64 @@ def test_shared_operations_queue_but_private_browsers_do_not(tmp_path, monkeypat
 
     asyncio.run(run_pair("shared-a", "shared-b", True))
     asyncio.run(run_pair("own-a", "own-b", False))
+
+
+def test_native_turn_and_live_bridge_share_one_queue(tmp_path, monkeypatch):
+    """Hermes browser tools hold same lock as HTTP/WS takeover operations."""
+    root = tmp_path / "cross-layer-queue"
+    for bot_id in ("native", "takeover"):
+        profile = root / "profiles" / bot_id
+        profile.mkdir(parents=True)
+        (profile / "computer.json").write_text('{"mode":"shared"}', encoding="utf-8")
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+
+    native_entered = threading.Event()
+    release_native = threading.Event()
+
+    def native() -> None:
+        with app_module.computer.native_turn("native"):
+            native_entered.set()
+            assert release_native.wait(2)
+
+    thread = threading.Thread(target=native)
+    thread.start()
+    assert native_entered.wait(1)
+
+    async def takeover() -> None:
+        entered = asyncio.Event()
+
+        async def operation() -> None:
+            async with app_module.computer._operation("takeover"):
+                entered.set()
+
+        task = asyncio.create_task(operation())
+        await asyncio.sleep(0.05)
+        assert not entered.is_set()
+        release_native.set()
+        await asyncio.wait_for(task, 1)
+        assert entered.is_set()
+
+    asyncio.run(takeover())
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+    own_entered = threading.Event()
+    release_own = threading.Event()
+
+    def own_native() -> None:
+        with app_module.computer.native_turn("own-a"):
+            own_entered.set()
+            release_own.wait(2)
+
+    own_thread = threading.Thread(target=own_native)
+    own_thread.start()
+    assert own_entered.wait(1)
+
+    async def own_takeover() -> None:
+        async with app_module.computer._operation("own-b"):
+            assert own_entered.is_set()
+            release_own.set()
+
+    asyncio.run(own_takeover())
+    own_thread.join(timeout=2)
+    assert not own_thread.is_alive()

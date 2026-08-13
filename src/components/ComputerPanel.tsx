@@ -452,7 +452,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                     // the same reconnect loop; name the state, keep spinning
                     phase === "playwright" || phase === "shared"
                     ? pwStatus === "reconnecting"
-                      ? "Engine offline or browser restarting — reconnecting…"
+                      ? "Service offline or browser restarting — reconnecting…"
                       : "Starting the bot's browser…"
                     : phase === "local"
                     ? localMisses >= 3

@@ -71,6 +71,10 @@ body {
   .multibot-shell button,
   .multibot-shell input,
   .multibot-shell select { min-height: 44px; }
+  .multibot-login button,
+  .multibot-login input,
+  [role="dialog"] button,
+  [role="dialog"] input { min-height: 44px; }
   .multibot-shell button { touch-action: manipulation; }
 }
 

@@ -471,7 +471,7 @@ export function Sidebar() {
             className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
-            Engine offline
+            Service offline
           </div>
         )}
         <button

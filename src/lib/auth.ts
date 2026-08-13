@@ -28,6 +28,13 @@ export function clearAuthToken(): void {
   }
 }
 
+export function bootstrapLocalAuthToken(): void {
+  const token = new URLSearchParams(location.hash.slice(1)).get("access_token");
+  if (!token) return;
+  setAuthToken(token);
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+}
+
 export function authEventName(): string {
   return AUTH_REQUIRED;
 }

@@ -74,6 +74,7 @@ beforeAll(async () => {
       OMB_PORT: String(PORT),
       OMB_HOST: "0.0.0.0",
       OMB_STATIC_DIR: staticDir,
+      ENGINE_URL: "http://127.0.0.1:1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -110,6 +111,7 @@ describe("harness HTTP API", () => {
     expect(body.app).toBe("openmausbot");
     expect(typeof body.pid).toBe("number");
     expect(body.static).toBe(true);
+    expect(body.service).toBe(false);
   });
 
   it("serves the login shell on the same remote origin but protects every non-static route", async () => {
@@ -121,7 +123,11 @@ describe("harness HTTP API", () => {
     expect((await fetch(`${BASE}/app.js`)).status).toBe(200);
     expect((await fetch(`${BASE}/api/bots`)).status).toBe(401);
     expect((await fetch(`${BASE}/api/auth/check`)).status).toBe(401);
-    expect((await fetch(`${BASE}/webhooks/routine-id`, { method: "POST" })).status).toBe(401);
+    // Exact POST webhook is public but its loopback engine remains the HMAC gate.
+    // This fixture has no engine, so reaching proxy yields 503 instead of auth's 401.
+    expect((await fetch(`${BASE}/webhooks/routine-id`, { method: "POST" })).status).toBe(503);
+    expect((await fetch(`${BASE}/webhooks/routine-id`)).status).toBe(401);
+    expect((await fetch(`${BASE}/webhooks/routine-id/extra`, { method: "POST" })).status).toBe(401);
   });
 
   it("serves installable PWA files with update-safe MIME and cache headers", async () => {

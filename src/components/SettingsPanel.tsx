@@ -82,12 +82,12 @@ function EngineUsage({ bot }: { bot: Bot }) {
     <div className="rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">Usage</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Tokens this bot has used on the engine
+        Tokens this bot has used
       </div>
       {status === "offline" ? (
         <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className="size-1.5 rounded-full bg-raised-hover" />
-          Engine offline
+          Service offline
         </div>
       ) : status === "ready" && usage.turns === 0 ? (
         <div className="mt-3 text-[13px] text-ink-secondary">No usage yet</div>
@@ -155,7 +155,7 @@ function InterbotCard({ bot }: { bot: Bot }) {
       {status === "offline" ? (
         <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
           <span className="size-1.5 rounded-full bg-raised-hover" />
-          Engine offline
+          Service offline
         </div>
       ) : status === "ready" && threads.length === 0 ? (
         <div className="mt-3 text-[13px] text-ink-secondary">No bot-to-bot conversations yet</div>

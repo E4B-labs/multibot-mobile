@@ -42,7 +42,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     }
   };
   return (
-    <main className="flex h-full min-h-screen items-center justify-center bg-app px-5 text-ink">
+    <main className="multibot-login flex h-full min-h-screen items-center justify-center bg-app px-5 text-ink">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -58,6 +58,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           value={token}
           onChange={(event) => setToken(event.target.value)}
           placeholder="Access token"
+          aria-label="Access token"
           autoComplete="current-password"
           className="mt-4 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink outline-none focus:border-hairline"
         />
@@ -68,7 +69,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         >
           {busy ? "Checking…" : "Sign in"}
         </button>
-        {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+        {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
       </form>
     </main>
   );

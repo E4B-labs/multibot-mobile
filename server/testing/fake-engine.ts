@@ -49,6 +49,8 @@ export interface FakeEngine {
   botMcp: Record<string, Record<string, Record<string, unknown>>>;
   /** ślad wywołań `PUT /api/bots/:id/mcp/:name`: `["PUT mb-t1/mb-agents"]`. */
   botMcpCalls: string[];
+  /** Surowe publiczne webhooki, do testu przezroczystości przelotki. */
+  webhooks: Array<{ rid: string; body: string; signature: string; contentType: string; deliveryId: string }>;
   mode: FakeEngineMode;
   /** liczba żywych klientów `/api/ws`. */
   wsClients(): number;
@@ -91,6 +93,7 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     groups: [],
     botMcp: {},
     botMcpCalls: [],
+    webhooks: [],
     mode,
     upgradePaths: [],
     wsClients: () => sockets.size,
@@ -124,6 +127,24 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     };
 
     if (method === "GET" && path === "/health") return json(200, { status: "ok" });
+
+    const webhook = path.match(/^\/webhooks\/([^/]+)$/);
+    if (webhook && method === "POST") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks).toString("utf8");
+      const signature = String(req.headers["x-slafy-signature"] ?? "");
+      state.webhooks.push({
+        rid: decodeURIComponent(webhook[1]),
+        body,
+        signature,
+        contentType: String(req.headers["content-type"] ?? ""),
+        deliveryId: String(req.headers["x-delivery-id"] ?? ""),
+      });
+      return signature === "valid-signature"
+        ? json(200, { ok: true })
+        : json(401, { detail: "bad or missing signature" });
+    }
 
     // Wyłącznie dla testu przelotki: dwie ramki SSE rozdzielone w czasie —
     // proxy, które buforuje, oddałoby je jednym kawałkiem.

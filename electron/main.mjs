@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences, utilityProcess } from "electron";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startCua, stopCua, registerCuaIpc } from "./cua.mjs";
@@ -30,6 +31,16 @@ let serverReady = true;
 const ENGINE_RUNTIME = path.join(app.getPath("userData"), "engine-runtime");
 const ENGINE_DATA = path.join(app.getPath("userData"), "engine-data");
 
+function localAccessTokenFragment() {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".openmausbot", "config.json"), "utf8"));
+    const token = String(config?.auth?.token ?? "").trim();
+    return token ? `#access_token=${encodeURIComponent(token)}` : "";
+  } catch {
+    return "";
+  }
+}
+
 async function startServerOn(port) {
   const entry = path.join(process.resourcesPath, "server", "index.js");
   const proc = utilityProcess.fork(entry, [], {
@@ -44,6 +55,9 @@ async function startServerOn(port) {
       OMB_ENGINE_RUNTIME: ENGINE_RUNTIME,
       SLAFY_DATA_DIR: process.env.SLAFY_DATA_DIR ?? ENGINE_DATA,
       PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? path.join(ENGINE_RUNTIME, "browsers"),
+      // Trusted packaged path; used only after explicit onboarding 24/7 choice.
+      OMB_PACKAGED_EXE: app.isPackaged && process.platform === "win32" ? process.execPath : "",
+      OMB_SERVER_SERVICE: SERVER_ONLY ? "1" : "",
     },
     stdio: "inherit",
   });
@@ -80,6 +94,19 @@ async function startServerPackaged() {
   // server during teardown — one settle-and-retry covers it
   for (let attempt = 0; attempt < 2; attempt++) {
     for (const port of [8799, 18799, 28799]) {
+      // A server-only ONLOGON task deliberately outlives desktop UI. Reuse only
+      // an explicit service marker; never trust an arbitrary dev harness.
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+        const body = res.ok ? await res.json() : null;
+        if (body?.app === "openmausbot" && body?.static === true && body?.service === true) {
+          serverProc = null;
+          SERVER_PORT = port;
+          return true;
+        }
+      } catch {
+        /* no installed service on this port */
+      }
       const proc = await startServerOn(port);
       if (proc) {
         serverProc = proc;
@@ -133,7 +160,9 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
-    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : ERROR_PAGE);
+    // Fragment never reaches HTTP. Renderer stores it, then erases URL before
+    // first paint, so fresh packaged installs do not deadlock on login.
+    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}/${localAccessTokenFragment()}` : ERROR_PAGE);
   } else {
     win.loadURL(DEV_URL);
   }

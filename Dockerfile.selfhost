@@ -21,4 +21,4 @@ ENV HOME=/data OMB_HOST=0.0.0.0 OMB_PORT=8799 \
     SLAFY_BROWSER_HEADLESS=1
 VOLUME ["/data"]
 EXPOSE 8799
-ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
+ENTRYPOINT ["bash", "/app/scripts/docker-entrypoint.sh"]

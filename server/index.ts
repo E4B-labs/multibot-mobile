@@ -38,6 +38,7 @@ import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
+import { registerWindowsServerAutostart } from "./windows-autostart.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
@@ -808,7 +809,12 @@ const server = createServer(async (req, res) => {
     // child proves it is OURS by echoing its pid (a stray dev server has
     // the same API shape but a different pid)
     if (method === "GET" && path === "/api/health") {
-      return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
+      return json(res, 200, {
+        app: "openmausbot",
+        pid: process.pid,
+        static: Boolean(STATIC_DIR),
+        service: process.env.OMB_SERVER_SERVICE === "1",
+      });
     }
 
     // ── multibot (G2): authenticated token reveal/check/rotation ────────
@@ -836,6 +842,12 @@ const server = createServer(async (req, res) => {
       return json(res, 200, await deviceInfo());
     }
     if (method === "POST" && path === "/api/provision") {
+      const body = await readBody(req);
+      // Packaged Electron passes its trusted absolute executable path. Only an
+      // explicit onboarding 24/7 choice installs per-user autostart.
+      if (body?.server === true && process.env.OMB_PACKAGED_EXE) {
+        await registerWindowsServerAutostart(process.env.OMB_PACKAGED_EXE);
+      }
       const job = provisionJob();
       return json(res, 202, { id: job.id, job });
     }
