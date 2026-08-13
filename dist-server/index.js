@@ -452,9 +452,20 @@ async function startTurn(botId, text, opts) {
             // @mentions in the user's message (the composer's tagging UI) become
             // an explicit delegation nudge — the agent still does the ask_bot call
             // itself, so the harness stays the single owner of turns/permissions
-            const tagged = integrations.agents
-                ? mentionedBots(text, store.bots.filter((b) => b.id !== bot.id))
-                : [];
+            const tagged = mentionedBots(text, store.bots.filter((b) => b.id !== bot.id));
+            // Providers without MCP (currently Codex and API-backed Grok) still
+            // get explicit peer delegation. Fetch replies before their turn and
+            // attach them to the prompt; native MCP providers keep live tools.
+            let taggedReplies = "";
+            if (!integrations.agents && tagged.length && commsDepth < MAX_COMMS_DEPTH) {
+                const replies = await Promise.all(tagged.map(async (peer) => ({
+                    peer,
+                    reply: await askBotAndWait(peer.id, `[Delegation from @${bot.name}] ${text}`, commsDepth),
+                })));
+                taggedReplies = replies
+                    .map(({ peer, reply }) => `\nPeer ${peer.name} replied:\n${reply || "(no reply)"}`)
+                    .join("\n");
+            }
             await instance.adapter.sendTurn({
                 threadId: bot.threadId,
                 text,
@@ -476,10 +487,13 @@ async function startTurn(botId, text, opts) {
                         ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
                         : "") +
                     (tagged.length
-                        ? ` The user tagged ${tagged
-                            .map((t) => `@${t.name} (ask_bot bot_id ${t.id})`)
-                            .join(" and ")} in their message — bring them in with ask_bot and fold their reply into your answer.`
-                        : ""),
+                        ? integrations.agents
+                            ? ` The user tagged ${tagged
+                                .map((t) => `@${t.name} (ask_bot bot_id ${t.id})`)
+                                .join(" and ")} in their message — bring them in with ask_bot and fold their reply into your answer.`
+                            : " The harness already fetched the tagged peer replies and appended them below."
+                        : "") +
+                    taggedReplies,
                 integrations,
             });
             if (integrations.computer)
