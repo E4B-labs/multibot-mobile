@@ -40,6 +40,17 @@ Dev z lokalnym klonem Hermesa zamiast pinu: `uv pip install -e <ścieżka-klona>
 `ENGINE_URL` w env = harness używa zewnętrznego silnika (Termux/serwer),
 niczego nie spawnuje.
 
+## VPS / Docker (self-host silnika)
+
+```sh
+docker build -t multibot-engine engine/
+docker run -d -p 8700:8700 -v multibot-data:/data multibot-engine
+```
+
+Aplikacja na laptopie: `ENGINE_URL=http://<host>:8700` — harness nic nie
+spawnuje, rutyny chodzą na serwerze 24/7. Windows bez dockera: WSL Ubuntu
+(`wsl -d Ubuntu`).
+
 ## Termux (stary telefon)
 
 Silnik headless: `engine/docs/TERMUX.md`. Harness: `node server/index.ts`,
