@@ -169,6 +169,37 @@ describe("harness HTTP API", () => {
     expect(after.body.profile).toEqual({ name: "Ada Lovelace", email: "Ada@Example.com" });
   });
 
+  // multibot (F7): własne serwery MCP użytkownika — osobna trasa `/custom/`,
+  // wspólny katalog z Composio (karta niesie `source`).
+  it("registers a custom MCP connector and tags it in the integrations catalog", async () => {
+    const bad = await api("PUT", "/api/connectors/custom/echo", { transport: { type: "stdio" } });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toContain("command required");
+
+    const saved = await api("PUT", "/api/connectors/custom/echo", {
+      name: "Echo",
+      transport: { type: "stdio", command: "node", args: ["echo.mjs"], env: { TOKEN: "sekret" } },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.connector).toMatchObject({ id: "echo", name: "Echo" });
+
+    const catalog = await api("GET", "/api/connectors/catalog");
+    expect(catalog.status).toBe(200);
+    const custom = catalog.body.cards.filter((c: { source: string }) => c.source === "custom");
+    expect(custom).toEqual([
+      { slug: "echo", label: "Echo", blurb: "stdio: node echo.mjs", logo: null, domain: null, source: "custom" },
+    ]);
+    // Composio zostaje primary: jego karty są w tym samym katalogu, otagowane.
+    expect(catalog.body.cards.filter((c: { source: string }) => c.source === "composio").length).toBeGreaterThan(0);
+    // sekret konektora nie wychodzi katalogiem
+    expect(JSON.stringify(catalog.body)).not.toContain("sekret");
+
+    const gone = await api("DELETE", "/api/connectors/custom/echo");
+    expect(gone.status).toBe(200);
+    const after = await api("GET", "/api/connectors/catalog");
+    expect(after.body.cards.some((c: { source: string }) => c.source === "custom")).toBe(false);
+  });
+
   it("404s unknown routes with the route in the error", async () => {
     const res = await api("GET", "/api/definitely-not-a-route");
     expect(res.status).toBe(404);

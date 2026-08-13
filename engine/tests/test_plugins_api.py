@@ -11,6 +11,7 @@ import os
 os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 
 import pytest  # noqa: E402
+import yaml  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from server import app as app_module  # noqa: E402
@@ -161,4 +162,59 @@ def test_bad_plugin_name_is_422(client, bad):
     # Nazwa z HTTP ląduje w kluczu YAML-a ORAZ w nazwie pliku tokena, więc leci
     # przez `plugins._NAME_RE` ZANIM dotkniemy dysku. 422 (zły wsad), nie 404.
     assert client.post("/api/plugins/install", json={"name": bad}).status_code == 422
+    assert client.get("/api/plugins").json() == []
+
+
+# --------------------------------------------------------------------------- #
+# Faza F7: własny serwer MCP użytkownika. Spec przychodzi w ciele żądania (rejestr
+# `mcpConnectors` harnessu), nie z katalogu — instaluje go driver `slafy`, żeby bot
+# silnika miał TE SAME konektory co bot na CLI.
+# --------------------------------------------------------------------------- #
+def test_install_with_spec_skips_the_catalog(client, tmp_path):
+    from server import bots
+
+    bots.create_bot("ala", name="Ala")
+    body = {
+        "name": "mb-echo",
+        "spec": {
+            "url": "https://mcp.example.com/mcp",
+            "headers": {"authorization": "Bearer t"},
+            "transport": "sse",
+            "display_name": "obcy klucz",  # spoza `_SPEC_KEYS`
+        },
+    }
+    r = client.post("/api/plugins/install", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["transport"] == "sse"
+    assert r.json()["installed"] is True
+
+    # Obce klucze odsiane — inaczej Hermes wywala wpis jako "suspicious".
+    assert plugins._read()["mb-echo"] == {
+        "url": "https://mcp.example.com/mcp",
+        "headers": {"authorization": "Bearer t"},
+        "transport": "sse",
+    }
+    assert [p["name"] for p in client.get("/api/plugins").json()] == ["mb-echo"]
+
+    # …i wpis doszedł do profilu bota, czyli bot silnika naprawdę go dostał.
+    cfg = yaml.safe_load((bots.profile_dir("ala") / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["mcp_servers"]["mb-echo"]["url"] == "https://mcp.example.com/mcp"
+
+    assert client.delete("/api/plugins/mb-echo").status_code == 204
+    assert client.get("/api/plugins").json() == []
+
+
+def test_install_with_stdio_spec(client):
+    r = client.post(
+        "/api/plugins/install",
+        json={"name": "mb-local", "spec": {"command": "node", "args": ["srv.mjs"], "env": {"T": "1"}}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["transport"] == "stdio"
+    assert plugins._read()["mb-local"]["args"] == ["srv.mjs"]
+
+
+def test_spec_without_transport_is_422(client):
+    r = client.post("/api/plugins/install", json={"name": "mb-pusty", "spec": {"timeout": 5}})
+    assert r.status_code == 422, r.text
     assert client.get("/api/plugins").json() == []

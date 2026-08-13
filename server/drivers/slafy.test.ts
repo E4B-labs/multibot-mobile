@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensureDirs } from "../config.ts";
 import type { ProviderInstance } from "../contracts.ts";
 import { ensureEngine } from "../engine/supervisor.ts";
+import { removeConnector, saveConnector } from "../mcp-connectors.ts";
 import { startFakeEngine, type FakeEngine, type FakeEngineMode } from "../testing/fake-engine.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { SlafyDriver } from "./slafy.ts";
@@ -193,6 +194,39 @@ describe("SlafyDriver turns (fake engine)", () => {
     await expect(
       instance.adapter.respondToRequest("t-stale", "req-nieznane", { behavior: "allow" }),
     ).rejects.toThrow(/404/);
+  });
+
+  // F7: silnik montuje MCP sam (per bot, z `plugins.json`), więc driver niczego
+  // nie montuje — dosyła mu rejestr konektorów harnessu.
+  it("pushes the user's MCP connectors into the engine and prunes only its own", async () => {
+    await create();
+    engine.plugins["mb-stare"] = { url: "https://stare.dev/mcp" }; // nasz, już usunięty z configu
+    engine.plugins.context7 = { url: "https://mcp.context7.com/mcp" }; // z marketplace'u silnika
+    saveConnector("echo", { name: "Echo", transport: { type: "stdio", command: "node", args: ["echo.mjs"] } });
+    saveConnector("firma", {
+      transport: { type: "http", url: "https://mcp.firma.dev/mcp", headers: { authorization: "Bearer x" } },
+    });
+    try {
+      await instance.adapter.sendTurn({ threadId: "t-mcp", text: "czesc" });
+      await recorder.until((e) => e.type === "turn.completed");
+
+      expect(engine.plugins["mb-echo"]).toEqual({ command: "node", args: ["echo.mjs"], env: {} });
+      expect(engine.plugins["mb-firma"]).toEqual({
+        url: "https://mcp.firma.dev/mcp",
+        headers: { authorization: "Bearer x" },
+      });
+      expect(engine.plugins["mb-stare"]).toBeUndefined();
+      expect(engine.plugins.context7).toBeDefined(); // cudzych wpisów nie ruszamy
+      expect(engine.pluginCalls).toEqual(["GET", "DELETE mb-stare", "POST mb-echo", "POST mb-firma"]);
+
+      // Zestaw bez zmian = zero HTTP przy kolejnej turze.
+      await instance.adapter.sendTurn({ threadId: "t-mcp", text: "druga" });
+      await recorder.until(() => recorder.events.filter((e) => e.type === "turn.completed").length === 2);
+      expect(engine.pluginCalls).toHaveLength(4);
+    } finally {
+      removeConnector("echo");
+      removeConnector("firma");
+    }
   });
 
   it("builds the model catalog per instance without touching describe()", async () => {

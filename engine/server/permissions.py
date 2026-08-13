@@ -131,6 +131,13 @@ def allowlist(bot_id: str) -> list[str]:
     return [str(t) for t in (data.get("allow") or [])] if isinstance(data, dict) else []
 
 
+def _write_allowlist(bot_id: str, tools: list[str]) -> list[str]:
+    path = _allow_path(bot_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"allow": tools}, ensure_ascii=False), encoding="utf-8")
+    return tools
+
+
 def always_allow(bot_id: str, tool: str) -> list[str]:
     """Dopisz narzędzie do allowlisty (decyzja "always"). Idempotentne.
 
@@ -139,8 +146,15 @@ def always_allow(bot_id: str, tool: str) -> list[str]:
     tools = allowlist(bot_id)
     if tool in tools:
         return tools
-    tools.append(tool)
-    path = _allow_path(bot_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"allow": tools}, ensure_ascii=False), encoding="utf-8")
-    return tools
+    return _write_allowlist(bot_id, [*tools, tool])
+
+
+def forget(bot_id: str, tool: str) -> list[str]:
+    """Cofnij "always" dla jednego narzędzia. Idempotentne — brak wpisu = no-op.
+
+    Odwrotność `always_allow`: kolejne wywołanie tego narzędzia znów zapyta.
+    """
+    tools = allowlist(bot_id)
+    if tool not in tools:
+        return tools
+    return _write_allowlist(bot_id, [t for t in tools if t != tool])

@@ -20,6 +20,8 @@ import { watchEngineAttention } from "./engine/attention.ts";
 import { engineComputer } from "./engine/computer-mcp.ts";
 import { mountEngineProxy } from "./engine/proxy.ts";
 import { EventBus } from "./harness/bus.ts";
+// multibot (F7): własne serwery MCP użytkownika obok Composio
+import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
 
@@ -673,7 +675,31 @@ const server = createServer(async (req, res) => {
     // ── connectors (Composio) ──
     if (method === "GET" && path === "/api/connectors/catalog") {
       const { cards, source } = await composio.listToolkits(cfg);
-      return json(res, 200, { configured: Boolean(cfg.composio?.key), source, cards });
+      // multibot (F7): własne serwery MCP użytkownika doklejone do katalogu
+      // Composio; `source` per karta mówi UI, którą trasą je odłączyć.
+      const tagged = [
+        ...cards.map((c) => ({ ...c, source: "composio" as const })),
+        ...mcpConnectors.connectorCards(cfg).map((c) => ({ ...c, source: "custom" as const })),
+      ];
+      return json(res, 200, { configured: Boolean(cfg.composio?.key), source, cards: tagged });
+    }
+    // multibot (F7): rejestr własnych konektorów. Osobna ścieżka `/custom/`,
+    // żeby nie mieszać się z `DELETE /api/connectors/:slug` Composio.
+    m = path.match(/^\/api\/connectors\/custom\/([\w-]+)$/);
+    if (m && (method === "PUT" || method === "POST")) {
+      const body = await readBody(req);
+      try {
+        const connector = mcpConnectors.saveConnector(m[1], body);
+        Object.assign(cfg, loadConfig());
+        return json(res, 200, { connector });
+      } catch (e) {
+        return json(res, 400, { error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (m && method === "DELETE") {
+      mcpConnectors.removeConnector(m[1]);
+      Object.assign(cfg, loadConfig());
+      return json(res, 200, { ok: true });
     }
     if (method === "GET" && path === "/api/connectors") {
       const services = (url.searchParams.get("services") ?? "").split(",").filter(Boolean);

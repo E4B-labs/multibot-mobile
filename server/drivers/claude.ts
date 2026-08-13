@@ -18,6 +18,8 @@ import { fileURLToPath } from "node:url";
 
 import { DATA_DIR } from "../config.ts";
 import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
+// multibot (F7): wspólny montaż mcpServers (Composio + własne konektory).
+import { mcpServers as buildMcpServers } from "../mcp-servers.ts";
 import { killTree } from "../kill-tree.ts";
 
 import type {
@@ -253,16 +255,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
 
       // integrations → MCP servers; pre-allow their tools (a headless
       // acceptEdits run silently denies anything unlisted)
-      const mcpServers: Record<string, unknown> = {};
-      const allowed: string[] = [];
-      if (turn.integrations?.composio?.key) {
-        mcpServers.composio = {
-          type: "http",
-          url: turn.integrations.composio.url || "https://connect.composio.dev/mcp",
-          headers: { "x-consumer-api-key": turn.integrations.composio.key },
-        };
-        allowed.push("mcp__composio");
-      }
+      // multibot (F7): Composio i własne konektory użytkownika montuje wspólny
+      // helper — ten sam, z którego korzystają pozostałe drivery.
+      const mcpServers: Record<string, unknown> = buildMcpServers(turn.integrations);
+      const allowed: string[] = Object.keys(mcpServers).map((name) => `mcp__${name}`);
       if (turn.integrations?.computer) {
         mcpServers.computer = {
           command: process.execPath,

@@ -25,9 +25,13 @@ import type {
 import { newEventId, newId } from "../contracts.ts";
 import { NATIVE_DIR } from "../config.ts";
 import { EngineUnavailableError, ensureEngine, engineBaseUrl } from "../engine/supervisor.ts";
+import { connectors as customConnectors } from "../mcp-connectors.ts";
+import { engineSpec } from "../mcp-servers.ts";
 import { appendNative } from "./native.ts";
 
 const DRIVER_KIND = "slafy";
+/** Prefiks naszych wpisów w `/api/plugins` silnika — patrz `syncConnectors`. */
+export const ENGINE_PLUGIN_PREFIX = "mb-";
 
 /** Domyślny prefiks id bota w silniku. Odwzorowanie `mb-<threadId>` jest
  * wyliczalne w obie strony, więc nikt (ani driver, ani harness przy uwadze
@@ -139,6 +143,46 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       }
       ensuredBots.add(botId);
       return botId;
+    };
+
+    // ── F7: własne konektory MCP użytkownika → silnik ───────────────────────
+    // Driver NICZEGO nie montuje sam: silnik ma własną warstwę MCP per bot
+    // (`plugins.json` → `mcp_servers` w profilu każdego bota), więc dosyłamy mu
+    // rejestr konektorów harnessu przez `/api/plugins`. Prefiks `mb-` oddziela
+    // nasze wpisy od pluginów zainstalowanych w marketplace silnika — kasujemy
+    // wyłącznie własne, gdy znikną z configu harnessu.
+    let syncedConnectors: string | null = null;
+    const syncConnectors = async (baseUrl: string) => {
+      const wanted = customConnectors();
+      const signature = JSON.stringify(wanted);
+      if (signature === syncedConnectors) return; // zestaw bez zmian — zero HTTP
+      const names = new Set(wanted.map((c) => ENGINE_PLUGIN_PREFIX + c.id));
+      const res = await fetch(`${baseUrl}/api/plugins`, { signal: AbortSignal.timeout(10_000) });
+      const installed = res.ok ? ((await res.json()) as Array<{ name?: string }>) : [];
+      for (const plugin of installed) {
+        const name = String(plugin?.name ?? "");
+        if (!name.startsWith(ENGINE_PLUGIN_PREFIX) || names.has(name)) continue;
+        await fetch(`${baseUrl}/api/plugins/${encodeURIComponent(name)}`, {
+          method: "DELETE",
+          signal: AbortSignal.timeout(10_000),
+        });
+      }
+      for (const connector of wanted) {
+        // Instalacja jest idempotentna i MERGUJE spec, więc to samo wywołanie
+        // roznosi także zmieniony token istniejącego konektora.
+        const install = await fetch(`${baseUrl}/api/plugins/install`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: ENGINE_PLUGIN_PREFIX + connector.id, spec: engineSpec(connector) }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!install.ok) {
+          throw new Error(
+            `engine POST /api/plugins/install (${connector.id}) → HTTP ${install.status}: ${(await install.text().catch(() => "")).slice(0, 200)}`,
+          );
+        }
+      }
+      syncedConnectors = signature;
     };
 
     // ── D4: attach-sync ────────────────────────────────────────────────────
@@ -286,6 +330,12 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
       const baseUrl = await ensureEngine();
       const botId = await ensureBot(baseUrl, threadId);
+      // F7: konektory dosyłamy PRZED turą, ale ich awaria jej nie wywraca —
+      // rozmowa bez jednego serwera MCP jest lepsza niż brak rozmowy. Podpis
+      // zostaje niezapisany, więc następna tura spróbuje jeszcze raz.
+      await syncConnectors(baseUrl).catch((e) =>
+        appendNative(threadId, { dir: "out", source: "slafy.mcp", msg: { error: String(e) } }),
+      );
 
       const turnId = newId();
       const abort = new AbortController();

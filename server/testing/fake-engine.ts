@@ -37,6 +37,10 @@ export interface FakeEngine {
   approvals: Array<{ botId: string; requestId: string; decision: string }>;
   /** id prośby, którą wystawia tryb `approval` — test zna je z góry. */
   approvalRequestId: string;
+  /** serwery MCP zainstalowane przez `/api/plugins/install` (F7), po nazwie. */
+  plugins: Record<string, Record<string, unknown>>;
+  /** ślad wywołań `/api/plugins*`: `["GET", "POST mb-echo", "DELETE mb-stare"]`. */
+  pluginCalls: string[];
   mode: FakeEngineMode;
   /** liczba żywych klientów `/api/ws`. */
   wsClients(): number;
@@ -73,6 +77,8 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     attention: {},
     approvals: [],
     approvalRequestId: "req-1",
+    plugins: {},
+    pluginCalls: [],
     mode,
     upgradePaths: [],
     wsClients: () => sockets.size,
@@ -168,6 +174,37 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
       state.approvals.push({ botId, requestId, decision: body.decision });
       resolve(String(body.decision ?? "deny"));
       return json(200, { request_id: requestId, bot_id: botId, decision: body.decision });
+    }
+
+    // F7: rejestr serwerów MCP silnika (global, nie per bot) — driver slafy
+    // dosyła tu konektory harnessu. Kształt odpowiedzi jak `plugins._info`.
+    if (method === "GET" && path === "/api/plugins") {
+      state.pluginCalls.push("GET");
+      return json(
+        200,
+        Object.entries(state.plugins).map(([name, spec]) => ({
+          name,
+          url: spec.url ?? "",
+          transport: spec.command ? "stdio" : (spec.transport ?? "http"),
+          connected: true,
+          accounts: [],
+        })),
+      );
+    }
+    if (method === "POST" && path === "/api/plugins/install") {
+      const body = await readBody(req);
+      if (!body.spec || !(body.spec.url || body.spec.command)) return json(422, { detail: "spec needs a transport" });
+      state.pluginCalls.push(`POST ${body.name}`);
+      state.plugins[body.name] = body.spec;
+      return json(200, { name: body.name, installed: true, connected: true, accounts: [] });
+    }
+    const plugin = path.match(/^\/api\/plugins\/([^/]+)$/);
+    if (plugin && method === "DELETE") {
+      const name = decodeURIComponent(plugin[1]);
+      state.pluginCalls.push(`DELETE ${name}`);
+      delete state.plugins[name];
+      res.writeHead(204);
+      return res.end();
     }
 
     const chat = path.match(/^\/api\/bots\/([^/]+)\/chat$/);

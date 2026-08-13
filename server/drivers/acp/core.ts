@@ -28,6 +28,8 @@ import type {
 import { newEventId, newId } from "../../contracts.ts";
 import { augmentedPath, resolveCliSpawn } from "../../env-path.ts";
 import { killTree } from "../../kill-tree.ts";
+// multibot (F7): własne serwery MCP użytkownika, wspólne dla wszystkich driverów.
+import { connectors as customConnectors } from "../../mcp-connectors.ts";
 import { appendNative } from "../native.ts";
 
 export interface AcpConfig {
@@ -138,6 +140,19 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             command: agents.command,
             args: agents.args,
             env: Object.entries(agents.env).map(([name, value]) => ({ name, value: String(value) })),
+          });
+        }
+        // multibot (F7): własne konektory MCP użytkownika — tylko stdio, patrz
+        // komentarz wyżej (HTTP/SSE to EXTRA transport ACP, nie baseline).
+        // Wiążą się przy `session/new`, więc konektor dodany w trakcie sesji
+        // dołącza dopiero do następnej.
+        for (const c of customConnectors()) {
+          if (c.transport.type !== "stdio") continue;
+          servers.push({
+            name: c.id,
+            command: c.transport.command,
+            args: c.transport.args ?? [],
+            env: Object.entries(c.transport.env ?? {}).map(([name, value]) => ({ name, value: String(value) })),
           });
         }
         return servers;

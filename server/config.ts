@@ -6,6 +6,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { InstanceConfigMap } from "./contracts.ts";
+// multibot (F7): własne serwery MCP użytkownika mieszkają w tym samym pliku co
+// jego klucze API — patrz `server/mcp-connectors.ts` (import wyłącznie typów,
+// więc cyklu w runtime nie ma).
+import type { McpConnector } from "./mcp-connectors.ts";
 
 export interface AppConfig {
   xai?: { key?: string; url?: string };
@@ -18,6 +22,8 @@ export interface AppConfig {
    * sidebar). Not a secret — echoed back by GET /api/config. */
   profile?: { name?: string; email?: string };
   instances?: InstanceConfigMap;
+  // multibot (F7): id → konektor MCP użytkownika (tokeny w `env`/`headers`).
+  mcpConnectors?: Record<string, Omit<McpConnector, "id">>;
 }
 
 export const DATA_DIR = join(homedir(), ".openmausbot");
@@ -61,7 +67,10 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   } catch {
     /* first write */
   }
-  for (const key of ["xai", "composio", "box", "profile"] as const) {
+  // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
+  // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
+  // wpis (JSON.stringify pomija takie pole).
+  for (const key of ["xai", "composio", "box", "profile", "mcpConnectors"] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }

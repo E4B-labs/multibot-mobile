@@ -141,6 +141,8 @@ class GroupCreate(BaseModel):
 
 class PluginIn(BaseModel):
     name: str
+    # F7: własny serwer MCP użytkownika — spec zamiast wpisu z katalogu.
+    spec: dict | None = None
 
 
 class AccountIn(BaseModel):
@@ -651,6 +653,22 @@ def list_approvals(bot_id: str) -> list[dict]:
     return [r for r in approvals.pending() if r["bot_id"] == bot_id]
 
 
+# Allowlista "always" (faza F7): decyzję zapisywał już `gateway._approval`, ale
+# nie było jej czym POKAZAĆ ani COFNĄĆ. Ścieżka `/approvals/allowlist` nie koliduje
+# z `POST /approvals/{request_id}` — tamta jest POST-em, te są GET/DELETE.
+@app.get("/api/bots/{bot_id}/approvals/allowlist")
+def get_allowlist(bot_id: str) -> list[str]:
+    _require(bot_id)
+    return permissions.allowlist(bot_id)
+
+
+@app.delete("/api/bots/{bot_id}/approvals/allowlist/{tool}", status_code=204)
+def forget_allowlist(bot_id: str, tool: str) -> None:
+    """Cofnij "always" dla narzędzia. Brak wpisu = no-op (kontrakt `permissions.forget`)."""
+    _require(bot_id)
+    permissions.forget(bot_id, tool)
+
+
 # --------------------------------------------------------------------------- #
 # Głos (faza 10): STT jako FALLBACK dla przeglądarek bez Web Speech API i TTS
 # odpowiedzi. Multipart, nie base64 data URL jak Hermes — o 33% mniej bajtów na
@@ -759,35 +777,46 @@ def plugins_catalog() -> list[dict]:
 
 @app.post("/api/plugins/install")
 async def install_plugin(body: PluginIn) -> dict:
-    """Instalacja wpisu z katalogu. Nazwa z HTTP musi być W katalogu — nie
-    przyjmujemy tu dowolnego specu (własny serwer MCP = osobny endpoint w #26).
+    """Instalacja wpisu z katalogu ALBO własnego serwera MCP (`spec` w ciele).
 
-    `async`, bo po instalacji leci karta pluginu na WS. Samo `plugins.install()`
-    zostaje sync: to zapis kilku plików YAML po profilach, nie I/O sieciowe —
-    `to_thread` kosztowałby więcej niż oszczędza (`ponytail:` przenieść, gdyby
-    profili zrobiło się tyle, że merge zaczyna blokować pętlę).
+    Bez `spec` nazwa musi być W katalogu — marketplace nie przyjmuje dowolnego
+    wpisu. Ze `spec` (faza F7) źródłem jest rejestr konektorów harnessu
+    (`server/mcp-connectors.ts`), który dosyła driver `slafy` przy każdej zmianie
+    zestawu — dlatego ta ścieżka NIE broadcastuje karty pluginu: karta jest dla
+    instalacji zrobionej ręcznie przez człowieka, nie dla synchronizacji.
+
+    `async`, bo po instalacji z katalogu leci karta pluginu na WS. Samo
+    `plugins.install()` zostaje sync: to zapis kilku plików YAML po profilach, nie
+    I/O sieciowe — `to_thread` kosztowałby więcej niż oszczędza (`ponytail:`
+    przenieść, gdyby profili zrobiło się tyle, że merge zaczyna blokować pętlę).
     """
     plugins._check(body.name, "plugin name")  # ValueError → 422, ZANIM tkniemy dysk
-    manifest = _catalog().get(body.name)
+    manifest = body.spec if body.spec is not None else _catalog().get(body.name)
     if manifest is None:
         raise KeyError(f"no such plugin in catalog: {body.name}")
-    info = plugins.install(body.name, {k: v for k, v in manifest.items() if k in _SPEC_KEYS})
+    spec = {k: v for k, v in manifest.items() if k in _SPEC_KEYS}
+    # Wpis bez transportu jest martwy w `mcp_servers` (i przechodzi przez
+    # `_validate_mcp_server_entry` Hermesa), więc odsiewamy go na wejściu.
+    if not (spec.get("url") or spec.get("command")):
+        raise ValueError("spec needs `url` (HTTP/SSE) or `command` (stdio)")
+    info = plugins.install(body.name, spec)
     # `oauth_required` to STAŁA cecha wpisu (z manifestu), a `needs_auth` — stan
     # TERAZ. Różnią się dokładnie wtedy, gdy token już leży we wspólnym katalogu:
     # drugi bot instaluje plugin z OAuth i nie musi nic autoryzować.
     oauth_required = manifest.get("auth") == "oauth"
-    await _broadcast(
-        {
-            "type": "plugin",
-            "bot_id": None,
-            "plugin": {
-                "name": body.name,
-                "description": manifest.get("description", ""),
-                "oauth_required": oauth_required,
-                "tools_count": manifest.get("tools_count"),
-            },
-        }
-    )
+    if body.spec is None:
+        await _broadcast(
+            {
+                "type": "plugin",
+                "bot_id": None,
+                "plugin": {
+                    "name": body.name,
+                    "description": manifest.get("description", ""),
+                    "oauth_required": oauth_required,
+                    "tools_count": manifest.get("tools_count"),
+                },
+            }
+        )
     return {
         **info,
         "installed": True,

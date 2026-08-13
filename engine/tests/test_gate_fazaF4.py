@@ -309,3 +309,26 @@ def test_approval_endpoint_resolves_validates_and_404s(bot):
         gone = c.post(f"/api/bots/{bot}/approvals/{request_id}", json={"decision": "allow"})
         assert gone.status_code == 404, gone.text
         assert c.post(f"/api/bots/niema/approvals/{request_id}", json={"decision": "allow"}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# (8) ALLOWLISTA "ALWAYS" — faza F7 domyka lukę F4: decyzja "always" zapisywała
+# się na dysk, ale nie było jej czym POKAZAĆ ani COFNĄĆ.
+# --------------------------------------------------------------------------- #
+def test_allowlist_endpoints_list_and_forget(bot):
+    with TestClient(app_module.app) as c:
+        assert c.get(f"/api/bots/{bot}/approvals/allowlist").json() == []
+
+        permissions.always_allow(bot, TOOL)
+        permissions.always_allow(bot, "write_file")
+        assert c.get(f"/api/bots/{bot}/approvals/allowlist").json() == [TOOL, "write_file"]
+
+        assert c.delete(f"/api/bots/{bot}/approvals/allowlist/{TOOL}").status_code == 204
+        assert permissions.allowlist(bot) == ["write_file"]
+        # Idempotentne: cofnięcie czegoś, czego nie ma, to nadal 204 (jak DELETE pluginu).
+        assert c.delete(f"/api/bots/{bot}/approvals/allowlist/{TOOL}").status_code == 204
+        assert c.get(f"/api/bots/{bot}/approvals/allowlist").json() == ["write_file"]
+
+        # Bot widmo: 404, i żaden katalog profilu się od tego nie zakłada.
+        assert c.get("/api/bots/niema/approvals/allowlist").status_code == 404
+        assert c.delete(f"/api/bots/niema/approvals/allowlist/{TOOL}").status_code == 404

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ensureDirs } from "../config.ts";
 import type { ProviderInstance } from "../contracts.ts";
+import { removeConnector, saveConnector } from "../mcp-connectors.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { ClaudeDriver, permissionSocketPath } from "./claude.ts";
 
@@ -159,6 +160,45 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     });
     const allowed = seen.argv[seen.argv.indexOf("--allowedTools") + 1];
     expect(allowed).toContain("mcp__agents");
+  });
+
+  // multibot (F7): własne serwery MCP użytkownika jadą tą samą drogą co
+  // Composio — wspólnym helperem `server/mcp-servers.ts`.
+  it("mounts the user's own MCP connectors next to Composio and pre-allows them", async () => {
+    await create();
+    const dump = join(scratch, "dump.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    saveConnector("echo", {
+      name: "Echo",
+      transport: { type: "stdio", command: process.execPath, args: ["/fake/echo-mcp.js"], env: { TOKEN: "t" } },
+    });
+    try {
+      await instance.adapter.sendTurn({
+        threadId: "t-custom-mcp",
+        text: "hi",
+        integrations: { composio: { key: "ck_test" } },
+      });
+      await recorder.until((e) => e.type === "turn.completed");
+
+      const seen = JSON.parse(readFileSync(dump, "utf8"));
+      const mcpConfig = JSON.parse(seen.argv[seen.argv.indexOf("--mcp-config") + 1]);
+      // Composio bez najmniejszej zmiany zachowania…
+      expect(mcpConfig.mcpServers.composio).toEqual({
+        type: "http",
+        url: "https://connect.composio.dev/mcp",
+        headers: { "x-consumer-api-key": "ck_test" },
+      });
+      // …a obok niego konektor użytkownika, ze swoim sekretem w env
+      expect(mcpConfig.mcpServers.echo).toEqual({
+        command: process.execPath,
+        args: ["/fake/echo-mcp.js"],
+        env: { TOKEN: "t" },
+      });
+      const allowed = seen.argv[seen.argv.indexOf("--allowedTools") + 1].split(",");
+      expect(allowed).toEqual(expect.arrayContaining(["mcp__composio", "mcp__echo"]));
+    } finally {
+      removeConnector("echo");
+    }
   });
 
   it("resumes with --resume when a cursor exists and reports that session id", async () => {
