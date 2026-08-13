@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useStore, formatTime, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
-  PICKABLE_STATES,
   stateForBot,
   MAUS_COLORS,
   MAUS_COLOR_NAMES,
@@ -254,21 +253,21 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
 
             <div className="p-3">
               <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                Expression
+                Icon shape
               </div>
               <div className="grid grid-cols-5 gap-2">
-                {PICKABLE_STATES.map((expression) => (
+                {MASCOT_SHAPES.map((shape) => (
                   <button
-                    key={expression}
-                    onClick={() => patch({ mascotExpression: expression })}
+                    key={shape}
+                    onClick={() => patch({ mascotShape: shape })}
                     className={cn(
                       "flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-raised",
-                      activeState === expression && "ring-2 ring-accent-border",
+                      (bot.mascotShape ?? "cursor") === shape && "ring-2 ring-accent-border",
                     )}
-                    title={expression}
-                    aria-label={`Use ${expression} expression`}
+                    title={shape}
+                    aria-label={`Use ${shape} icon shape`}
                   >
-                    <MausAvatar color={bot.color} shape={bot.mascotShape} state={expression} size={42} animated={false} />
+                    <MausAvatar color={bot.color} shape={shape} state={activeState} size={42} animated={false} />
                   </button>
                 ))}
               </div>
@@ -289,26 +288,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     title={color}
                     aria-label={`Use ${color} mascot color`}
                   />
-                ))}
-              </div>
-
-              <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                Icon shape
-              </div>
-              <div className="grid grid-cols-5 gap-2">
-                {MASCOT_SHAPES.map((shape) => (
-                  <button
-                    key={shape}
-                    onClick={() => patch({ mascotShape: shape })}
-                    className={cn(
-                      "flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-raised",
-                      (bot.mascotShape ?? "cursor") === shape && "ring-2 ring-accent-border",
-                    )}
-                    title={shape}
-                    aria-label={`Use ${shape} icon shape`}
-                  >
-                    <MausAvatar color={bot.color} shape={shape} state={activeState} size={42} animated={false} />
-                  </button>
                 ))}
               </div>
             </div>
