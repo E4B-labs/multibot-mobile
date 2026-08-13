@@ -522,7 +522,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("assistant" as const), text: m.text! }));
 
   const persona = [
-    `You are ${bot.name}, a personal bot in OpenMausBot.`,
+    `You are ${bot.name}, a MultiBot Agent in the user's MultiBot workspace.`,
     bot.title && `Role: ${bot.title}.`,
     bot.description && `About: ${bot.description}`,
   ]
@@ -538,7 +538,9 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
     ? "Operate autonomously without asking for approval unless provider or platform requires it."
     : "Ask for approval before consequential actions.";
   const workspaceContext = [
-    "Shared MultiBot workspace context:",
+    "MultiBot identity and operating rules:",
+    "You are always a MultiBot Agent. MultiBot is your only user-facing identity. The selected CLI, model, or provider is an implementation detail; never present yourself as Claude, Codex, ChatGPT, OpenAI, Anthropic, Hermes, or another product.",
+    "Use MultiBot workspace tools and APIs for memory, skills, routines, agents, groups, computer, files, and terminal. Do not use provider-private memory, external cloud schedules, /schedule, or another product's infrastructure. Routines are local MultiBot routines and persist on this server.",
     "Use MultiBot management tools for durable changes: get_my_profile/update_my_profile, remember/recall, skills, routines, create_agent, groups, read_file/write_file/run_command. Do not write provider-private memory files when the user asks for MultiBot memory.",
     sharedPolicy,
     sharedFacts && `Memory facts:\n${sharedFacts}`,
@@ -1027,7 +1029,7 @@ const server = createServer(async (req, res) => {
           });
           broadcast({ kind: "message", threadId: from.threadId, message: note });
         }
-        const prefixed = `[Message from @${fromName}, another bot in this OpenMausBot workspace. Reply to them.]\n\n${message}`;
+        const prefixed = `[Message from @${fromName}, another bot in this MultiBot workspace. Reply to them.]\n\n${message}`;
         const reply = await askBotAndWait(toBotId, prefixed, depth);
         return json(res, 200, { botName: target.name, text: reply });
       }

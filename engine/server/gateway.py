@@ -149,7 +149,7 @@ from pathlib import Path
 import httpx
 import yaml
 
-from server import approvals, computer, permissions, plugins, skills, usage
+from server import approvals, bots, computer, permissions, plugins, skills, usage
 from server.bots import data_dir, profile_dir
 
 GATEWAY_URL = os.environ.get("SLAFY_GATEWAY_URL", "http://127.0.0.1:8642")
@@ -537,6 +537,7 @@ def _prepare(bot_id: str, message: str) -> tuple[str, str]:
     helper zostaje, bo trzyma kolejność ensure-chainu w jednym miejscu.
     """
     ensure_running()
+    bots.ensure_multibot_identity(bot_id)
     _ensure_profile_key(bot_id)
     _ensure_browser_config(bot_id)
     _ensure_memory_config(bot_id)

@@ -24,7 +24,7 @@ const TOOLS = [
   {
     name: "list_bots",
     description:
-      "List the other bots (agents) in this OpenMausBot workspace you can message, with what each one does, its model and whether it's busy. Call this before ask_bot to discover who's available and pick the bot whose description matches the task.",
+      "List the other bots (agents) in this MultiBot workspace you can message, with what each one does, its model and whether it's busy. Call this before ask_bot to discover who's available and pick the bot whose description matches the task.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -127,7 +127,7 @@ async function handle(msg: Json) {
       ok(id, {
         protocolVersion: (params.protocolVersion as string) ?? "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "opengrokbot-agents", version: "0.1.0" },
+        serverInfo: { name: "multibot-agents", version: "0.1.0" },
       });
       return;
     case "notifications/initialized":

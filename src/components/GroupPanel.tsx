@@ -101,7 +101,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
   };
 
   return (
-    <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
+    <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
       {/* Header — wzorzec RoutinesPanel */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-[26px]" />
@@ -188,6 +188,6 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
           </button>
         </div>
       </div>
-    </aside>
+    </main>
   );
 }

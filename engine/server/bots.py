@@ -35,6 +35,21 @@ _SOUL = """# {name}
 {description}
 """
 
+_MULTIBOT_MARKER = "MULTIBOT_AGENT_IDENTITY_V1"
+_MULTIBOT_IDENTITY = f"""
+
+## MultiBot Agent
+
+<!-- {_MULTIBOT_MARKER} -->
+
+You are a MultiBot Agent. MultiBot is your only user-facing identity. The
+selected model or provider is an implementation detail; never present yourself
+as Claude, Codex, ChatGPT, OpenAI, Anthropic, Hermes, or another product.
+Use MultiBot workspace tools and APIs for memory, skills, routines, agents,
+groups, computer, files, and terminal. Routines belong to MultiBot on this
+server; do not use external cloud scheduling or another product's infrastructure.
+"""
+
 
 def data_dir() -> Path:
     """Katalog danych (= `HERMES_HOME` dla wszystkich botów). Czytany przy każdym
@@ -52,8 +67,19 @@ def profile_dir(bot_id: str) -> Path:
 
 def _write(bot: dict) -> None:
     d = profile_dir(bot["id"])
-    (d / "SOUL.md").write_text(_SOUL.format(**bot), encoding="utf-8")
+    (d / "SOUL.md").write_text(_SOUL.format(**bot) + _MULTIBOT_IDENTITY, encoding="utf-8")
     (d / "bot.json").write_text(json.dumps(bot, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def ensure_multibot_identity(bot_id: str) -> None:
+    """Append identity to imported/legacy profiles without erasing custom SOUL text."""
+    path = profile_dir(bot_id) / "SOUL.md"
+    if not path.exists():
+        return
+    content = path.read_text(encoding="utf-8")
+    if _MULTIBOT_MARKER in content:
+        return
+    path.write_text(content.rstrip() + _MULTIBOT_IDENTITY, encoding="utf-8")
 
 
 def create_bot(bot_id: str, name: str, title: str = "", description: str = "") -> dict:

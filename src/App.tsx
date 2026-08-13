@@ -90,7 +90,9 @@ function Shell() {
       <CmdK />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
-      {bot ? (
+      {state.groupOpen ? (
+        <GroupPanel key={state.groupOpen.id} group={state.groupOpen} />
+      ) : bot ? (
         <ChatView bot={bot} />
       ) : (
         <main className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-app text-ink-secondary">
@@ -114,7 +116,6 @@ function Shell() {
       {state.skillsOpen && bot && <SkillsPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
       {/* multibot: F9-FE — pokój grupowy; otwierany wyłącznie z sekcji Groups
           (widocznej tylko przy botach slafy), klucz per grupę = świeży mount */}
-      {state.groupOpen && <GroupPanel key={state.groupOpen.id} group={state.groupOpen} />}
       {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
       </div>
