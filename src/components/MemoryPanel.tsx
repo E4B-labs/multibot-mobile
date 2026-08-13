@@ -9,7 +9,7 @@
 //     (graf dwudzielny fakt↔encja; node.id = "f<id>" | "e<id>").
 // Delete faktu i zapis MEMORY.md nie mają tras HTTP — sekcje są podglądem.
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Loader2, Search, X } from "lucide-react";
+import { Brain, Check, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { cn } from "@/lib/cn";
@@ -191,6 +191,10 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   const [markdown, setMarkdown] = useState("");
   const [graph, setGraph] = useState<Graph>({ nodes: [], edges: [] });
   const [error, setError] = useState<string | null>(null);
+  const [newFact, setNewFact] = useState("");
+  const [savingFact, setSavingFact] = useState(false);
+  const [editingMarkdown, setEditingMarkdown] = useState(false);
+  const [markdownDraft, setMarkdownDraft] = useState("");
 
   // Panel jest keyowany bot.id w Shell, więc mount = jeden bot. Ensure jak w
   // RoutinesPanel: bot silnika powstaje leniwie przy pierwszej wiadomości, więc
@@ -241,6 +245,29 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, memoryRoot, status]);
 
+  const addWorkspaceFact = () => {
+    if (localBacked || !newFact.trim() || savingFact) return;
+    setSavingFact(true);
+    api(`${memoryRoot}/facts`, { method: "POST", body: JSON.stringify({ text: newFact }) })
+      .then((fact: Fact) => { setFacts((items) => [fact, ...items]); setNewFact(""); })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setSavingFact(false));
+  };
+
+  const removeWorkspaceFact = (id: number | string) => {
+    if (localBacked) return;
+    api(`${memoryRoot}/facts/${encodeURIComponent(String(id))}`, { method: "DELETE" })
+      .then(() => setFacts((items) => items.filter((fact) => fact.id !== id)))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  const saveWorkspaceMarkdown = () => {
+    if (localBacked) return;
+    api(`${memoryRoot}/markdown`, { method: "PUT", body: JSON.stringify({ content: markdownDraft }) })
+      .then((md: { content: string }) => { setMarkdown(md.content); setEditingMarkdown(false); })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
       {/* Header */}
@@ -287,6 +314,10 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
 
             {tab === "facts" && (
               <>
+                {!localBacked && <div className="mt-3 flex gap-2">
+                  <input className={inputCls} value={newFact} onChange={(e) => setNewFact(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWorkspaceFact()} placeholder="Add a memory fact…" />
+                  <button onClick={addWorkspaceFact} disabled={savingFact || !newFact.trim()} className="rounded-lg bg-raised px-3 text-ink disabled:opacity-40" title="Add fact"><Plus size={15} /></button>
+                </div>}
                 <div className="relative mt-3">
                   <Search
                     size={14}
@@ -321,7 +352,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                 ) : (
                   facts.map((f) => (
                     <div key={f.id} className="mt-3 rounded-xl bg-card p-4">
-                      <div className="text-[13px] leading-relaxed text-ink">{f.text}</div>
+                      <div className="flex items-start justify-between gap-2"><div className="text-[13px] leading-relaxed text-ink">{f.text}</div>{!localBacked && <button onClick={() => removeWorkspaceFact(f.id)} className="shrink-0 text-ink-secondary hover:text-danger" title="Delete fact"><Trash2 size={14} /></button>}</div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-secondary">
                         {typeof f.trust_score === "number" && (
                           <span className="rounded bg-inset px-1.5 py-0.5">
@@ -343,12 +374,15 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
               </>
             )}
 
-            {tab === "markdown" &&
+            {tab === "markdown" && !localBacked && editingMarkdown ? (
+              <div className="mt-3 rounded-xl bg-card p-3"><textarea className={cn(inputCls, "min-h-[260px] resize-y font-mono text-[12px]")} value={markdownDraft} onChange={(e) => setMarkdownDraft(e.target.value)} /><button onClick={saveWorkspaceMarkdown} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink"><Check size={13} /> Save notes</button></div>
+            ) : tab === "markdown" &&
               (markdown.trim() ? (
                 <div className="mt-3 rounded-xl bg-card p-4 text-[13px]">
                   {/* Read-only: zapis MEMORY.md z UI wywróciłby drift guard local service
                       (engine/server/memory.py §c) — silnik świadomie nie daje trasy. */}
                   <ChatMarkdown text={markdown} />
+                  {!localBacked && <button onClick={() => { setMarkdownDraft(markdown); setEditingMarkdown(true); }} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Edit notes</button>}
                 </div>
               ) : (
                 <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
@@ -358,6 +392,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                     The bot keeps long-term notes here — they appear once it decides something is
                     worth writing down.
                   </span>
+                  {!localBacked && <button onClick={() => { setMarkdownDraft(""); setEditingMarkdown(true); }} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Write notes</button>}
                 </div>
               ))}
 

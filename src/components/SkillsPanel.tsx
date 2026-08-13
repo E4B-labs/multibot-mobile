@@ -330,6 +330,9 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   const [editing, setEditing] = useState<Skill | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // "delete:<name>"
   const [error, setError] = useState<string | null>(null);
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillInstructions, setNewSkillInstructions] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = () =>
     api(skillsRoot).then((ss: Skill[]) => {
@@ -374,6 +377,15 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
       .finally(() => setBusy(null));
   };
 
+  const create = () => {
+    if (localBacked || creating || !newSkillName.trim() || !newSkillInstructions.trim()) return;
+    setCreating(true);
+    api(skillsRoot, { method: "POST", body: JSON.stringify({ name: newSkillName, instructions: newSkillInstructions }) })
+      .then((skill: Skill) => { setSkills((items) => [...items, skill]); setNewSkillName(""); setNewSkillInstructions(""); })
+      .catch(showError)
+      .finally(() => setCreating(false));
+  };
+
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
       {/* Header */}
@@ -415,6 +427,12 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
               engineBotId={engineBotId}
               onSkillCreated={() => load().catch(() => setStatus("offline"))}
             />}
+            {!localBacked && <div className="mt-3 rounded-xl bg-card p-4">
+              <div className="text-[15px] font-medium text-ink">New skill</div>
+              <input className={cn(inputCls, "mt-3")} value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="Skill name" />
+              <textarea className={cn(inputCls, "mt-2 min-h-[100px] resize-y")} value={newSkillInstructions} onChange={(e) => setNewSkillInstructions(e.target.value)} placeholder="Instructions the bot should follow" />
+              <button onClick={create} disabled={creating || !newSkillName.trim() || !newSkillInstructions.trim()} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink disabled:opacity-40"><Check size={13} /> Create skill</button>
+            </div>}
 
             {skills.length === 0 ? (
               <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
