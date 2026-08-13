@@ -20,11 +20,11 @@ Talk to them like contacts. Watch them work. Approve what matters.
 
 <br>
 
-<a href="https://github.com/milind-soni/openmausbot-releases/releases/latest/download/OpenMausBot.dmg">
-  <img src="https://img.shields.io/github/v/release/milind-soni/openmausbot-releases?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20macOS&labelColor=070707&color=1084fe" alt="Download the latest OpenMausBot for macOS (.dmg)" height="40">
+<a href="#quick-start">
+  <img src="https://img.shields.io/badge/Quick%20start-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-1084fe?style=for-the-badge&labelColor=070707" alt="Install Multibot" height="40">
 </a>
 
-<sub>Apple silicon · signed & notarized · one-click .dmg, always the latest · [all releases](https://github.com/milind-soni/openmausbot-releases/releases)</sub>
+<sub>PowerShell · Terminal · Docker · Termux</sub>
 
 <br>
 <br>
@@ -161,23 +161,61 @@ flowchart LR
 
 ## Quick start
 
-**Easiest:** [download the latest .dmg](https://github.com/milind-soni/openmausbot-releases/releases/latest),
-drag it to Applications, open it. The harness server is embedded — no setup.
+This repository is private. Authenticate GitHub for `git` once before using
+these commands.
 
-**From source:**
+### Windows — PowerShell
 
-```sh
-git clone https://github.com/milind-soni/OpenMausBot && cd OpenMausBot
-pnpm install
+Requires Git and Node.js 24+. Installs a per-user background server, starts it
+on login, then opens the PWA.
 
-pnpm dev:server    # harness server → 127.0.0.1:8799
-pnpm dev           # app → http://127.0.0.1:5199
-pnpm dev:desktop   # or the Electron shell
+```powershell
+git clone https://github.com/clewkord/multibot.git; Set-Location multibot; corepack enable; pnpm install:server:windows; Start-Process http://127.0.0.1:8799
 ```
 
-Requirements: **macOS**, **Node 24+**, **pnpm**, and at least one agent CLI — [`claude`](https://claude.com/claude-code),
-[`codex`](https://github.com/openai/codex), or [`grok`](https://x.ai/cli) — installed and logged in. They appear
-in the model picker automatically.
+### macOS — Terminal
+
+Requires Git, Node.js 24+, and Xcode Command Line Tools. Builds a local `.dmg`;
+open it and drag Multibot to Applications.
+
+```sh
+git clone https://github.com/clewkord/multibot.git && cd multibot && corepack enable && pnpm install --frozen-lockfile && pnpm package && open release/*.dmg
+```
+
+### Linux / VPS — Docker
+
+Requires Git and Docker with Compose. Runs the authenticated PWA and engine as
+one container; only port `8799` is published.
+
+```sh
+git clone https://github.com/clewkord/multibot.git && cd multibot && bash scripts/install-linux.sh --mode docker
+```
+
+Without Docker, use `bash scripts/install-linux.sh` on a systemd host after
+installing Node.js 24+, pnpm, Python 3, Git, and systemd.
+
+### Android — Termux
+
+Install Termux and Termux:Boot from F-Droid, authenticate GitHub, then run:
+
+```sh
+pkg install -y git openssh && git clone https://github.com/clewkord/multibot.git && cd multibot && bash scripts/install-termux.sh
+```
+
+Termux installs its own dependencies and registers a persistent service. Android
+does not support the Playwright browser computer; chat, memory, routines, and
+the PWA remain available.
+
+Every server generates its access token automatically on first start and prints
+it once. You do not create it: paste it into the first login screen, then the
+browser remembers it. Keep it private. For remote HTTPS:
+
+```sh
+tailscale serve --bg --yes http://127.0.0.1:8799
+```
+
+Detailed setup, development commands, dry runs, and recovery steps:
+[`MULTIBOT.md`](MULTIBOT.md).
 
 Optional, pasted once in **App Settings** (gear in the sidebar footer):
 
@@ -194,9 +232,9 @@ pnpm build         # typecheck + production build
 
 ## Status
 
-Early but real — the loop works end to end: message → agent → streamed reply → tools → approvals →
-computer use. Rough edges to expect: routines (scheduled tasks) are a placeholder, sidebar sections aren't
-built yet, and Windows/Linux shells haven't been attempted (the harness itself is portable Node).
+The loop works end to end: message → agent → streamed reply → tools → approvals → computer use. Multibot
+also includes custom models, memory, routines, authenticated remote access, PWA installation, and
+Windows/Linux/Termux server installers. See [`MULTIBOT.md`](MULTIBOT.md) for current platform limits.
 
 Contributions welcome — the driver SPI in [`server/contracts.ts`](server/contracts.ts) is deliberately
 small; adding a provider is one file in [`server/drivers/`](server/drivers/) plus a one-line registration.
