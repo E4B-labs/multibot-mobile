@@ -108,6 +108,31 @@ Playwright browser computer is unavailable on Android. CLI installation is
 automatic after selection; each provider login stays interactive in its own
 terminal (OAuth/subscription credentials never pass through MultiBot).
 
+From another device on the same Tailscale network, open the phone server after
+replacing `<PHONE_IP>` with its Tailscale address:
+
+```text
+http://<PHONE_IP>:8799
+```
+
+Get the generated server token without reading it into MultiBot logs:
+
+```sh
+ssh -p 8022 <PHONE_IP> 'node -e "const fs=require(\"fs\"); const p=process.env.HOME+\"/.openmausbot/config.json\"; process.stdout.write(JSON.parse(fs.readFileSync(p,\"utf8\")).auth.token)"'
+```
+
+Paste token into the login screen. On Windows PowerShell, save it only in a
+temporary variable and open the URL with a fragment:
+
+```powershell
+$t = (ssh -p 8022 <PHONE_IP> 'node -e "const fs=require(\"fs\"),p=process.env.HOME+\"/.openmausbot/config.json\";process.stdout.write(JSON.parse(fs.readFileSync(p,\"utf8\")).auth.token)"').Trim()
+Start-Process ("http://<PHONE_IP>:8799/#access_token={0}" -f $t)
+```
+
+For full PWA installation and microphone access use HTTPS via Tailscale Serve
+on the device that runs the service. Plain Tailscale HTTP still supports chat,
+but browsers intentionally disable service workers and microphone there.
+
 ### Remote HTTPS
 
 Keep harness and engine on loopback. For phone access from another device, use
