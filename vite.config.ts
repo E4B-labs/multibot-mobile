@@ -28,7 +28,17 @@ export default defineConfig({
     // packager output lands inside the repo — its HTML files must never
     // trigger dev full-page reloads
     watch: {
-      ignored: ["**/release/**", "**/build/**", "**/dist/**", "**/electron/resources/**"],
+      // multibot: engine-data/ i engine/.venv też są w repo. Profil przeglądarki
+      // bota trzyma pliki otwarte (Cookies, Network), więc watcher dostaje na
+      // nich EBUSY i ubija dev-serwer, gdy bot ma podniesioną przeglądarkę.
+      ignored: [
+        "**/release/**",
+        "**/build/**",
+        "**/dist/**",
+        "**/electron/resources/**",
+        "**/engine-data/**",
+        "**/engine/.venv/**",
+      ],
     },
     // the harness server owns every provider process; the app only ever
     // talks to /api — clients hold no transports
