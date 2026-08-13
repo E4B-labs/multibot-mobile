@@ -1,17 +1,6 @@
 // multibot: F8 — skille silnika slafy w prawym slocie (400px, jak Routines).
-// UI gada wyłącznie z przelotką harnessu (`server/engine/proxy.ts`:
-// `/api/engine/<rest>` → `/api/<rest>` silnika). Skille są WSPÓLNE dla całej
-// floty (junction w engine/server/skills.py), więc trasy nie mają bot_id:
-//   GET    /api/engine/skills         — lista {name, command, description,
-//                                       instructions, path},
-//   PATCH  /api/engine/skills/<name>  — zapis {description?, instructions?}
-//     (rename też istnieje, ale UI go nie wystawia — przenosi katalog),
-//   DELETE /api/engine/skills/<name>  — usunięcie.
-// Teach-a-task (nagranie demonstracji w przeglądarce bota → skill) jest per bot:
-//   POST /api/engine/bots/mb-<threadId>/teach/start      — 404 = brak przeglądarki,
-//   POST /api/engine/bots/mb-<threadId>/teach/stop       — {events, transcript},
-//   POST /api/engine/bots/mb-<threadId>/teach/synthesize — pełna tura agenta
-//     (minuty), oddaje {skill_name}.
+// Provider-neutral skills. Harness stores them per bot and injects enabled
+// instructions into every provider turn.
 import { useEffect, useState } from "react";
 import {
   Check,
@@ -49,7 +38,7 @@ async function api(path: string, init?: RequestInit): Promise<any> {
 /** Mirror of engine `skills._record()` (engine/server/skills.py). */
 interface Skill {
   name: string;
-  command: string;
+  command?: string;
   description: string;
   instructions: string;
   path?: string;
@@ -139,7 +128,7 @@ type TeachState =
   | { phase: "synthesizing" }
   | { phase: "done"; skillName: string };
 
-function TeachCard({
+export function TeachCard({
   engineBotId,
   onSkillCreated,
 }: {
@@ -319,13 +308,9 @@ function TeachCard({
 }
 
 export function SkillsPanel({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const polish = useLanguage() === "pl";
-  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
-  // decodeConfig w server/drivers/slafy.ts.
-  const engineBotId = `mb-${bot.threadId}`;
-  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
-  const skillsRoot = localBacked ? "/api/engine/skills" : `/api/bots/${bot.id}/skills`;
+  const skillsRoot = `/api/bots/${bot.id}/skills`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -342,29 +327,15 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
       setStatus("ready");
     });
 
-  // Panel jest keyowany bot.id w Shell, więc mount = jeden bot. Ensure jak w
-  // RoutinesPanel: teach jest per bot, a bot silnika powstaje leniwie — najpierw
-  // idempotentny POST /api/bots (409 = już jest = sukces).
   useEffect(() => {
     let alive = true;
-    const ensure = localBacked
-      ? authFetch(`/api/engine/bots`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: engineBotId, name: engineBotId }),
-    })
-      : Promise.resolve(new Response(null, { status: 204 }));
-    ensure
-      .then((res) => {
-        if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
-        return load();
-      })
+    load()
       .catch(() => alive && setStatus("offline"));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [localBacked, skillsRoot, engineBotId]);
+    }, [skillsRoot]);
 
   const showError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -380,7 +351,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   };
 
   const create = () => {
-    if (localBacked || creating || !newSkillName.trim() || !newSkillInstructions.trim()) return;
+    if (creating || !newSkillName.trim() || !newSkillInstructions.trim()) return;
     setCreating(true);
     api(skillsRoot, { method: "POST", body: JSON.stringify({ name: newSkillName, instructions: newSkillInstructions }) })
       .then((skill: Skill) => { setSkills((items) => [...items, skill]); setNewSkillName(""); setNewSkillInstructions(""); })
@@ -425,16 +396,12 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
           />
         ) : (
           <>
-            {localBacked && <TeachCard
-              engineBotId={engineBotId}
-              onSkillCreated={() => load().catch(() => setStatus("offline"))}
-            />}
-            {!localBacked && <div className="mt-3 rounded-xl bg-card p-4">
+            <div className="mt-3 rounded-xl bg-card p-4">
               <div className="text-[15px] font-medium text-ink">New skill</div>
               <input className={cn(inputCls, "mt-3")} value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="Skill name" />
               <textarea className={cn(inputCls, "mt-2 min-h-[100px] resize-y")} value={newSkillInstructions} onChange={(e) => setNewSkillInstructions(e.target.value)} placeholder="Instructions the bot should follow" />
               <button onClick={create} disabled={creating || !newSkillName.trim() || !newSkillInstructions.trim()} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink disabled:opacity-40"><Check size={13} /> Create skill</button>
-            </div>}
+            </div>
 
             {skills.length === 0 ? (
               <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
@@ -463,7 +430,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                         )}
                         <span className="min-w-0">
                           <span className="block truncate text-[15px] font-medium text-ink">
-                            {s.command}
+                            {s.command ?? `/${s.name}`}
                           </span>
                           <span className="mt-0.5 block text-[13px] text-ink-secondary">
                             {s.description || "No description"}

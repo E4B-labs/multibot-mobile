@@ -218,6 +218,17 @@ describe("comms e2e (fake ACP fleet)", () => {
         name: "Codex Asker",
         modelSelection: { instanceId: "codex", model: "fake-model" },
       });
+      await api("POST", `/api/bots/${asker.id}/memory/facts`, { text: "Codex remembers blue deployment" });
+      await api("POST", `/api/bots/${asker.id}/skills`, {
+        name: "release-check",
+        instructions: "Always mention release checks.",
+      });
+      const routine = await api("POST", `/api/bots/${asker.id}/routines`, {
+        name: "Daily release",
+        prompt: "Review release status",
+        schedule: "every 24h",
+      });
+      expect(routine.status).toBe(201);
 
       const instances = (await api("GET", "/api/instances")).body.instances;
       expect(instances.find((item: any) => item.instanceId === "codex").capabilities.peerMessaging).toBe("mentions-only");
@@ -248,6 +259,8 @@ describe("comms e2e (fake ACP fleet)", () => {
       const prompt = dump.calls.findLast((call: any) => call.method === "turn/start").params.input[0].text;
       expect(prompt).toContain("Peer Fallback Helper replied:");
       expect(prompt).toContain("hello from fake acp");
+      expect(prompt).toContain("Codex remembers blue deployment");
+      expect(prompt).toContain("Always mention release checks.");
     },
     50_000,
   );

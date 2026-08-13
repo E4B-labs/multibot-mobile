@@ -116,11 +116,18 @@ HTTPS z Tailscale:
 
 ## G1–G5: funkcje aplikacji
 
-- Provider picker pokazuje flotę CLI oraz nazwane modele `custom`; klucze modeli
-  nigdy nie wracają w odpowiedzi API. Własny model dodaje się w App Settings.
+- Hermes/MultiBot runtime jest warstwą wspólną nad providerami. Python engine
+  (`:8700`) jest sidecarem infrastruktury dla pamięci silnika, browsera,
+  lokalnych endpointów i narzędzi — nie osobnym providerem w pickerze.
+- Provider picker pokazuje flotę CLI oraz nazwane modele `custom`; wewnętrzny
+  `local/slafy` nie jest pozycją UI. Klucze modeli nigdy nie wracają w API.
+  Własny model dodaje się w App Settings.
 - Z poziomu czatu działa Hermes-style `/model`: `/model` pokazuje bieżący katalog,
   `/model claude/opus`, `/model codex/gpt-5.1-codex` albo `/model <model>
   --provider <provider>` przełącza parę provider + model dla bota.
+- Memory, Skills, Routines, autonomia, permissions, usage i bot-to-bot są
+  przechowywane przez harness per bot i wstrzykiwane do każdej tury niezależnie
+  od wybranego providera. Computer pozostaje wspólnym narzędziem MCP/native.
 - Przy pierwszym starcie z istniejącym profilem silnika pusty harness tworzy
   pierwszy bot automatycznie; profil dostaje neutralną nazwę i stałą tożsamość
   `mb-<threadId>`, więc Memory, Routines i Skills trafiają do właściwego bota.

@@ -410,7 +410,7 @@ async function handleModelCommand(bot: ReturnType<Store["bot"]>, text: string): 
   const target = raw
     .replace(/(?:^|\s)--(?:provider(?:=|\s+)[^\s]+|global|session|once|refresh)(?=\s|$)/gi, "")
     .trim();
-  const described = await registry.describe();
+  const described = (await registry.describe()).filter((item) => item.instanceId !== "local");
   const key = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "");
   const aliases: Record<string, string> = {
     anthropic: "claude",
@@ -1070,7 +1070,7 @@ const server = createServer(async (req, res) => {
     m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/facts(?:\/([\w-]+))?$/);
     if (m) {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
-      if (method === "GET" && !m[2]) return json(res, 200, workspace.facts(m[1]));
+      if (method === "GET" && !m[2]) return json(res, 200, workspace.facts(m[1], url.searchParams.get("q") ?? ""));
       if (method === "POST" && !m[2]) {
         const body = await readBody(req);
         return json(res, 201, workspace.addFact(m[1], body));
@@ -1097,6 +1097,12 @@ const server = createServer(async (req, res) => {
         return json(res, 200, workspace.putMarkdown(m[1], body.content));
       }
       return json(res, 405, { error: "method not allowed" });
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/graph$/);
+    if (m && method === "GET") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      return json(res, 200, workspace.graph(m[1]));
     }
 
     m = path.match(/^\/api\/bots\/([\w-]+)\/skills(?:\/(.+))?$/);

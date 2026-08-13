@@ -1,20 +1,16 @@
-// multibot: wspólny panel rutyn ponad driverami. Bot lokalny używa profilu
-// silnika przez przelotkę; CLI/API używają trwałego schedulera harnessa:
-//   /api/engine/bots/mb-<threadId>/routines (engine-backed)
-//   /api/bots/<botId>/routines (harness-backed)
+// multibot: wspólny panel rutyn ponad wszystkimi providerami. Harness owns
+// schedules, then dispatches current provider at execution time.
 // Harmonogram waliduje silnik (`parse_schedule`: "every 30m" / cron / ISO) —
 // UI tylko składa string i pokazuje 422 z `detail`.
 import { useEffect, useState } from "react";
 import {
   CalendarClock,
   Check,
-  Copy,
   Loader2,
   Pencil,
   Play,
   Plus,
   Trash2,
-  Webhook,
   X,
 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
@@ -51,25 +47,6 @@ const inputCls =
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <div className="mb-1.5 text-[13px] text-ink-secondary">{children}</div>;
-}
-
-/** Ten sam wzorzec co copy w bloku kodu ChatMarkdown. */
-function CopyButton({ text, title }: { text: string; title: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard?.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
-  return (
-    <button
-      onClick={copy}
-      className="rounded p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-      title={title}
-    >
-      {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-    </button>
-  );
 }
 
 // Presety harmonogramu → stringi, które silnik parsuje sam ("every 1h" =
@@ -238,22 +215,15 @@ function RoutineForm({
 }
 
 export function RoutinesPanel({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const polish = useLanguage() === "pl";
-  const engineBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
-  const engineBotId = `mb-${bot.threadId}`;
-  const routinePath = engineBacked
-    ? `/api/engine/bots/${engineBotId}/routines`
-    : `/api/bots/${bot.id}/routines`;
+  const routinePath = `/api/bots/${bot.id}/routines`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [routines, setRoutines] = useState<Routine[]>([]);
   // null = lista; "new" = create; Routine = edit
   const [editing, setEditing] = useState<Routine | "new" | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // "<action>:<rid>"
   const [ranId, setRanId] = useState<string | null>(null); // transient "Queued" po Run now
-  const [openWebhook, setOpenWebhook] = useState<string | null>(null);
-  /** Credentiale webhooka per rutyna, pobrane idempotentnym POST-em. */
-  const [webhooks, setWebhooks] = useState<Record<string, { url: string; secret: string }>>({});
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
@@ -262,31 +232,15 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
       setStatus("ready");
     });
 
-  // Engine profile bots are lazy; harness-backed routines already have their
-  // bot identity in Store and need no engine bootstrap.
   useEffect(() => {
     let alive = true;
-    if (!engineBacked) {
-      load().catch(() => alive && setStatus("offline"));
-      return () => {
-        alive = false;
-      };
-    }
-    authFetch(`/api/engine/bots`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: engineBotId, name: engineBotId }),
-    })
-      .then((res) => {
-        if (!res.ok && res.status !== 409) throw new Error(`HTTP ${res.status}`);
-        return load();
-      })
+    load()
       .catch(() => alive && setStatus("offline"));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineBacked]);
+  }, [routinePath]);
 
   const showError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -313,18 +267,6 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
       .finally(() => setBusy(null));
   };
 
-  /** Enable + "Show secret" to ten sam idempotentny POST (sekret nie rotuje). */
-  const fetchWebhook = (rid: string) => {
-    setBusy(`webhook:${rid}`);
-    setError(null);
-    api(`${routinePath}/${rid}/webhook`, { method: "POST" })
-      .then((creds: { url: string; secret: string }) => {
-        setWebhooks((w) => ({ ...w, [rid]: creds }));
-        return load(); // odśwież `trigger` w liście — stan zawsze z silnika
-      })
-      .catch(showError)
-      .finally(() => setBusy(null));
-  };
 
   const lastRunLine = (r: Routine) => {
     const run = r.last_runs[0];
@@ -395,8 +337,6 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
             </button>
 
             {routines.map((r) => {
-              const creds = webhooks[r.id];
-              const whOpen = openWebhook === r.id;
               return (
                 <div key={r.id} className="mt-3 rounded-xl bg-card p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -425,18 +365,6 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                           <Play size={15} />
                         )}
                       </button>
-                      {engineBacked && (
-                        <button
-                          onClick={() => setOpenWebhook(whOpen ? null : r.id)}
-                          className={cn(
-                            "rounded-md p-1.5 hover:bg-raised",
-                            whOpen || r.trigger ? "text-ink" : "text-ink-secondary hover:text-ink",
-                          )}
-                          title="Webhook trigger"
-                        >
-                          <Webhook size={15} />
-                        </button>
-                      )}
                       <button
                         onClick={() => setEditing(r)}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink"
@@ -463,72 +391,6 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                     <div className="mt-2 text-[12px] text-success">Queued — runs within a minute</div>
                   )}
 
-                  {!engineBacked && (
-                    <div className="mt-2 text-[11px] text-ink-secondary">
-                      Scheduled and manual runs work through this bot's CLI. Webhook triggers require the local profile runtime.
-                    </div>
-                  )}
-
-                  {whOpen && (
-                    <div className="mt-3 border-t border-hairline/40 pt-3">
-                      {!r.trigger && !creds ? (
-                        <>
-                          <div className="text-[12px] text-ink-secondary">
-                            A webhook lets external services fire this routine with an HMAC-signed
-                            POST.
-                          </div>
-                          <button
-                            onClick={() => fetchWebhook(r.id)}
-                            disabled={busy === `webhook:${r.id}`}
-                            className="mt-2 flex items-center gap-1.5 rounded-lg bg-raised px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                          >
-                            {busy === `webhook:${r.id}` && <Loader2 size={12} className="animate-spin" />}
-                            Enable webhook
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-[42px] shrink-0 text-[11px] uppercase tracking-wide text-ink-secondary">
-                              URL
-                            </span>
-                            <code className="min-w-0 flex-1 truncate rounded bg-inset px-2 py-1 text-[12px] text-ink">
-                              {creds?.url ?? r.trigger!.url}
-                            </code>
-                            <CopyButton text={creds?.url ?? r.trigger!.url} title="Copy webhook URL" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-[42px] shrink-0 text-[11px] uppercase tracking-wide text-ink-secondary">
-                              Secret
-                            </span>
-                            {creds ? (
-                              <>
-                                <code className="min-w-0 flex-1 truncate rounded bg-inset px-2 py-1 text-[12px] text-ink">
-                                  {creds.secret}
-                                </code>
-                                <CopyButton text={creds.secret} title="Copy HMAC secret" />
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => fetchWebhook(r.id)}
-                                disabled={busy === `webhook:${r.id}`}
-                                className="flex items-center gap-1.5 rounded-lg bg-raised px-3 py-1 text-[12px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                              >
-                                {busy === `webhook:${r.id}` && (
-                                  <Loader2 size={12} className="animate-spin" />
-                                )}
-                                Show secret
-                              </button>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-ink-secondary">
-                            Sign the raw POST body with HMAC-SHA256 and send the hex digest in the
-                            webhook signature header.
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}

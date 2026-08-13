@@ -11,6 +11,11 @@ function modelLabel(instance: InstanceInfo | undefined, model: string): string {
   return instance?.models.options.find((o) => o.id === model)?.label ?? model;
 }
 
+// The Python/Hermes sidecar is runtime infrastructure, not a user-facing
+// provider. Custom slafy instances remain visible because they are explicit
+// model endpoints configured by the user.
+const publicInstances = (instances: InstanceInfo[]) => instances.filter((instance) => instance.instanceId !== "local");
+
 export function ModelPicker({ bot, className }: { bot: Bot; className?: string }) {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
@@ -19,9 +24,14 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
 
   const selection = bot.modelSelection;
   const active = state.instances.find((i) => i.instanceId === selection.instanceId);
+  const visibleInstances = publicInstances(state.instances);
   const railInstance =
-    state.instances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ??
-    state.instances[0];
+    visibleInstances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ?? visibleInstances[0];
+  const activeLabel = active?.instanceId === "local"
+    ? `Automatic · ${modelLabel(active, selection.model)}`
+    : active
+      ? `${active.displayName} · ${modelLabel(active, selection.model)}`
+      : modelLabel(active, selection.model);
 
   useEffect(() => {
     if (!open) return;
@@ -50,11 +60,11 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
           setOpen((o) => !o);
         }}
         className="flex items-center gap-1.5 rounded-full border border-hairline/40 bg-raised/60 py-1 pl-2 pr-2.5 text-[13px] text-ink hover:bg-raised"
-        title={active ? `${active.displayName} · ${modelLabel(active, selection.model)}` : selection.model}
+        title={activeLabel || selection.model}
       >
-        {active && <ProviderMark driverKind={active.driverKind} size={14} />}
+        {active && active.instanceId !== "local" && <ProviderMark driverKind={active.driverKind} size={14} />}
         <span className="max-w-[190px] truncate">
-          {active ? `${active.displayName} · ${modelLabel(active, selection.model)}` : modelLabel(active, selection.model)}
+          {activeLabel}
         </span>
         <ChevronDown size={14} className="text-ink-secondary" />
       </button>
@@ -66,7 +76,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
         >
           {/* instance rail */}
           <div className="flex flex-col gap-1 border-r border-hairline/40 bg-panel p-2">
-            {state.instances.map((instance) => {
+            {visibleInstances.map((instance) => {
               const unavailable = instance.snapshot.state !== "available";
               const onRail = instance.instanceId === railInstance?.instanceId;
               return (

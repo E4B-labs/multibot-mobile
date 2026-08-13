@@ -10,6 +10,7 @@ export interface WorkspaceFact {
   id: string;
   text: string;
   source?: string;
+  entities?: string[];
   created_at: string;
 }
 
@@ -83,15 +84,21 @@ export class WorkspaceStore {
     if (delete this.data[botId]) this.save();
   }
 
-  facts(botId: string): WorkspaceFact[] {
-    return structuredClone(this.get(botId).facts);
+  facts(botId: string, query = ""): WorkspaceFact[] {
+    const needle = query.trim().toLowerCase();
+    return structuredClone(this.get(botId).facts.filter((fact) => !needle || fact.text.toLowerCase().includes(needle)));
   }
 
   addFact(botId: string, value: { text?: unknown; source?: unknown }): WorkspaceFact {
+    const factText = text(value.text, "text", 20_000);
+    const entities = [...new Set(
+      [...factText.matchAll(/(?:^|\s)([@#][\p{L}\p{N}_-]{2,})/gu)].map((match) => match[1]),
+    )];
     const fact: WorkspaceFact = {
       id: newId(),
-      text: text(value.text, "text", 20_000),
+      text: factText,
       ...(String(value.source ?? "").trim() ? { source: String(value.source).trim().slice(0, 200) } : {}),
+      ...(entities.length ? { entities } : {}),
       created_at: new Date().toISOString(),
     };
     this.get(botId).facts.unshift(fact);
@@ -122,6 +129,28 @@ export class WorkspaceStore {
 
   markdown(botId: string): { content: string } {
     return { content: this.get(botId).markdown };
+  }
+
+  graph(botId: string): {
+    nodes: Array<{ id: string; type: "fact" | "entity"; label: string; weight: number | null }>;
+    edges: Array<{ source: string; target: string }>;
+  } {
+    const facts = this.get(botId).facts;
+    const entities = [...new Set(facts.flatMap((fact) => fact.entities ?? []))];
+    return {
+      nodes: [
+        ...facts.map((fact) => ({ id: `f${fact.id}`, type: "fact" as const, label: fact.text, weight: 1 })),
+        ...entities.map((entity) => ({
+          id: `e${entity}`,
+          type: "entity" as const,
+          label: entity,
+          weight: facts.filter((fact) => fact.entities?.includes(entity)).length,
+        })),
+      ],
+      edges: facts.flatMap((fact) =>
+        (fact.entities ?? []).map((entity) => ({ source: `f${fact.id}`, target: `e${entity}` })),
+      ),
+    };
   }
 
   putMarkdown(botId: string, content: unknown): { content: string } {

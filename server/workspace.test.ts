@@ -19,13 +19,23 @@ describe("driver-neutral workspace", () => {
   it("persists memory, skills and policy per bot", () => {
     const { file, store } = make();
     const fact = store.addFact("cli", { text: "Prefers local models", source: "user" });
+    const tagged = store.addFact("cli", { text: "Ask @researcher about #deploy" });
     store.putMarkdown("cli", "# Durable memory");
     store.addSkill("cli", { name: "review", description: "Review code", instructions: "Check tests." });
     store.setAutonomy("cli", "autonomous");
     store.setPermissions("cli", { terminal: false });
 
     const restored = new WorkspaceStore(file);
-    expect(restored.facts("cli")).toEqual([fact]);
+    expect(restored.facts("cli")).toContainEqual(fact);
+    expect(restored.facts("cli", "local")).toEqual([fact]);
+    expect(restored.facts("cli")).toContainEqual(expect.objectContaining({ id: tagged.id, entities: ["@researcher", "#deploy"] }));
+    expect(restored.graph("cli")).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: `f${tagged.id}`, type: "fact" }),
+        expect.objectContaining({ id: "e@researcher", type: "entity" }),
+      ]),
+      edges: expect.arrayContaining([{ source: `f${tagged.id}`, target: "e@researcher" }]),
+    });
     expect(restored.markdown("cli")).toEqual({ content: "# Durable memory" });
     expect(restored.skills("cli")[0]).toMatchObject({ name: "review", enabled: true });
     expect(restored.autonomy("cli")).toEqual({ autonomy: "autonomous" });

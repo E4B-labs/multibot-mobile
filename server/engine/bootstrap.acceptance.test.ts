@@ -11,7 +11,9 @@ import { startFakeEngine, type FakeEngine } from "../testing/fake-engine.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..", "..");
-const PORT = 28000 + Math.floor(Math.random() * 10000);
+// Windows reserves several Hyper-V ranges around 30k; keep acceptance port
+// outside those ranges so a random CI run cannot fail before app startup.
+const PORT = 41000 + Math.floor(Math.random() * 8000);
 const BASE = `http://127.0.0.1:${PORT}`;
 const TOKEN = "bootstrap-acceptance-token";
 

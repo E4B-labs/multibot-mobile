@@ -1,17 +1,8 @@
-// multibot: F4 — autonomia i twarde reguły narzędzi silnika slafy. Karta pod
-// Local runtime controls in SettingsPanel, only for local-driver bots. UI gada
-// wyłącznie z przelotką harnessu (generyczny proxy `server/engine/proxy.ts`:
-// `/api/engine/<rest>` → `/api/<rest>` silnika):
-//   GET/PATCH /api/engine/bots/mb-<threadId>             — `autonomy` (BotPatch,
-//     engine/server/app.py); brak klucza w bot.json = "approval",
-//   GET/PATCH /api/engine/bots/mb-<threadId>/permissions — twarde on/off
-//     toolsetów (engine/server/permissions.py); wyłączony = silnik odmawia
-//     ZAWSZE, niezależnie od trybu.
-// Allowlista "always" (permissions.allowlist) NIE ma w silniku trasy HTTP (ani
-// GET, ani DELETE wpisu) — sekcja niżej to notka do czasu, aż backend ją wystawi.
+// multibot: provider-neutral autonomy and tool rules. Harness owns policy so
+// Claude, Codex, ACP and local engine receive same controls.
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, useStore, type Bot } from "@/state/store";
+import { api, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 
 type Autonomy = "approval" | "autonomous";
@@ -48,12 +39,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function EngineAutonomy({ bot }: { bot: Bot }) {
-  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
-  // decodeConfig w server/drivers/slafy.ts.
-  const engineBotId = `mb-${bot.threadId}`;
-  const { state } = useStore();
-  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
-  const botRoot = localBacked ? `/api/engine/bots/${engineBotId}` : `/api/bots/${bot.id}`;
+  const botRoot = `/api/bots/${bot.id}`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [autonomy, setAutonomy] = useState<Autonomy>("approval");
   const [perms, setPerms] = useState<Record<string, boolean>>({});
@@ -63,9 +49,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
   // karta jest keyowana bot.id w SettingsPanel, więc mount = jeden bot
   useEffect(() => {
     Promise.all([
-      localBacked
-        ? api(`/api/engine/bots/${engineBotId}`)
-        : api(`${botRoot}/autonomy`),
+      api(`${botRoot}/autonomy`),
       api(`${botRoot}/permissions`),
     ])
       .then(([b, p]: [{ autonomy?: string }, Record<string, boolean>]) => {
@@ -74,7 +58,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
         setStatus("ready");
       })
       .catch(() => setStatus("offline"));
-  }, [botRoot, engineBotId, localBacked]);
+  }, [botRoot]);
 
   // Optimistic + revert przy błędzie; po sukcesie stan zawsze z odpowiedzi
   // silnika (PATCH oddaje zaktualizowanego bota / pełną mapę toolsetów).
@@ -83,7 +67,7 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
     const next: Autonomy = prev === "autonomous" ? "approval" : "autonomous";
     setAutonomy(next);
     setError(null);
-    api(localBacked ? `/api/engine/bots/${engineBotId}` : `${botRoot}/autonomy`, {
+    api(`${botRoot}/autonomy`, {
       method: "PATCH",
       body: JSON.stringify({ autonomy: next }),
     })

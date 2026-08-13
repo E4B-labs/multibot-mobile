@@ -51,13 +51,8 @@ interface EngineUsageOut {
 const ZERO_USAGE: EngineUsageOut = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 };
 
 function EngineUsage({ bot }: { bot: Bot }) {
-  // Ten sam wzorzec id co EngineAutonomy: domyślny botPrefix "mb-" z
-  // decodeConfig w server/drivers/slafy.ts.
-  const engineBotId = `mb-${bot.threadId}`;
-  const { state } = useStore();
   const polish = useLanguage() === "pl";
-  const localBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
-  const usagePath = localBacked ? `/api/engine/bots/${engineBotId}/usage` : `/api/bots/${bot.id}/usage`;
+  const usagePath = `/api/bots/${bot.id}/usage`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [usage, setUsage] = useState<EngineUsageOut>(ZERO_USAGE);
 
