@@ -35,7 +35,7 @@ function decodeConfig(raw) {
     };
 }
 const QUESTION_TIMEOUT_NOTE = "No answer was given — use your best judgment.";
-const DENY_TIMEOUT_NOTE = "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+const DENY_TIMEOUT_NOTE = "MultiBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 export const CodexDriver = {
     driverKind: DRIVER_KIND,
     metadata: { displayName: "Codex", supportsMultipleInstances: true },
@@ -100,7 +100,7 @@ export const CodexDriver = {
                     return;
                 state.settled = true;
                 for (const finish of [...asks.values()])
-                    finish("deny", "OpenMausBot: the turn ended");
+                    finish("deny", "MultiBot: the turn ended");
                 for (const p of rpcPending.values())
                     p.reject(new Error("turn settled"));
                 rpcPending.clear();

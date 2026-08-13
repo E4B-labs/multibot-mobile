@@ -18,7 +18,7 @@ const waiting = new Map();
 const conn = connect(socketPath);
 const dead = () => {
     for (const resolve of waiting.values()) {
-        resolve({ behavior: "deny", message: "OpenMausBot: permission broker unavailable — skip this action" });
+        resolve({ behavior: "deny", message: "MultiBot: permission broker unavailable — skip this action" });
     }
     waiting.clear();
 };
@@ -48,7 +48,7 @@ const send = (obj) => process.stdout.write(JSON.stringify(obj) + "\n");
 const TOOLS = [
     {
         name: "approve",
-        description: "Ask the OpenMausBot user whether a tool use is allowed",
+        description: "Ask the MultiBot user whether a tool use is allowed",
         inputSchema: {
             type: "object",
             properties: {
@@ -125,7 +125,7 @@ async function handle(msg) {
                     updatedInput: args.input ?? {},
                     ...(answer.always && suggestions ? { updatedPermissions: suggestions } : {}),
                 }
-                : { behavior: "deny", message: answer.message || "Denied from OpenMausBot" });
+                : { behavior: "deny", message: answer.message || "Denied from MultiBot" });
         return send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }] } });
     }
     if (String(msg.method ?? "").startsWith("notifications/"))
