@@ -30,8 +30,11 @@ export const CLI_TOOLS = [
         id: "codex",
         driverKind: "codex",
         displayName: "Codex",
-        loginCommand: "codex --login",
-        login: { command: "codex", args: ["--login"] },
+        // Official non-TTY OAuth: output carries URL + one-time code, then CLI
+        // polls until browser authorization completes. No token crosses harness.
+        loginCommand: "codex login --device-auth",
+        login: { command: "codex", args: ["login", "--device-auth"] },
+        loginMode: "device",
         install: { command: "npm", args: ["install", "-g", "@openai/codex@latest"] },
     },
     {

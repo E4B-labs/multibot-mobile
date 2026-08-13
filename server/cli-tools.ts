@@ -16,6 +16,8 @@ export interface CliToolMetadata {
   loginCommand?: string;
   /** Fixed interactive command; stdin stays attached for OAuth prompts. */
   login?: CliInstall;
+  /** Device flow prints URL/code and polls; user enters code in browser. */
+  loginMode?: "stdin" | "device";
 }
 
 export const CLI_TOOLS: readonly CliToolMetadata[] = [
@@ -50,8 +52,11 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     id: "codex",
     driverKind: "codex",
     displayName: "Codex",
-    loginCommand: "codex --login",
-    login: { command: "codex", args: ["--login"] },
+    // Official non-TTY OAuth: output carries URL + one-time code, then CLI
+    // polls until browser authorization completes. No token crosses harness.
+    loginCommand: "codex login --device-auth",
+    login: { command: "codex", args: ["login", "--device-auth"] },
+    loginMode: "device",
     install: { command: "npm", args: ["install", "-g", "@openai/codex@latest"] },
   },
   {

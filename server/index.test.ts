@@ -363,8 +363,9 @@ describe("harness HTTP API", () => {
       installCommand: "Native installer for this device",
     });
     expect(listed.body.tools.find((tool: { id: string }) => tool.id === "codex")).toMatchObject({
-      loginCommand: "codex --login",
+      loginCommand: "codex login --device-auth",
       loginAvailable: true,
+      loginMode: "device",
     });
     expect((await api("POST", "/api/cli-tools/grok/login")).status).toBe(409);
   });

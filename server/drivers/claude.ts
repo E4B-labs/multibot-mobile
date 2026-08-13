@@ -46,20 +46,22 @@ export interface ClaudeConfig {
 const MODELS = {
   default: "sonnet",
   options: [
-    { id: "fable", label: "Claude Fable 5 (latest alias)" },
-    { id: "sonnet", label: "Claude Sonnet (latest alias)" },
-    { id: "opus", label: "Claude Opus (latest alias)" },
-    { id: "haiku", label: "Claude Haiku (latest alias)" },
-    { id: "claude-fable-5", label: "Claude Fable 5" },
-    { id: "claude-opus-5", label: "Claude Opus 5" },
-    { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-    { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-    { id: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
-    { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
-    { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-    { id: "claude-3-7-sonnet-20250219", label: "Claude Sonnet 3.7" },
-    { id: "claude-3-5-haiku-20241022", label: "Claude Haiku 3.5" },
+    { id: "sonnet", label: "Claude Sonnet (latest)" },
+    { id: "opus", label: "Claude Opus (latest)" },
+    { id: "haiku", label: "Claude Haiku (latest)" },
   ],
+};
+
+// Claude Code resolves aliases to currently available Anthropic models. Older
+// Multibot profiles stored fictional/version-pinned IDs; keep them usable but
+// never send unsupported IDs to the official CLI.
+const normalizeModel = (model: string | undefined) => {
+  if (!model) return MODELS.default;
+  if (model === "fable" || model.startsWith("claude-fable-")) return "sonnet";
+  if (model.startsWith("claude-opus-")) return "opus";
+  if (model.startsWith("claude-sonnet-") || model === "claude-sonnet-5") return "sonnet";
+  if (model.startsWith("claude-haiku-") || model === "claude-haiku-4-5") return "haiku";
+  return model;
 };
 
 // proxy entry files live next to this one as .ts in dev (node type
@@ -257,11 +259,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         // token-level streaming: content_block_delta events between the
         // whole-message frames, so the bubble grows as the model writes
         "--include-partial-messages",
+        // Short chat turns should not inherit Claude Code's high default
+        // reasoning effort; lower effort reduces latency and token burn.
+        "--effort", "low",
         "--permission-mode", policy ? "default" : config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode,
       ];
       if (sessionId) args.push("--resume", sessionId);
       else args.push("--session-id", newSessionId!);
-      if (turn.model) args.push("--model", turn.model);
+      args.push("--model", normalizeModel(turn.model));
       if (turn.system) args.push("--append-system-prompt", turn.system);
 
       // integrations → MCP servers; pre-allow their tools (a headless

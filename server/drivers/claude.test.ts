@@ -96,6 +96,16 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(instance.adapter.hasSession("t-happy")).toBe(false);
   });
 
+  it("maps legacy pinned model IDs to Claude Code aliases", async () => {
+    await create();
+    const dump = join(scratch, "legacy-model.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    await instance.adapter.sendTurn({ threadId: "t-legacy-model", text: "hi", model: "claude-sonnet-5" });
+    await recorder.until((e) => e.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("sonnet");
+  });
+
   it("streams partial-message text deltas without re-emitting the whole message", async () => {
     await create("stream");
     await instance.adapter.sendTurn({ threadId: "t-stream", text: "hi" });
@@ -129,6 +139,9 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(seen.prompt).toMatchObject({ type: "user", message: { role: "user", content: "the secret prompt" } });
     expect(seen.argv).toContain("--append-system-prompt");
     expect(seen.argv).toContain("--session-id");
+    expect(seen.argv).toContain("--effort");
+    expect(seen.argv[seen.argv.indexOf("--effort") + 1]).toBe("low");
+    expect(seen.argv[seen.argv.indexOf("--model") + 1]).toBe("sonnet");
     expect(seen.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(seen.env.CLAUDECODE).toBeUndefined();
     expect(seen.env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();

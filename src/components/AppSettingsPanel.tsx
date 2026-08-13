@@ -546,8 +546,8 @@ function CustomModels() {
 }
 
 function CommandLineTools() {
-  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean };
-  type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
+  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean; loginMode?: "stdin" | "device" };
+  type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; mode: "stdin" | "device"; error?: string };
   type InstallSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
   const [cli, setCli] = useState<CliRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -596,7 +596,7 @@ function CommandLineTools() {
     if (login) return;
     try {
       const response = await api(`/api/cli-tools/${encodeURIComponent(tool.id)}/login`, { method: "POST" });
-      const session: LoginSession = { toolId: tool.id, jobId: response.id, output: response.job?.output ?? [], done: false };
+      const session: LoginSession = { toolId: tool.id, jobId: response.id, output: response.job?.output ?? [], done: false, mode: tool.loginMode ?? "stdin" };
       setLogin(session);
       await followLogin(response.id, tool.id);
     } catch (error) {
@@ -728,15 +728,17 @@ function CommandLineTools() {
             <div>
               <div id="cli-login-title" className="text-[16px] font-semibold text-ink">Sign in {cli.find((item) => item.id === login.toolId)?.displayName ?? login.toolId}</div>
               <div className="mt-1 text-[12px] text-ink-secondary">
-                Open OAuth link below, sign in, then paste returned code here. This is official CLI login flow.
+                {login.mode === "device"
+                  ? "Open link below and enter shown code in browser. This window will finish automatically."
+                  : "Open OAuth link below, sign in, then paste returned code here. This is official CLI login flow."}
               </div>
             </div>
             {login.done && <button onClick={closeLogin} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised">Close</button>}
           </div>
-          <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-inset p-3 text-[12px] leading-5 text-ink">{login.output.join("\n") || "Starting Claude Code login…"}</pre>
+          <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-inset p-3 text-[12px] leading-5 text-ink">{login.output.join("\n") || "Starting sign-in…"}</pre>
           {!login.done && (
             <div className="mt-3 flex gap-2">
-              <input
+              {login.mode !== "device" && <input
                 autoFocus
                 className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-card px-3 py-2 text-[13px] text-ink"
                 placeholder={login.toolId === "claude" ? "Paste OAuth code" : "Answer CLI prompt"}
@@ -745,7 +747,7 @@ function CommandLineTools() {
                   const input = event.currentTarget;
                   void sendLoginInput(input.value).then(() => { input.value = ""; });
                 }}
-              />
+              />}
               <button onClick={() => void stopLogin()} className="rounded-lg bg-raised px-3 py-2 text-[12px] text-ink">Stop</button>
             </div>
           )}

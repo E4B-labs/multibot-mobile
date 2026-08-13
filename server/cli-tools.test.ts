@@ -9,7 +9,11 @@ describe("CLI tool metadata", () => {
     expect(byId.qwen).toMatchObject({ driverKind: "qwenAgent", install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] } });
     expect(byId.claude).toMatchObject({ loginCommand: "claude auth login", login: { command: "claude", args: ["auth", "login"] } });
     expect(byId.claude.installStrategy).toBe("claude-native");
-    expect(byId.codex).toMatchObject({ loginCommand: "codex --login", login: { command: "codex", args: ["--login"] } });
+    expect(byId.codex).toMatchObject({
+      loginCommand: "codex login --device-auth",
+      login: { command: "codex", args: ["login", "--device-auth"] },
+      loginMode: "device",
+    });
     expect(byId.grok.install).toBeUndefined();
     for (const tool of CLI_TOOLS) {
       expect(installCommandText(tool.install) ?? "").not.toMatch(/\b(?:sudo|runas)\b/i);

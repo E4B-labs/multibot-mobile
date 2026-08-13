@@ -162,6 +162,20 @@ bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
 // Repair before the first API response, preferring a named custom model.
 store.migrateOrphanedSelections(bootFleet);
+// Claude Code accepts aliases (`sonnet`, `opus`, `haiku`), not the old
+// fictional/version-pinned IDs that earlier Multibot builds persisted.
+for (const bot of store.bots) {
+    if (bot.modelSelection.instanceId !== "claude")
+        continue;
+    const model = bot.modelSelection.model;
+    const alias = model.startsWith("claude-opus-") ? "opus"
+        : model.startsWith("claude-sonnet-") ? "sonnet"
+            : model.startsWith("claude-haiku-") || model === "haiku" ? "haiku"
+                : model === "fable" || model.startsWith("claude-fable-") ? "sonnet"
+                    : model;
+    if (alias !== model)
+        store.patchBot(bot.id, { modelSelection: { instanceId: "claude", model: alias } });
+}
 const existingEngineProfile = findExistingEngineProfile(ROOT);
 const hadHarnessBots = store.bots.length > 0;
 store.seedIfEmpty();
@@ -724,6 +738,7 @@ async function cliToolsStatus() {
                 : installCommandText(tool.install),
             loginCommand: tool.loginCommand ?? null,
             loginAvailable: Boolean(tool.login),
+            loginMode: tool.loginMode ?? "stdin",
         };
     });
 }
