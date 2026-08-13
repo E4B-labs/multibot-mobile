@@ -1,6 +1,7 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useState } from "react";
 import {
+  Bot as BotIcon,
   BellDot,
   ClipboardCopy,
   Copy,
@@ -211,11 +212,18 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
 
 // multibot: F9-FE — grupy w sidebarze: każdy bot ma trwałą reprezentację
 // `mb-<threadId>` w transporcie grupowym, niezależnie od wybranego drivera.
-function GroupsSection({ bots }: { bots: Bot[] }) {
+function GroupsSection({
+  bots,
+  createOpen,
+  onCreateOpenChange,
+}: {
+  bots: Bot[];
+  createOpen: boolean;
+  onCreateOpenChange: (open: boolean) => void;
+}) {
   const { state, dispatch } = useStore();
   // null = nie załadowano (silnik offline / jeszcze nie sprawdzono)
   const [groups, setGroups] = useState<EngineGroup[] | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -228,13 +236,11 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
     authFetch("/api/engine/groups")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((gs: EngineGroup[]) => alive && setGroups(gs))
-      .catch(() => {});
+      .catch(() => alive && setGroups([]));
     return () => {
       alive = false;
     };
   }, []);
-
-  if (groups === null) return null;
 
   const toggle = (engineBotId: string) =>
     setPicked((cur) => {
@@ -275,7 +281,7 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
       }
       const group = body as EngineGroup;
       setGroups((gs) => [...(gs ?? []), group]);
-      setFormOpen(false);
+      onCreateOpenChange(false);
       setName("");
       setPicked(new Set());
       dispatch({ type: "toggleGroup", group });
@@ -292,16 +298,9 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
           Groups
         </span>
-        <button
-          onClick={() => setFormOpen((v) => !v)}
-          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-          title="New group"
-        >
-          <Plus size={14} />
-        </button>
       </div>
 
-      {groups.map((g) => (
+      {(groups ?? []).map((g) => (
         <button
           key={g.id}
           onClick={() => dispatch({ type: "toggleGroup", group: g })}
@@ -316,7 +315,7 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
         </button>
       ))}
 
-      {formOpen && (
+      {createOpen && (
         <div className="mx-1 mt-1 flex flex-col gap-2 rounded-xl bg-card p-3">
           <input
             className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
@@ -355,7 +354,7 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
             </button>
             <button
               onClick={() => {
-                setFormOpen(false);
+                onCreateOpenChange(false);
                 setError(null);
               }}
               className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
@@ -372,6 +371,8 @@ function GroupsSection({ bots }: { bots: Bot[] }) {
 export function Sidebar() {
   const { state, dispatch } = useStore();
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
 
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
   // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
@@ -405,6 +406,20 @@ export function Sidebar() {
   // stabilna z listy botów; wybrany driver nie usuwa bota z grup.
   const groupBots = state.bots;
 
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-add-menu]")) setAddMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setAddMenuOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [addMenuOpen]);
+
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-hairline/40 bg-panel">
       {/* Titlebar: real traffic lights in Electron, faux ones in the browser */}
@@ -421,14 +436,43 @@ export function Sidebar() {
             <span className="size-3 rounded-full bg-[#28c840]" />
           </div>
         )}
-        <button
-          onClick={() => { track("bot_created"); dispatch({ type: "newBot" }); }}
-          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          title="New bot"
-        >
-          <Plus size={20} strokeWidth={2} />
-        </button>
+        <div className="relative" data-add-menu>
+          <button
+            onClick={() => setAddMenuOpen((v) => !v)}
+            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            title="Add bot or group"
+            aria-expanded={addMenuOpen}
+          >
+            <Plus size={20} strokeWidth={2} />
+          </button>
+          {addMenuOpen && (
+            <div className="absolute right-0 top-8 z-30 w-44 rounded-xl border border-hairline/40 bg-card p-1.5 shadow-lg">
+              <button
+                onClick={() => {
+                  track("bot_created");
+                  setAddMenuOpen(false);
+                  dispatch({ type: "newBot" });
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised"
+              >
+                <BotIcon size={15} className="text-ink-secondary" />
+                New bot
+              </button>
+              <button
+                onClick={() => {
+                  setAddMenuOpen(false);
+                  setGroupCreateOpen(true);
+                }}
+                disabled={groupBots.length === 0}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Users size={15} className="text-ink-secondary" />
+                New group
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Search */}
@@ -452,7 +496,13 @@ export function Sidebar() {
       </div>
 
       {/* multibot: F9-FE — grupy dostępne dla całej floty */}
-      {groupBots.length > 0 && <GroupsSection bots={groupBots} />}
+      {groupBots.length > 0 && (
+        <GroupsSection
+          bots={groupBots}
+          createOpen={groupCreateOpen}
+          onCreateOpenChange={setGroupCreateOpen}
+        />
+      )}
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
