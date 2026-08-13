@@ -12,6 +12,8 @@ import type { InstanceConfig, InstanceConfigMap } from "./contracts.ts";
 import type { McpConnector } from "./mcp-connectors.ts";
 
 export interface AppConfig {
+  /** multibot (G2): remote-access bearer token. Never returned by /api/config. */
+  auth?: { token?: string };
   xai?: { key?: string; url?: string };
   /** key = ck_… Connect consumer key (connections + agent tools);
    * apiKey = ak_… project API key — optional, unlocks the full toolkit
@@ -72,7 +74,7 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
   // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
   // wpis (JSON.stringify pomija takie pole).
-  for (const key of ["xai", "composio", "box", "profile", "mcpConnectors"] as const) {
+  for (const key of ["auth", "xai", "composio", "box", "profile", "mcpConnectors"] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }

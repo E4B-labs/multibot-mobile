@@ -17,6 +17,7 @@ const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = join(SERVER_DIR, "..");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
+const TOKEN = "proxy-test-access-token";
 
 let child: ChildProcess;
 let engine: FakeEngine;
@@ -26,7 +27,7 @@ let stderr = "";
 const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: { authorization: `Bearer ${TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json().catch(() => ({})) };
@@ -55,6 +56,7 @@ beforeAll(async () => {
   writeFileSync(
     join(home, ".openmausbot", "config.json"),
     JSON.stringify({
+      auth: { token: TOKEN },
       instances: {
         slafy: { driver: "slafy" },
         grok: { driver: "grokAgent", enabled: false },
@@ -188,7 +190,7 @@ describe("engine proxy (/api/engine/*)", () => {
   });
 
   it("streams SSE chunk by chunk instead of buffering it", async () => {
-    const res = await fetch(`${BASE}/api/engine/slow-stream`);
+    const res = await fetch(`${BASE}/api/engine/slow-stream`, { headers: { authorization: `Bearer ${TOKEN}` } });
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
@@ -217,12 +219,14 @@ describe("engine WS pipe (/api/engine/ws)", () => {
     socket.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     socket.write(
       `GET /api/engine/ws HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\n` +
-        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n` +
+        `Sec-WebSocket-Protocol: multibot-auth, ${TOKEN}\r\n\r\n`,
     );
 
     await waitFor(async () => seen().includes("\r\n\r\n") || null, "the 101 handshake");
     const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
     expect(seen()).toContain("101 Switching Protocols");
+    expect(seen()).toContain("Sec-WebSocket-Protocol: multibot-auth");
     // klucz policzył SILNIK — dowód, że handshake przeszedł end-to-end
     expect(seen()).toContain(`Sec-WebSocket-Accept: ${accept}`);
 
@@ -248,11 +252,13 @@ describe("engine WS pipe (/api/engine/ws)", () => {
     socket.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     socket.write(
       `GET /api/engine/bots/mb-t-pre/computer HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\n` +
-        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+        `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n` +
+        `Sec-WebSocket-Protocol: multibot-auth, ${TOKEN}\r\n\r\n`,
     );
 
     await waitFor(async () => seen().includes("\r\n\r\n") || null, "the 101 handshake");
     expect(seen()).toContain("101 Switching Protocols");
+    expect(seen()).toContain("Sec-WebSocket-Protocol: multibot-auth");
     // przelotka zdjęła prefiks: silnik zobaczył SWOJĄ ścieżkę komputera
     expect(engine.upgradePaths).toContain("/api/bots/mb-t-pre/computer");
 
@@ -263,6 +269,26 @@ describe("engine WS pipe (/api/engine/ws)", () => {
     socket.destroy();
   });
 
+  it("rejects both engine WebSocket paths without a token", async () => {
+    for (const path of ["/api/engine/ws", "/api/engine/bots/mb-t-pre/computer"]) {
+      const socket: Socket = connect(PORT, "127.0.0.1");
+      const chunks: Buffer[] = [];
+      socket.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      await new Promise<void>((resolve, reject) => {
+        socket.on("connect", resolve);
+        socket.on("error", reject);
+      });
+      const closed = new Promise<void>((resolve) => socket.on("close", () => resolve()));
+      socket.write(
+        `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\n` +
+          `Connection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\n` +
+          `Sec-WebSocket-Version: 13\r\n\r\n`,
+      );
+      await closed;
+      expect(Buffer.concat(chunks).toString("utf8")).toContain("401 Unauthorized");
+    }
+  });
+
   it("drops upgrades on any other path", async () => {
     const socket: Socket = connect(PORT, "127.0.0.1");
     await new Promise<void>((resolve, reject) => {
@@ -271,7 +297,9 @@ describe("engine WS pipe (/api/engine/ws)", () => {
     });
     const closed = new Promise<void>((resolve) => socket.on("close", () => resolve()));
     socket.write(
-      `GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`,
+      `GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+        `Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\nSec-WebSocket-Version: 13\r\n` +
+        `Sec-WebSocket-Protocol: multibot-auth, ${TOKEN}\r\n\r\n`,
     );
     await closed; // zerwane gniazdo, nie wiszące połączenie
   });

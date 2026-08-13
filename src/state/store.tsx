@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MausColor, MausMotion } from "@/lib/mascot";
+import { authFetch, authenticatedEventSource } from "@/lib/auth";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -480,7 +481,7 @@ const initialState: AppState = {
 
 // ── API client ─────────────────────────────────────────────────────────
 export async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, {
+  const res = await authFetch(path, {
     headers: { "content-type": "application/json" },
     ...init,
   });
@@ -509,7 +510,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     // fire-and-forget card persistence; the route is optional server-side
     const persistCard = (botId: string, messageId: string, patch: Partial<OptionCardData>) => {
-      fetch(`/api/bots/${botId}/cards/${messageId}`, {
+      authFetch(`/api/bots/${botId}/cards/${messageId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
@@ -649,7 +650,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     loadAll();
 
-    const es = new EventSource("/api/events");
+    const es = authenticatedEventSource("/api/events");
     es.onopen = () => {
       rawDispatch({ type: "connected", value: true });
       loadAll(); // resync anything missed while disconnected
@@ -674,7 +675,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // reading the selected chat clears its badge immediately
           if (bot.unread && bot.id === stateRef.current.selectedId) {
             bot.unread = false;
-            fetch(`/api/bots/${bot.id}`, {
+            authFetch(`/api/bots/${bot.id}`, {
               method: "PATCH",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ unread: false }),

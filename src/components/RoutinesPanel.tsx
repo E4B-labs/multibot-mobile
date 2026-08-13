@@ -26,12 +26,13 @@ import {
 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 
 // Własny helper zamiast `api` ze store: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}` — store'owy helper zgubiłby komunikat
 // walidacji crona i pokazał gołe "422 Unprocessable Entity".
 async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
+  const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = typeof body.detail === "string" ? body.detail : undefined;
@@ -269,7 +270,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   // idempotentny POST /api/bots (409 = już jest = sukces, jak w driverze).
   useEffect(() => {
     let alive = true;
-    fetch(`/api/engine/bots`, {
+    authFetch(`/api/engine/bots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: engineBotId, name: engineBotId }),

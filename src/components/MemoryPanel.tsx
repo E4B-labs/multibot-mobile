@@ -13,11 +13,12 @@ import { Brain, Loader2, Search, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`.
 async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
+  const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = typeof body.detail === "string" ? body.detail : undefined;
@@ -194,7 +195,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   // najpierw idempotentny POST /api/bots (409 = już jest = sukces).
   useEffect(() => {
     let alive = true;
-    fetch(`/api/engine/bots`, {
+    authFetch(`/api/engine/bots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: engineBotId, name: engineBotId }),

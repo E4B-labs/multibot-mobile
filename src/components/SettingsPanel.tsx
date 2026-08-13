@@ -11,6 +11,7 @@ import {
 import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 
 function Field({
   label,
@@ -55,7 +56,7 @@ function EngineUsage({ bot }: { bot: Bot }) {
   const [usage, setUsage] = useState<EngineUsageOut>(ZERO_USAGE);
 
   useEffect(() => {
-    fetch(`/api/engine/bots/${engineBotId}/usage`)
+    authFetch(`/api/engine/bots/${engineBotId}/usage`)
       .then((res) => {
         if (res.status === 404) return ZERO_USAGE; // brak bota = brak użycia
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -121,7 +122,7 @@ function InterbotCard({ bot }: { bot: Bot }) {
   const [threads, setThreads] = useState<InterbotThread[]>([]);
 
   useEffect(() => {
-    fetch(`/api/engine/bots/${engineBotId}/interbot`)
+    authFetch(`/api/engine/bots/${engineBotId}/interbot`)
       .then((res) => {
         if (res.status === 404) return []; // brak bota = brak wątków
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

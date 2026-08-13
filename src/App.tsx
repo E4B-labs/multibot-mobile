@@ -19,6 +19,60 @@ import { GroupPanel } from "@/components/GroupPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
+import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
+
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [token, setToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!token.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    setAuthToken(token);
+    try {
+      const response = await authFetch("/api/instances");
+      if (!response.ok) throw new Error(response.status === 401 ? "Invalid access token" : "Server unavailable");
+      onLogin();
+    } catch (e) {
+      clearAuthToken();
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <main className="flex h-full min-h-screen items-center justify-center bg-app px-5 text-ink">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+        className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl"
+      >
+        <h1 className="text-[18px] font-semibold">Sign in</h1>
+        <p className="mt-1 text-[13px] text-ink-secondary">Enter access token for this Multibot server.</p>
+        <input
+          autoFocus
+          type="password"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          placeholder="Access token"
+          autoComplete="current-password"
+          className="mt-4 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink outline-none focus:border-hairline"
+        />
+        <button
+          type="submit"
+          disabled={busy || !token.trim()}
+          className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50"
+        >
+          {busy ? "Checking…" : "Sign in"}
+        </button>
+        {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+      </form>
+    </main>
+  );
+}
 
 function Shell() {
   const { state } = useStore();
@@ -70,9 +124,17 @@ function Shell() {
 
 export default function App() {
   const [gated, setGated] = useState(() => !emailGateDone());
+  const [authenticated, setAuthenticated] = useState(() => Boolean(getAuthToken()));
   useEffect(() => {
     initAnalytics();
+    const onAuthRequired = () => {
+      clearAuthToken();
+      setAuthenticated(false);
+    };
+    window.addEventListener(authEventName(), onAuthRequired);
+    return () => window.removeEventListener(authEventName(), onAuthRequired);
   }, []);
+  if (!authenticated) return <LoginScreen onLogin={() => setAuthenticated(true)} />;
   return (
     <StoreProvider>
       <Shell />

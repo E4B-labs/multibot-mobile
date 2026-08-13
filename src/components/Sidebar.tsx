@@ -21,6 +21,7 @@ import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store"
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
 
@@ -225,7 +226,7 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
   // dopisuje do listy lokalnie.
   useEffect(() => {
     let alive = true;
-    fetch("/api/engine/groups")
+    authFetch("/api/engine/groups")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((gs: EngineGroup[]) => alive && setGroups(gs))
       .catch(() => {});
@@ -255,7 +256,7 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
       for (const bot of slafyBots) {
         const engineBotId = `mb-${bot.threadId}`;
         if (!picked.has(engineBotId)) continue;
-        const res = await fetch("/api/engine/bots", {
+        const res = await authFetch("/api/engine/bots", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: engineBotId, name: bot.name }),
@@ -265,7 +266,7 @@ function GroupsSection({ slafyBots }: { slafyBots: Bot[] }) {
       // Kolejność `bot_ids` = kolejność floty; pierwszy bot to owner pokoju
       // (engine groups.py: fallback routingu rundy).
       const bot_ids = slafyBots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
-      const res = await fetch("/api/engine/groups", {
+      const res = await authFetch("/api/engine/groups", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: name.trim(), bot_ids }),

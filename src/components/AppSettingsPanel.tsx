@@ -7,6 +7,7 @@ import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
 import { useUpdaterState } from "@/lib/updater";
 import { cn } from "@/lib/cn";
+import { authFetch, setAuthToken } from "@/lib/auth";
 // multibot: F11 — status silnika dla EngineStatusRow
 import { engineOnline } from "@/lib/engineStatus";
 
@@ -43,7 +44,7 @@ interface InspectOut {
 // (FastAPI), przelotka jako `{error}`; do tego `status`, żeby odróżnić
 // 502/503 (Engine offline) od 409/422 (komunikat dla usera).
 async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
+  const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = typeof body.detail === "string" ? body.detail : undefined;
@@ -278,7 +279,7 @@ function ProfileFields() {
   }, [state.config?.profile?.name, state.config?.profile?.email]);
 
   const save = () => {
-    void fetch("/api/config", {
+    void authFetch("/api/config", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
@@ -301,6 +302,58 @@ function ProfileFields() {
         placeholder="you@example.com"
         className={inputClass}
       />
+    </div>
+  );
+}
+
+function AccessTokenSettings() {
+  const [token, setToken] = useState("");
+  const [shown, setShown] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    authFetch("/api/auth/token")
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to load token"))))
+      .then((body) => setToken(typeof body.token === "string" ? body.token : ""))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  const rotate = () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    authFetch("/api/auth/token/rotate", { method: "POST" })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to rotate token"))))
+      .then((body) => {
+        if (typeof body.token !== "string") throw new Error("Server returned no token");
+        setToken(body.token);
+        setAuthToken(body.token);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Server access</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">Token required when connecting from another device.</div>
+      <div className="mt-3 flex gap-2">
+        <input
+          readOnly
+          type={shown ? "text" : "password"}
+          value={token}
+          placeholder="Loading…"
+          className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink outline-none"
+        />
+        <button onClick={() => setShown((value) => !value)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
+          {shown ? "Hide" : "Show"}
+        </button>
+      </div>
+      <button onClick={rotate} disabled={busy} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">
+        {busy ? "Generating…" : "Generate new token"}
+      </button>
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
     </div>
   );
 }
@@ -584,6 +637,9 @@ export function AppSettingsPanel() {
             <ApiKeyRow section="box" label="Box token" placeholder="Token from box.ascii.dev" />
           </div>
         </div>
+
+        {/* multibot: G2 — server token, masked until explicitly shown. */}
+        <AccessTokenSettings />
 
         {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
         <CustomModels />

@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { startFakeEngine, type FakeEngine } from "../testing/fake-engine.ts";
 import { computerMcpSpawn, engineComputer } from "./computer-mcp.ts";
-import { venvPython } from "./supervisor.ts";
+import { engineBaseUrl, engineServerArgs, venvPython } from "./supervisor.ts";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = join(SERVER_DIR, "..");
@@ -49,12 +49,34 @@ describe("computerMcpSpawn", () => {
       delete process.env.ENGINE_URL;
     }
   });
+
+  it("rejects a non-loopback ENGINE_URL", () => {
+    process.env.ENGINE_URL = "http://192.168.1.20:8700";
+    try {
+      expect(() => engineBaseUrl()).toThrow(/loopback/);
+    } finally {
+      delete process.env.ENGINE_URL;
+    }
+  });
+
+  it("pins the supervised engine to loopback", () => {
+    expect(engineServerArgs("8700")).toEqual([
+      "-m",
+      "uvicorn",
+      "server.app:app",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8700",
+    ]);
+  });
 });
 
 describe("computer: playwright on a claude-style driver (live harness)", () => {
   const hasVenv = existsSync(venvPython(ENGINE_DIR));
   const PORT = 18800 + Math.floor(Math.random() * 10_000);
   const BASE = `http://127.0.0.1:${PORT}`;
+  const TOKEN = "computer-test-access-token";
   let child: ChildProcess;
   let engine: FakeEngine;
   let home: string;
@@ -64,7 +86,7 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: { authorization: `Bearer ${TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, body: await res.json().catch(() => ({})) };
@@ -80,6 +102,7 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
     writeFileSync(
       join(home, ".openmausbot", "config.json"),
       JSON.stringify({
+        auth: { token: TOKEN },
         instances: {
           claude: { driver: "claudeAgent", config: { cli: FAKE_CLI, permissionMode: "acceptEdits" } },
           // multibot (G1): configured instances are overlays. Keep only the

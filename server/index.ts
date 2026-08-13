@@ -5,10 +5,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as box from "./box.ts";
+import { ensureAccessToken, mountAuth, rotateAccessToken } from "./auth.ts";
 import * as composio from "./composio.ts";
 import {
   BUILT_IN_CLI_IDS,
@@ -35,7 +36,12 @@ import { ProviderRegistry } from "./harness/registry.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
-const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
+const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REMOTE = !new Set(["127.0.0.1", "::1", "localhost"]).has(HOST.toLowerCase());
+// multibot (G2): a remote server owns one origin. Dev keeps Vite separate;
+// remote mode serves the built app automatically unless explicitly overridden.
+const STATIC_DIR = process.env.OMB_STATIC_DIR || (REMOTE ? join(ROOT, "dist") : null);
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -49,6 +55,7 @@ const MIME: Record<string, string> = {
 
 ensureDirs();
 const cfg = loadConfig();
+const access = ensureAccessToken(cfg);
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 
@@ -742,6 +749,21 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
     }
 
+    // ── multibot (G2): authenticated token reveal/check/rotation ────────
+    if (method === "GET" && path === "/api/auth/check") {
+      return json(res, 200, { ok: true });
+    }
+    if (method === "GET" && path === "/api/auth/token") {
+      res.setHeader("cache-control", "no-store");
+      return json(res, 200, { token: cfg.auth!.token });
+    }
+    if (method === "POST" && path === "/api/auth/token/rotate") {
+      const token = rotateAccessToken(cfg);
+      revokeAuthSessions(req.socket);
+      res.setHeader("cache-control", "no-store");
+      return json(res, 200, { token });
+    }
+
     // ── provider instances (model picker) ──
     if (method === "GET" && path === "/api/instances") {
       return json(res, 200, { instances: await registry.describe() });
@@ -913,19 +935,21 @@ const server = createServer(async (req, res) => {
 
     // packaged app: the server serves the built UI too (window → :8799 for
     // everything, no dev proxy to die). OMB_STATIC_DIR is set by Electron.
-    if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
-      const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");
-      const file = join(STATIC_DIR, safe);
+    if ((method === "GET" || method === "HEAD") && !path.startsWith("/api/") && STATIC_DIR) {
+      const root = resolve(STATIC_DIR);
+      const requested = path === "/" ? "index.html" : decodeURIComponent(path).replace(/^[/\\]+/, "");
+      const file = resolve(root, requested);
+      if (file !== root && !file.startsWith(root + sep)) return json(res, 404, { error: "not found" });
       try {
         const data = readFileSync(file);
         res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-        return res.end(data);
+        return res.end(method === "HEAD" ? undefined : data);
       } catch {
         // SPA fallback
         try {
           const data = readFileSync(join(STATIC_DIR, "index.html"));
           res.writeHead(200, { "content-type": "text/html" });
-          return res.end(data);
+          return res.end(method === "HEAD" ? undefined : data);
         } catch {
           /* fall through to 404 */
         }
@@ -945,6 +969,11 @@ const server = createServer(async (req, res) => {
 // handler wyżej zostaje nietknięty.
 mountEngineProxy(server);
 
+// Auth mounts after the proxy so one wrapper covers harness HTTP, proxied
+// engine HTTP, and both engine WS upgrade paths.
+let revokeAuthSessions = (_except?: import("node:stream").Duplex) => {};
+revokeAuthSessions = mountAuth(server, () => cfg.auth!.token!).revokeSessions;
+
 // ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
 // Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);
 // harness zamienia to na `needsAttention` w store i rozsyła jak każdą inną
@@ -960,8 +989,9 @@ watchEngineAttention({
   },
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`openmausbot server on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`openmausbot server on http://${HOST}:${PORT}`);
+  if (access.created) console.log(`[multibot] access token (shown once): ${access.token}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

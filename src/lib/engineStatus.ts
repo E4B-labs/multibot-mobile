@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/auth";
+
 // multibot: F11 — jedno wspólne sprawdzenie statusu silnika slafy dla UI
 // (wiersz w AppSettingsPanel + warunkowa kropka w Sidebarze). Przez przelotkę
 // harnessu (`/api/engine/bots` → engine `/api/bots`, server/engine/proxy.ts),
@@ -9,7 +11,7 @@
 // albo martwy ENGINE_URL), nie "jeszcze nie wystartował".
 export async function engineOnline(): Promise<boolean> {
   try {
-    return (await fetch("/api/engine/bots")).ok;
+    return (await authFetch("/api/engine/bots")).ok;
   } catch {
     return false;
   }

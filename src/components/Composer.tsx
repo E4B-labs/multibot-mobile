@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Mic, Square, Wand2 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 
@@ -135,7 +136,7 @@ export function Composer({ bot }: { bot: Bot }) {
   useEffect(() => {
     if (slashQ === null || slashSkills !== null) return;
     let alive = true;
-    fetch("/api/engine/skills")
+    authFetch("/api/engine/skills")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((ss: SlashSkill[]) => alive && setSlashSkills(ss))
       .catch(() => alive && setSlashSkills([]));

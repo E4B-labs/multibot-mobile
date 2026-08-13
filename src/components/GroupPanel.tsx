@@ -19,11 +19,12 @@ import { Loader2, Send, Users, X } from "lucide-react";
 import { useStore, formatTime, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`.
 async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
+  const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = typeof body.detail === "string" ? body.detail : undefined;

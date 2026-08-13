@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Square, Volume2, VolumeX } from "lucide-react";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
 
 type Phase = "idle" | "loading" | "playing" | "error";
 
@@ -71,7 +72,7 @@ export function SpeakButton({ text }: { text: string }) {
     abortRef.current = ctl;
     setPhase("loading");
     try {
-      const res = await fetch(`/api/engine/bots/${encodeURIComponent(`mb-${bot.threadId}`)}/speak`, {
+      const res = await authFetch(`/api/engine/bots/${encodeURIComponent(`mb-${bot.threadId}`)}/speak`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text }),

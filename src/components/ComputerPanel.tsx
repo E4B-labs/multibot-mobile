@@ -22,9 +22,10 @@ import {
 import { useStore, type Bot } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
 import { cn } from "@/lib/cn";
+import { authFetch, authenticatedWebSocket } from "@/lib/auth";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
+  const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   return body;
@@ -192,13 +193,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     const connect = async () => {
       if (!alive) return;
       try {
-        await fetch(`/api/engine/bots/${engineBotId}/computer/start`, { method: "POST" });
+        await authFetch(`/api/engine/bots/${engineBotId}/computer/start`, { method: "POST" });
       } catch {
         /* engine unreachable — the WS close below schedules the retry */
       }
       if (!alive) return;
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/api/engine/bots/${engineBotId}/computer`);
+      ws = authenticatedWebSocket(`/api/engine/bots/${engineBotId}/computer`);
       pwWs.current = ws;
       ws.onopen = () => {
         if (!alive) return;

@@ -22,6 +22,7 @@ const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
+const TOKEN = "comms-test-access-token";
 
 describe("mentionedBots", () => {
   const peers = [
@@ -69,7 +70,7 @@ describe("comms e2e (fake ACP fleet)", () => {
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: { authorization: `Bearer ${TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, body: await res.json() };
@@ -82,6 +83,7 @@ describe("comms e2e (fake ACP fleet)", () => {
     writeFileSync(
       join(home, ".openmausbot", "config.json"),
       JSON.stringify({
+        auth: { token: TOKEN },
         instances: {
           grok: {
             driver: "grokAgent",

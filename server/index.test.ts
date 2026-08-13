@@ -13,15 +13,17 @@ const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SERVER_DIR, "..");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
+const TOKEN = "index-test-access-token";
 
 let child: ChildProcess;
 let home: string;
 let stderr = "";
+let staticDir: string;
 
 const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: { authorization: `Bearer ${TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json() };
@@ -29,10 +31,14 @@ const api = async (method: string, path: string, body?: unknown): Promise<{ stat
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "omb-api-test-"));
+  staticDir = join(home, "dist");
+  mkdirSync(staticDir, { recursive: true });
+  writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Multibot login</title>");
+  writeFileSync(join(staticDir, "app.js"), "console.log('login shell')");
   mkdirSync(join(home, ".openmausbot"), { recursive: true });
   writeFileSync(
     join(home, ".openmausbot", "config.json"),
-    JSON.stringify({ instances: { ghost: { driver: "not-a-real-driver", displayName: "Ghost" } } }),
+    JSON.stringify({ auth: { token: TOKEN }, instances: { ghost: { driver: "not-a-real-driver", displayName: "Ghost" } } }),
   );
 
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
@@ -43,6 +49,8 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      OMB_HOST: "0.0.0.0",
+      OMB_STATIC_DIR: staticDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -78,6 +86,17 @@ describe("harness HTTP API", () => {
     expect(status).toBe(200);
     expect(body.app).toBe("openmausbot");
     expect(typeof body.pid).toBe("number");
+    expect(body.static).toBe(true);
+  });
+
+  it("serves the login shell on the same remote origin but protects every non-static route", async () => {
+    const page = await fetch(`${BASE}/`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Multibot login");
+    expect((await fetch(`${BASE}/app.js`)).status).toBe(200);
+    expect((await fetch(`${BASE}/api/bots`)).status).toBe(401);
+    expect((await fetch(`${BASE}/api/auth/check`)).status).toBe(401);
+    expect((await fetch(`${BASE}/webhooks/routine-id`, { method: "POST" })).status).toBe(401);
   });
 
   it("seeds one starter bot with its greeting", async () => {
@@ -268,5 +287,23 @@ describe("harness HTTP API", () => {
     const res = await api("GET", "/api/definitely-not-a-route");
     expect(res.status).toBe(404);
     expect(res.body.error).toContain("/api/definitely-not-a-route");
+  });
+
+  it("reveals and rotates the token only to an authenticated session", async () => {
+    const reveal = await api("GET", "/api/auth/token");
+    expect(reveal.body).toEqual({ token: TOKEN });
+    const events = await fetch(`${BASE}/api/events`, { headers: { authorization: `Bearer ${TOKEN}` } });
+    const reader = events.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('"kind":"hello"');
+    const closed = reader.read().then(({ done }) => done).catch(() => true);
+    const rotated = await api("POST", "/api/auth/token/rotate");
+    expect(rotated.status).toBe(200);
+    expect(rotated.body.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(rotated.body.token).not.toBe(TOKEN);
+    expect(await Promise.race([closed, new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000))])).toBe(true);
+    expect((await fetch(`${BASE}/api/bots`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(401);
+    expect(
+      (await fetch(`${BASE}/api/bots`, { headers: { authorization: `Bearer ${rotated.body.token}` } })).status,
+    ).toBe(200);
   });
 });
