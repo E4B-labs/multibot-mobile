@@ -367,30 +367,31 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                   Manage Skills
                 </button>
               </div>
-              <div className="rounded-xl bg-card p-4">
-                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
-                  <CalendarClock size={16} className="text-ink-secondary" />
-                  Routines
-                </div>
-                <div className="mt-0.5 text-[13px] text-ink-secondary">
-                  Recurring tasks this bot runs in the background.
-                </div>
-                <button
-                  onClick={() => dispatch({ type: "toggleRoutines", open: true })}
-                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-                >
-                  Manage Routines
-                </button>
-              </div>
             </>
           )}
 
+          <div className="rounded-xl bg-card p-4">
+            <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
+              <CalendarClock size={16} className="text-ink-secondary" />
+              Routines
+            </div>
+            <div className="mt-0.5 text-[13px] text-ink-secondary">
+              Recurring tasks this bot runs in the background.
+            </div>
+            <button
+              onClick={() => dispatch({ type: "toggleRoutines", open: true })}
+              className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+            >
+              Manage Routines
+            </button>
+          </div>
+
           {!isEngineBot && (
             <div className="rounded-xl bg-card p-4">
-              <div className="text-[15px] font-medium text-ink">Memory, routines and skills</div>
+              <div className="text-[15px] font-medium text-ink">Memory and skills</div>
               <div className="mt-1 text-[13px] text-ink-secondary">
-                {instance?.displayName ?? "This command-line bot"} exposes chat only. Switch this bot
-                to a local model to use Memory, Routines and Skills.
+                {instance?.displayName ?? "This command-line bot"} exposes chat and routines. Memory
+                and Skills require the local profile runtime.
               </div>
               <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
                 Unavailable for this CLI

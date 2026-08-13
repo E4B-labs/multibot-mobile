@@ -168,6 +168,34 @@ describe("harness HTTP API", () => {
     expect(body.bots[0].messages.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("stores driver-neutral routines for a harness bot", async () => {
+    const bots = await api("GET", "/api/bots");
+    const bot = bots.body.bots[0];
+    const created = await api("POST", `/api/bots/${bot.id}/routines`, {
+      name: "CLI digest",
+      prompt: "Summarize today's work",
+      schedule: "every 1h",
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({
+      botId: bot.id,
+      name: "CLI digest",
+      schedule: "every 1h",
+      trigger: null,
+      execution: { limitations: expect.any(Array) },
+    });
+
+    const id = created.body.id;
+    expect((await api("GET", `/api/bots/${bot.id}/routines`)).body).toHaveLength(1);
+    expect((await api("PATCH", `/api/bots/${bot.id}/routines/${id}`, { enabled: false })).body.enabled).toBe(false);
+    expect((await api("POST", `/api/bots/${bot.id}/routines/${id}/webhook`)).status).toBe(409);
+    expect((await api("POST", `/api/bots/${bot.id}/routines`, {
+      name: "Bad", prompt: "Nope", schedule: "61 * * * *",
+    })).status).toBe(422);
+    expect((await api("DELETE", `/api/bots/${bot.id}/routines/${id}`)).status).toBe(200);
+    expect((await api("GET", `/api/bots/${bot.id}/routines`)).body).toEqual([]);
+  });
+
   it("describes the configured fleet, shadows included", async () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);

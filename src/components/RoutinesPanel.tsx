@@ -1,14 +1,7 @@
-// multibot: F6 — rutyny silnika slafy w prawym slocie (400px, jak Settings/
-// Computer). UI gada wyłącznie z przelotką harnessu (`server/engine/proxy.ts`:
-// `/api/engine/<rest>` → `/api/<rest>` silnika):
-//   GET    /api/engine/bots/mb-<threadId>/routines            — lista,
-//   POST   /api/engine/bots/mb-<threadId>/routines            — create,
-//   PATCH  /api/engine/bots/mb-<threadId>/routines/<rid>      — edit,
-//   DELETE /api/engine/bots/mb-<threadId>/routines/<rid>      — delete,
-//   POST   /api/engine/bots/mb-<threadId>/routines/<rid>/run  — Run now (ticker ≤60 s),
-//   POST   /api/engine/bots/mb-<threadId>/routines/<rid>/webhook — {url, secret};
-//     idempotentny: re-POST oddaje TEN SAM sekret (engine/server/routines.py),
-//     więc "Show secret" to po prostu ponowny POST.
+// multibot: wspólny panel rutyn ponad driverami. Bot lokalny używa profilu
+// silnika przez przelotkę; CLI/API używają trwałego schedulera harnessa:
+//   /api/engine/bots/mb-<threadId>/routines (engine-backed)
+//   /api/bots/<botId>/routines (harness-backed)
 // Harmonogram waliduje silnik (`parse_schedule`: "every 30m" / cron / ISO) —
 // UI tylko składa string i pokazuje 422 z `detail`.
 import { useEffect, useState } from "react";
@@ -91,12 +84,12 @@ const MODE_LABELS: Record<ScheduleMode, string> = {
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function RoutineForm({
-  engineBotId,
+  routinePath,
   routine,
   onSaved,
   onCancel,
 }: {
-  engineBotId: string;
+  routinePath: string;
   /** null = create */
   routine: Routine | null;
   onSaved: () => void;
@@ -130,11 +123,11 @@ function RoutineForm({
     const schedule = buildSchedule();
     const body = { name: name.trim(), prompt: prompt.trim(), ...(schedule ? { schedule } : {}) };
     (routine
-      ? api(`/api/engine/bots/${engineBotId}/routines/${routine.id}`, {
+      ? api(`${routinePath}/${routine.id}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         })
-      : api(`/api/engine/bots/${engineBotId}/routines`, {
+      : api(routinePath, {
           method: "POST",
           body: JSON.stringify(body),
         })
@@ -243,10 +236,12 @@ function RoutineForm({
 }
 
 export function RoutinesPanel({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
-  // Ten sam wzorzec id co local runtime controls: domyślny botPrefix "mb-" z
-  // decodeConfig w server/drivers/slafy.ts.
+  const { state, dispatch } = useStore();
+  const engineBacked = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind === "slafy";
   const engineBotId = `mb-${bot.threadId}`;
+  const routinePath = engineBacked
+    ? `/api/engine/bots/${engineBotId}/routines`
+    : `/api/bots/${bot.id}/routines`;
   const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
   const [routines, setRoutines] = useState<Routine[]>([]);
   // null = lista; "new" = create; Routine = edit
@@ -259,17 +254,21 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
-    api(`/api/engine/bots/${engineBotId}/routines`).then((rs: Routine[]) => {
+    api(routinePath).then((rs: Routine[]) => {
       setRoutines(rs);
       setStatus("ready");
     });
 
-  // Panel jest keyowany bot.id w Shell, więc mount = jeden bot. Bot silnika
-  // powstaje leniwie przy pierwszej wiadomości (slafy.ts `ensureBot`) — świeży
-  // bot bez rozmowy nie ma jeszcze profilu i GET rutyn dałby 404, więc najpierw
-  // idempotentny POST /api/bots (409 = już jest = sukces, jak w driverze).
+  // Engine profile bots are lazy; harness-backed routines already have their
+  // bot identity in Store and need no engine bootstrap.
   useEffect(() => {
     let alive = true;
+    if (!engineBacked) {
+      load().catch(() => alive && setStatus("offline"));
+      return () => {
+        alive = false;
+      };
+    }
     authFetch(`/api/engine/bots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -284,14 +283,14 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [engineBacked]);
 
   const showError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
   const runNow = (rid: string) => {
     setBusy(`run:${rid}`);
     setError(null);
-    api(`/api/engine/bots/${engineBotId}/routines/${rid}/run`, { method: "POST" })
+    api(`${routinePath}/${rid}/run`, { method: "POST" })
       .then(() => {
         setRanId(rid);
         setTimeout(() => setRanId((cur) => (cur === rid ? null : cur)), 2500);
@@ -305,7 +304,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   const remove = (rid: string) => {
     setBusy(`delete:${rid}`);
     setError(null);
-    api(`/api/engine/bots/${engineBotId}/routines/${rid}`, { method: "DELETE" })
+    api(`${routinePath}/${rid}`, { method: "DELETE" })
       .then(() => setRoutines((rs) => rs.filter((r) => r.id !== rid)))
       .catch(showError)
       .finally(() => setBusy(null));
@@ -315,7 +314,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   const fetchWebhook = (rid: string) => {
     setBusy(`webhook:${rid}`);
     setError(null);
-    api(`/api/engine/bots/${engineBotId}/routines/${rid}/webhook`, { method: "POST" })
+    api(`${routinePath}/${rid}/webhook`, { method: "POST" })
       .then((creds: { url: string; secret: string }) => {
         setWebhooks((w) => ({ ...w, [rid]: creds }));
         return load(); // odśwież `trigger` w liście — stan zawsze z silnika
@@ -358,7 +357,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
           </div>
         ) : editing !== null ? (
           <RoutineForm
-            engineBotId={engineBotId}
+            routinePath={routinePath}
             routine={editing === "new" ? null : editing}
             onSaved={() => {
               setEditing(null);
@@ -423,16 +422,18 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                           <Play size={15} />
                         )}
                       </button>
-                      <button
-                        onClick={() => setOpenWebhook(whOpen ? null : r.id)}
-                        className={cn(
-                          "rounded-md p-1.5 hover:bg-raised",
-                          whOpen || r.trigger ? "text-ink" : "text-ink-secondary hover:text-ink",
-                        )}
-                        title="Webhook trigger"
-                      >
-                        <Webhook size={15} />
-                      </button>
+                      {engineBacked && (
+                        <button
+                          onClick={() => setOpenWebhook(whOpen ? null : r.id)}
+                          className={cn(
+                            "rounded-md p-1.5 hover:bg-raised",
+                            whOpen || r.trigger ? "text-ink" : "text-ink-secondary hover:text-ink",
+                          )}
+                          title="Webhook trigger"
+                        >
+                          <Webhook size={15} />
+                        </button>
+                      )}
                       <button
                         onClick={() => setEditing(r)}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink"
@@ -457,6 +458,12 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
 
                   {ranId === r.id && (
                     <div className="mt-2 text-[12px] text-success">Queued — runs within a minute</div>
+                  )}
+
+                  {!engineBacked && (
+                    <div className="mt-2 text-[11px] text-ink-secondary">
+                      Scheduled and manual runs work through this bot's CLI. Webhook triggers require the local profile runtime.
+                    </div>
                   )}
 
                   {whOpen && (

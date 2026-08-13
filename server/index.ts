@@ -38,6 +38,7 @@ import { EventBus } from "./harness/bus.ts";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
 import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
+import { HarnessRoutines, type HarnessRoutine } from "./routines.ts";
 import { jobProgress, SetupJobs } from "./setup-jobs.ts";
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 import { registerWindowsServerAutostart } from "./windows-autostart.ts";
@@ -552,6 +553,31 @@ const setupJobs = new SetupJobs(join(DATA_DIR, "setup-jobs.json"), (job) =>
   broadcast({ kind: "setup.job", job }),
 );
 
+// multibot: routines for every driver. The selected instance is resolved by
+// startTurn at execution time, so changing model never strands a schedule.
+const harnessRoutines = new HarnessRoutines(join(DATA_DIR, "routines.json"), async (routine) => {
+  await startTurn(routine.botId, `[Routine: ${routine.name}]\n\n${routine.prompt}`);
+});
+
+function routineView(botId: string, routine: HarnessRoutine) {
+  const bot = store.bot(botId);
+  const driverKind = bot ? registry.get(bot.modelSelection.instanceId)?.driverKind ?? null : null;
+  return {
+    ...routine,
+    execution: {
+      driverKind,
+      limitations:
+        driverKind && driverKind !== "slafy"
+          ? [
+              "The selected command-line tool must stay installed and signed in on the server.",
+              "A busy bot is not interrupted; the routine records an error and waits for its next run.",
+              "Interactive CLI approvals may wait until a user reconnects.",
+            ]
+          : [],
+    },
+  };
+}
+
 // multibot (G1): custom-model config stays write-only for API keys. Helpers
 // return only display metadata consumed by app settings and model picker.
 const RESERVED_INSTANCE_IDS = new Set([
@@ -779,7 +805,8 @@ const server = createServer(async (req, res) => {
       store.patchBot(bot.id, { modelSelection: await defaultSelection() });
       return json(res, 201, { bot: { ...store.bot(bot.id)!, messages: store.messagesFor(bot.threadId) } });
     }
-    let m = path.match(/^\/api\/bots\/([\w-]+)$/);
+    let m: RegExpMatchArray | null;
+    m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
       const patch: Record<string, unknown> = {};
@@ -801,6 +828,7 @@ const server = createServer(async (req, res) => {
       // a running turn dies with its bot
       await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => {});
       stopScreenPoller(bot.id);
+      harnessRoutines.deleteBot(bot.id);
       store.deleteBot(bot.id);
       for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
         try {
@@ -857,6 +885,63 @@ const server = createServer(async (req, res) => {
       const instance = registry.get(bot.modelSelection.instanceId);
       await instance?.adapter.interruptTurn(bot.threadId);
       return json(res, 200, { ok: true });
+    }
+
+    // ── multibot: driver-neutral routines ──────────────────────────────
+    m = path.match(/^\/api\/bots\/([\w-]+)\/routines$/);
+    if (m && method === "GET") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      return json(res, 200, harnessRoutines.list(m[1]).map((routine) => routineView(m![1], routine)));
+    }
+    if (m && method === "POST") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      const body = await readBody(req);
+      try {
+        const routine = harnessRoutines.create(m[1], {
+          name: body.name,
+          prompt: body.prompt,
+          schedule: body.schedule,
+        });
+        return json(res, 201, routineView(m[1], routine));
+      } catch (error) {
+        return json(res, 422, { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    m = path.match(/^\/api\/bots\/([\w-]+)\/routines\/([\w-]+)$/);
+    if (m && method === "PATCH") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      const body = await readBody(req);
+      const patch: Partial<Pick<HarnessRoutine, "name" | "prompt" | "schedule" | "enabled">> = {};
+      for (const key of ["name", "prompt", "schedule", "enabled"] as const) {
+        if (body[key] !== undefined) (patch as Record<string, unknown>)[key] = body[key];
+      }
+      try {
+        const routine = harnessRoutines.update(m[1], m[2], patch);
+        return routine
+          ? json(res, 200, routineView(m[1], routine))
+          : json(res, 404, { error: "no such routine" });
+      } catch (error) {
+        return json(res, 422, { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    if (m && method === "DELETE") {
+      return harnessRoutines.delete(m[1], m[2])
+        ? json(res, 200, { ok: true })
+        : json(res, 404, { error: "no such routine" });
+    }
+    m = path.match(/^\/api\/bots\/([\w-]+)\/routines\/([\w-]+)\/(run|webhook)$/);
+    if (m && method === "POST") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
+      if (m[3] === "webhook") {
+        return json(res, 409, {
+          error: "Webhook triggers remain available for engine-native routines; command-line routines support schedules and Run now.",
+        });
+      }
+      const routine = await harnessRoutines.runNow(m[1], m[2]);
+      if (!routine) return json(res, 404, { error: "no such routine" });
+      const run = routine.last_runs[0];
+      if (run?.status === "error") return json(res, 409, { error: run.error, routine: routineView(m[1], routine) });
+      return json(res, 200, routineView(m[1], routine));
     }
 
     // identity handshake for the packaged app's port fallback: the forked
@@ -1190,6 +1275,7 @@ server.listen(PORT, HOST, () => {
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
+    harnessRoutines.stop();
     void registry.disposeAll().finally(() => process.exit(0));
   });
 }
