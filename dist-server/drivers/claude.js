@@ -1,8 +1,5 @@
-// Claude driver — upstream ClaudeDriver skeleton over agentcal's
-// drivers/claude.js runtime (stream-json both directions, prompt over
-// stdin, completion from a real `result` event — verified against
-// claude 2.1.211 by agentcal). Per-turn CLI process; the conversation
-// continues across turns via --resume <sessionId> (the resumeCursor).
+// Claude driver — stream-json both directions. One worker stays alive per
+// bot, so Termux/proot and MCP handshakes happen once instead of per turn.
 //
 // Integrations become MCP servers on the CLI:
 //   - Composio Connect (connected apps → tools) over streamable HTTP
@@ -34,7 +31,7 @@ const MODELS = {
         { id: "claude-haiku-4-5", label: "Haiku 4.5" },
     ],
 };
-// UI keeps stable product names; Claude Code receives official aliases.
+// UI keeps stable product names; Claude Code receives official model IDs.
 const canonicalModel = (model) => {
     if (!model || model === "sonnet" || model.startsWith("claude-sonnet-"))
         return "claude-sonnet-5";
@@ -47,14 +44,9 @@ const canonicalModel = (model) => {
     return model;
 };
 const cliModel = (model) => {
-    switch (canonicalModel(model)) {
-        case "claude-opus-5": return "opus";
-        case "claude-haiku-4-5": return "haiku";
-        case "claude-fable-5": return "sonnet";
-        case "claude-sonnet-5": return "sonnet";
-        default: return canonicalModel(model);
-    }
+    return canonicalModel(model);
 };
+const WORKER_IDLE_MS = 10 * 60_000;
 // proxy entry files live next to this one as .ts in dev (node type
 // stripping) and .js in the compiled dist-server the packaged app ships
 const proxyPath = (basename) => {
@@ -203,8 +195,11 @@ export const ClaudeDriver = {
     async create(input) {
         const { instanceId, config } = input;
         const listeners = new Set();
-        // one active turn per thread; a second send while busy is a caller bug
+        // One active turn per thread; workers survive completed turns. The CLI
+        // itself owns conversation state, so --resume is only needed after a
+        // worker restart.
         const active = new Map();
+        const workers = new Map();
         const emit = (event) => {
             for (const l of [...listeners])
                 l(event);
@@ -222,144 +217,131 @@ export const ClaudeDriver = {
                 throw new Error("a turn is already running on this thread");
             const policy = turnPolicy(threadId);
             const turnId = newId();
-            const sessionId = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
-            const newSessionId = sessionId ? null : newId();
             const selectedModel = cliModel(turn.model);
             const requestedReasoning = turn.reasoning;
+            const permissionMode = policy ? "default" : config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode;
+            const socketPath = permissionSocketPath(threadId);
             const args = [
-                "-p",
-                "--output-format", "stream-json",
-                "--input-format", "stream-json",
-                "--verbose", // required by stream-json output
-                // token-level streaming: content_block_delta events between the
-                // whole-message frames, so the bubble grows as the model writes
-                "--include-partial-messages",
-                "--permission-mode", policy ? "default" : config.permissionMode === "auto" ? "acceptEdits" : config.permissionMode,
+                "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
+                "--include-partial-messages", "--permission-mode", permissionMode,
             ];
-            // Haiku has no adaptive-effort control in Claude Code. Other displayed
-            // Claude models accept the full effort range.
-            if (selectedModel !== "haiku")
+            // Haiku has no adaptive-effort control in Claude Code.
+            if (selectedModel !== "claude-haiku-4-5")
                 args.push("--effort", requestedReasoning || "low");
-            if (sessionId)
-                args.push("--resume", sessionId);
-            else
-                args.push("--session-id", newSessionId);
-            args.push("--model", selectedModel);
-            if (turn.system)
-                args.push("--append-system-prompt", turn.system);
-            // integrations → MCP servers; pre-allow their tools (a headless
-            // acceptEdits run silently denies anything unlisted)
-            // multibot (F7): Composio i własne konektory użytkownika montuje wspólny
-            // helper — ten sam, z którego korzystają pozostałe drivery.
+            // integrations → MCP servers; this object is also the worker signature.
             const mcpServers = buildMcpServers(turn.integrations, undefined, canUseIntegration(threadId, "integrations"));
             const allowed = Object.keys(mcpServers).map((name) => `mcp__${name}`);
             if (turn.integrations?.computer) {
-                mcpServers.computer = {
-                    command: process.execPath,
-                    args: [PROXY_PATH],
-                    env: {
-                        ...NODE_ENV_FLAG,
-                        OGB_BOX_ID: turn.integrations.computer.boxId,
-                        OGB_BOX_TOKEN: turn.integrations.computer.token,
-                    },
-                };
+                mcpServers.computer = { command: process.execPath, args: [PROXY_PATH], env: {
+                        ...NODE_ENV_FLAG, OGB_BOX_ID: turn.integrations.computer.boxId, OGB_BOX_TOKEN: turn.integrations.computer.token,
+                    } };
                 allowed.push("mcp__computer");
             }
             else if (turn.integrations?.localComputer) {
-                // this Mac, via the Electron-owned cua-driver daemon (spawn config
-                // read from cua-connection.json — same "computer" name either way,
-                // the agent just sees a computer)
                 mcpServers.computer = { ...turn.integrations.localComputer };
                 allowed.push("mcp__computer");
             }
-            // peer-agent comms (list_bots/ask_bot) — the harness builds the whole
-            // spawn contract (command/args/env incl. the boot token) in
-            // agentsIntegration(); pre-allowing matters doubly here, or the CLI's
-            // own ListAgents look-alike shadows it and "@Bot" asks go nowhere
             if (turn.integrations?.agents) {
                 mcpServers.agents = { ...turn.integrations.agents };
                 allowed.push("mcp__agents");
             }
-            // permission broker: anything acceptEdits would silently deny becomes
-            // an Allow/Deny card in chat, and the agent gets ask_user. Skipped in
-            // bypassPermissions (fullAuto) — nothing would ever ask.
-            let broker;
-            if (policy || config.permissionMode !== "bypassPermissions") {
-                const socketPath = permissionSocketPath(threadId);
-                broker = createPermissionBroker({
-                    socketPath,
-                    onAsk: (ask) => {
-                        if (ask.kind === "permission" && !toolAllowed(threadId, ask.tool)) {
-                            queueMicrotask(() => broker?.answer(ask.id, "deny", `${ask.tool} blocked by bot permissions`));
-                            return;
-                        }
-                        if (ask.kind === "permission" && autoApproveAllowed(threadId, ask.tool)) {
-                            queueMicrotask(() => broker?.answer(ask.id, "allow"));
-                            return;
-                        }
-                        emit({
-                            ...base(threadId, turnId),
-                            type: "request.opened",
-                            requestId: ask.id,
-                            requestType: ask.kind,
-                            tool: ask.tool,
-                            summary: askSummary(ask),
-                            choices: Array.isArray(ask.input?.choices) ? ask.input.choices.slice(0, 5) : undefined,
-                        });
-                    },
-                    onResolve: (resolved) => emit({
-                        ...base(threadId, turnId),
-                        type: "request.resolved",
-                        requestId: resolved.id,
-                        behavior: resolved.behavior,
-                        source: resolved.source,
-                    }),
-                });
+            const brokerNeeded = Boolean(policy || config.permissionMode !== "bypassPermissions");
+            if (brokerNeeded) {
                 args.push("--permission-prompt-tool", "mcp__ogb__approve");
                 mcpServers.ogb = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
                 allowed.push("mcp__ogb");
             }
-            if (policy) {
-                const denied = [
-                    ...(policy.permissions.terminal === false ? ["Bash"] : []),
-                    ...(policy.permissions.file === false ? ["Read", "Edit", "Write", "NotebookEdit", "Glob", "Grep"] : []),
-                    ...(policy.permissions.browser === false ? ["WebFetch", "WebSearch"] : []),
-                ];
-                if (denied.length)
-                    args.push("--disallowedTools", denied.join(","));
-            }
+            const denied = policy ? [
+                ...(policy.permissions.terminal === false ? ["Bash"] : []),
+                ...(policy.permissions.file === false ? ["Read", "Edit", "Write", "NotebookEdit", "Glob", "Grep"] : []),
+                ...(policy.permissions.browser === false ? ["WebFetch", "WebSearch"] : []),
+            ] : [];
+            if (denied.length)
+                args.push("--disallowedTools", denied.join(","));
             if (Object.keys(mcpServers).length) {
-                args.push("--mcp-config", JSON.stringify({ mcpServers }));
-                args.push("--allowedTools", allowed.join(","));
+                args.push("--mcp-config", JSON.stringify({ mcpServers }), "--allowedTools", allowed.join(","));
             }
-            const env = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
-            // subscription users get billed pay-as-you-go if this leaks through;
-            // and a nested CLI must not inherit this session's identity (agentcal)
-            delete env.ANTHROPIC_API_KEY;
-            delete env.CLAUDECODE;
-            delete env.CLAUDE_CODE_ENTRYPOINT;
-            // multibot: resolve npm shims / shebang scripts to a real spawn
-            const cli = resolveCliSpawn(config.cli, args);
-            const child = spawn(cli.command, cli.args, {
-                cwd: turn.cwd ?? homedir(),
-                env,
-                stdio: ["pipe", "pipe", "pipe"],
-                windowsVerbatimArguments: cli.windowsVerbatimArguments,
-                detached: true, // own process group, so killTree reaps child MCP servers (-pid on POSIX, taskkill /T on win32)
+            const signature = JSON.stringify({
+                selectedModel, effort: selectedModel === "claude-haiku-4-5" ? null : requestedReasoning || "low",
+                permissionMode, denied, cwd: turn.cwd ?? homedir(), system: turn.system ?? "", mcpServers,
             });
-            let settled = false;
+            let worker = workers.get(threadId);
+            if (worker && worker.signature !== signature) {
+                workers.delete(threadId);
+                worker.broker?.close();
+                killTree(worker.child);
+                worker = undefined;
+            }
+            let spawnedWorker = false;
+            if (!worker || worker.child.stdin?.destroyed) {
+                const env = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
+                delete env.ANTHROPIC_API_KEY;
+                delete env.CLAUDECODE;
+                delete env.CLAUDE_CODE_ENTRYPOINT;
+                const sessionId = typeof turn.resumeCursor === "string" ? turn.resumeCursor : newId();
+                const launchArgs = [...args, typeof turn.resumeCursor === "string" ? "--resume" : "--session-id", sessionId, "--model", selectedModel];
+                if (turn.system)
+                    launchArgs.push("--append-system-prompt", turn.system);
+                const cli = resolveCliSpawn(config.cli, launchArgs);
+                const child = spawn(cli.command, cli.args, {
+                    cwd: turn.cwd ?? homedir(), env, stdio: ["pipe", "pipe", "pipe"],
+                    windowsVerbatimArguments: cli.windowsVerbatimArguments, detached: true,
+                });
+                worker = { child, signature, sessionId, buffer: "", stderr: "" };
+                workers.set(threadId, worker);
+                spawnedWorker = true;
+            }
+            if (worker.idleTimer)
+                clearTimeout(worker.idleTimer);
+            const current = { turnId, settled: false, sawStreamDelta: false };
+            worker.current = current;
             const settle = (ok, stopReason, cost = null) => {
-                if (settled)
+                if (current.settled)
                     return;
-                settled = true;
-                broker?.close();
+                current.settled = true;
+                if (worker?.current === current)
+                    worker.current = undefined;
                 active.delete(threadId);
                 emit({ ...base(threadId, turnId), type: "turn.completed", ok, stopReason, cost });
+                if (worker && workers.get(threadId) === worker) {
+                    worker.idleTimer = setTimeout(() => {
+                        if (!worker?.current && workers.get(threadId) === worker) {
+                            workers.delete(threadId);
+                            worker.broker?.close();
+                            killTree(worker.child);
+                        }
+                    }, WORKER_IDLE_MS);
+                    worker.idleTimer.unref?.();
+                }
             };
-            // token streaming: true while --include-partial-messages is delivering
-            // text deltas for the current assistant message, so the whole-message
-            // frame that follows doesn't re-emit the same text as one big delta
-            let sawStreamDelta = false;
+            const broker = worker.broker ?? (brokerNeeded ? createPermissionBroker({
+                socketPath,
+                onAsk: (ask) => {
+                    if (ask.kind === "permission" && !toolAllowed(threadId, ask.tool)) {
+                        queueMicrotask(() => worker?.broker?.answer(ask.id, "deny", `${ask.tool} blocked by bot permissions`));
+                        return;
+                    }
+                    if (ask.kind === "permission" && autoApproveAllowed(threadId, ask.tool)) {
+                        queueMicrotask(() => worker?.broker?.answer(ask.id, "allow"));
+                        return;
+                    }
+                    const activeTurn = worker?.current;
+                    if (!activeTurn)
+                        return;
+                    emit({ ...base(threadId, activeTurn.turnId), type: "request.opened", requestId: ask.id,
+                        requestType: ask.kind, tool: ask.tool, summary: askSummary(ask),
+                        choices: Array.isArray(ask.input?.choices) ? ask.input.choices.slice(0, 5) : undefined });
+                },
+                onResolve: (resolved) => {
+                    const activeTurn = worker?.current;
+                    if (activeTurn)
+                        emit({ ...base(threadId, activeTurn.turnId), type: "request.resolved",
+                            requestId: resolved.id, behavior: resolved.behavior, source: resolved.source });
+                },
+            }) : undefined);
+            if (broker)
+                worker.broker = broker;
+            current.broker = broker;
             const handleLine = (line) => {
                 let o;
                 try {
@@ -372,10 +354,14 @@ export const ClaudeDriver = {
                 switch (o.type) {
                     case "system":
                         if (o.subtype === "init") {
-                            emit({ ...base(threadId, turnId), type: "session.started", sessionId: o.session_id, model: o.model });
+                            worker.sessionId = o.session_id ?? worker.sessionId;
+                            const activeTurn = worker.current;
+                            if (activeTurn)
+                                emit({ ...base(threadId, activeTurn.turnId), type: "session.started", sessionId: o.session_id, model: o.model });
                         }
                         else if (o.subtype === "thinking_tokens") {
-                            emit({ ...base(threadId, turnId), type: "item.updated", itemType: "reasoning", tokens: o.estimated_tokens });
+                            if (worker.current)
+                                emit({ ...base(threadId, worker.current.turnId), type: "item.updated", itemType: "reasoning", tokens: o.estimated_tokens });
                         }
                         break;
                     case "stream_event": {
@@ -388,11 +374,11 @@ export const ClaudeDriver = {
                             break;
                         const d = ev.delta ?? {};
                         if (d.type === "text_delta" && typeof d.text === "string" && d.text) {
-                            sawStreamDelta = true;
-                            emit({ ...base(threadId, turnId), type: "content.delta", streamKind: "assistant_text", delta: d.text });
+                            worker.current.sawStreamDelta = true;
+                            emit({ ...base(threadId, worker.current.turnId), type: "content.delta", streamKind: "assistant_text", delta: d.text });
                         }
                         else if (d.type === "thinking_delta" && typeof d.thinking === "string" && d.thinking) {
-                            emit({ ...base(threadId, turnId), type: "content.delta", streamKind: "reasoning_text", delta: d.thinking });
+                            emit({ ...base(threadId, worker.current.turnId), type: "content.delta", streamKind: "reasoning_text", delta: d.thinking });
                         }
                         break;
                     }
@@ -401,20 +387,20 @@ export const ClaudeDriver = {
                         const text = firstText(msg.content);
                         if (text.trim()) {
                             // fallback delta for CLIs/paths that never streamed the block
-                            if (!sawStreamDelta) {
-                                emit({ ...base(threadId, turnId), type: "content.delta", streamKind: "assistant_text", delta: text });
+                            if (!worker.current.sawStreamDelta) {
+                                emit({ ...base(threadId, worker.current.turnId), type: "content.delta", streamKind: "assistant_text", delta: text });
                             }
-                            sawStreamDelta = false;
-                            emit({ ...base(threadId, turnId), type: "item.completed", itemType: "assistant_text", text });
+                            worker.current.sawStreamDelta = false;
+                            emit({ ...base(threadId, worker.current.turnId), type: "item.completed", itemType: "assistant_text", text });
                         }
                         for (const b of Array.isArray(msg.content) ? msg.content : []) {
                             if (b.type === "tool_use") {
-                                emit({ ...base(threadId, turnId), type: "item.started", itemType: "tool", itemId: b.id, title: b.name });
+                                emit({ ...base(threadId, worker.current.turnId), type: "item.started", itemType: "tool", itemId: b.id, title: b.name });
                             }
                         }
                         if (msg.usage) {
                             emit({
-                                ...base(threadId, turnId),
+                                ...base(threadId, worker.current.turnId),
                                 type: "thread.token-usage.updated",
                                 input: (msg.usage.input_tokens || 0) + (msg.usage.cache_read_input_tokens || 0),
                                 output: msg.usage.output_tokens || 0,
@@ -425,7 +411,7 @@ export const ClaudeDriver = {
                     case "user":
                         for (const b of Array.isArray(o.message?.content) ? o.message.content : []) {
                             if (b.type === "tool_result") {
-                                emit({ ...base(threadId, turnId), type: "item.completed", itemType: "tool", itemId: b.tool_use_id, ok: !b.is_error });
+                                emit({ ...base(threadId, worker.current.turnId), type: "item.completed", itemType: "tool", itemId: b.tool_use_id, ok: !b.is_error });
                             }
                         }
                         break;
@@ -434,44 +420,57 @@ export const ClaudeDriver = {
                         break;
                 }
             };
-            let buf = "";
-            child.stdout.on("data", (chunk) => {
-                buf += chunk;
-                let nl;
-                while ((nl = buf.indexOf("\n")) !== -1) {
-                    const line = buf.slice(0, nl);
-                    buf = buf.slice(nl + 1);
-                    if (line.trim())
-                        handleLine(line);
-                }
-            });
-            let stderr = "";
-            child.stderr.on("data", (c) => {
-                stderr += c;
-                if (stderr.length > 8192)
-                    stderr = stderr.slice(-8192);
-            });
-            child.on("error", (e) => {
-                emit({ ...base(threadId, turnId), type: "runtime.error", message: `spawn failed: ${e.message}` });
-                settle(false, "spawn_error");
-            });
-            child.on("close", (code) => {
-                if (!settled) {
-                    emit({
-                        ...base(threadId, turnId),
-                        type: "runtime.error",
-                        message: `claude exited ${code} before result${stderr ? `: ${stderr.trim().slice(-300)}` : ""}`,
-                    });
-                    settle(false, "exit_before_result");
-                }
-            });
-            const stop = () => killTree(child); // multibot: process groups are POSIX-only
+            worker.onLine = handleLine;
+            worker.finish = settle;
+            if (spawnedWorker) {
+                worker.child.stdout.on("data", (chunk) => {
+                    worker.buffer += chunk;
+                    let nl;
+                    while ((nl = worker.buffer.indexOf("\n")) !== -1) {
+                        const line = worker.buffer.slice(0, nl);
+                        worker.buffer = worker.buffer.slice(nl + 1);
+                        if (line.trim())
+                            worker.onLine?.(line);
+                    }
+                });
+                worker.child.stderr.on("data", (c) => {
+                    worker.stderr += c;
+                    if (worker.stderr.length > 8192)
+                        worker.stderr = worker.stderr.slice(-8192);
+                });
+                worker.child.once("error", (e) => {
+                    const activeTurn = worker.current;
+                    const errorTurnId = activeTurn?.turnId ?? turnId;
+                    emit({ ...base(threadId, errorTurnId), type: "runtime.error", message: `spawn failed: ${e.message}` });
+                    worker.finish?.(false, "spawn_error");
+                });
+                worker.child.once("close", (code) => {
+                    const activeTurn = worker.current;
+                    if (activeTurn && !activeTurn.settled) {
+                        emit({
+                            ...base(threadId, activeTurn.turnId),
+                            type: "runtime.error", message: `claude exited ${code} before result${worker.stderr ? `: ${worker.stderr.trim().slice(-300)}` : ""}`,
+                        });
+                        worker.finish?.(false, "exit_before_result");
+                    }
+                    worker.broker?.close();
+                    if (workers.get(threadId) === worker)
+                        workers.delete(threadId);
+                });
+            }
+            const stop = () => killTree(worker.child);
             active.set(threadId, { stop, turnId, broker });
             emit({ ...base(threadId, turnId), type: "turn.started" });
-            // prompt over stdin as a stream-json message — never argv (ARG_MAX)
+            // Keep stdin open: Claude Code accepts multiple stream-json user frames.
             const promptMsg = { type: "user", message: { role: "user", content: turn.text } };
-            child.stdin.write(JSON.stringify(promptMsg) + "\n");
-            child.stdin.end();
+            try {
+                worker.child.stdin.write(JSON.stringify(promptMsg) + "\n");
+            }
+            catch (error) {
+                emit({ ...base(threadId, turnId), type: "runtime.error", message: `claude input failed: ${error instanceof Error ? error.message : String(error)}` });
+                settle(false, "stdin_error");
+                killTree(worker.child);
+            }
             appendNative(threadId, { dir: "out", source: "claude.sdk.message", msg: promptMsg });
             return { turnId };
         };
@@ -510,10 +509,13 @@ export const ClaudeDriver = {
                         throw new Error("no such pending request (it may have timed out)");
                     }
                 },
-                hasSession: (threadId) => active.has(threadId),
+                hasSession: (threadId) => workers.has(threadId),
                 stopAll: async () => {
-                    for (const { stop } of active.values())
-                        stop();
+                    for (const worker of workers.values()) {
+                        worker.broker?.close();
+                        killTree(worker.child);
+                    }
+                    workers.clear();
                 },
                 onEvent: (listener) => {
                     listeners.add(listener);
@@ -530,8 +532,11 @@ export const ClaudeDriver = {
                 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim())));
             }),
             dispose: async () => {
-                for (const { stop } of active.values())
-                    stop();
+                for (const worker of workers.values()) {
+                    worker.broker?.close();
+                    killTree(worker.child);
+                }
+                workers.clear();
                 listeners.clear();
             },
         };
