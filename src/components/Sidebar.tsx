@@ -59,6 +59,12 @@ interface MenuState {
   y: number;
 }
 
+interface GroupMenuState {
+  group: EngineGroup;
+  x: number;
+  y: number;
+}
+
 function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
   const { state, dispatch } = useStore();
   const bot = state.bots.find((b) => b.id === menu.botId);
@@ -211,16 +217,73 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
   );
 }
 
+function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: () => void }) {
+  const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-group-menu]")) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onClose);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [onClose]);
+
+  const remove = async () => {
+    if (busy || !window.confirm(polish ? `Usunąć grupę „${menu.group.name || menu.group.id}”?` : `Delete “${menu.group.name || menu.group.id}”?`)) return;
+    setBusy(true);
+    try {
+      const res = await authFetch(`/api/groups/${encodeURIComponent(menu.group.id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (state.groupOpen?.id === menu.group.id) dispatch({ type: "toggleGroup", group: null });
+      dispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
+      onClose();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+      setBusy(false);
+    }
+  };
+
+  const top = Math.min(menu.y, window.innerHeight - 90);
+  const left = Math.min(menu.x, window.innerWidth - 220);
+  return (
+    <div
+      data-group-menu
+      style={{ top, left }}
+      className="fixed z-40 w-[208px] overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
+    >
+      <button
+        onClick={() => void remove()}
+        disabled={busy}
+        className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-danger hover:bg-danger/10 disabled:cursor-default disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+        {polish ? "Usuń grupę" : "Delete group"}
+      </button>
+    </div>
+  );
+}
+
 // multibot: F9-FE — grupy w sidebarze: każdy bot ma trwałą reprezentację
 // `mb-<threadId>` w transporcie grupowym, niezależnie od wybranego drivera.
 function GroupsSection({
   bots,
   createOpen,
   onCreateOpenChange,
+  onMenu,
 }: {
   bots: Bot[];
   createOpen: boolean;
   onCreateOpenChange: (open: boolean) => void;
+  onMenu: (menu: GroupMenuState) => void;
 }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
@@ -288,6 +351,10 @@ function GroupsSection({
         <button
           key={g.id}
           onClick={() => dispatch({ type: "toggleGroup", group: g })}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onMenu({ group: g, x: e.clientX, y: e.clientY });
+          }}
           className={cn(
             "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left",
             state.groupOpen?.id === g.id ? "bg-raised" : "hover:bg-raised/50",
@@ -361,6 +428,7 @@ export function Sidebar() {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
 
@@ -483,6 +551,7 @@ export function Sidebar() {
             bots={groupBots}
             createOpen={groupCreateOpen}
             onCreateOpenChange={setGroupCreateOpen}
+            onMenu={setGroupMenu}
           />
         )}
         <div className="flex flex-col gap-0.5">
@@ -533,6 +602,7 @@ export function Sidebar() {
       </div>
 
       {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
     </aside>
   );
 }

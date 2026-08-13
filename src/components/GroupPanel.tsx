@@ -1,5 +1,5 @@
-// multibot: F9-FE — pokój grupowy silnika slafy w prawym slocie (400px, jak
-// Routines/Memory). UI gada wyłącznie z przelotką harnessu
+// multibot: F9-FE — pokój grupowy jako pełny panel rozmowy, taki sam slot jak
+// zwykły agent. UI gada wyłącznie z przelotką harnessu
 // (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>` silnika):
 //   POST /api/engine/groups/<gid>/chat {message} → {turns: [{bot_id, reply}],
 //     owner} (engine/server/app.py + groups.py; tury sekwencyjne, render po
@@ -18,8 +18,11 @@ import { useEffect, useState } from "react";
 import { Loader2, Send, Trash2, Users, X } from "lucide-react";
 import { useStore, formatTime, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { MausAvatar } from "./Avatar";
+import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`.
@@ -51,6 +54,7 @@ const transcripts = new Map<string, Entry[]>();
 
 export function GroupPanel({ group }: { group: EngineGroup }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [entries, setEntries] = useState<Entry[]>(() => group.messages ?? transcripts.get(group.id) ?? []);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -75,6 +79,12 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
     const threadId = engineBotId.startsWith("mb-") ? engineBotId.slice(3) : engineBotId;
     return state.bots.find((b) => b.threadId === threadId)?.name ?? engineBotId;
   };
+  const members = group.bot_ids
+    .map((engineBotId) => {
+      const threadId = engineBotId.startsWith("mb-") ? engineBotId.slice(3) : engineBotId;
+      return state.bots.find((b) => b.threadId === threadId || b.id === engineBotId);
+    })
+    .filter((bot): bot is (typeof state.bots)[number] => Boolean(bot));
 
   const push = (added: Entry[]) =>
     setEntries((cur) => {
@@ -118,10 +128,27 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
 
   return (
     <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
-      {/* Header — wzorzec RoutinesPanel */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="w-[26px]" />
-        <span className="truncate text-[15px] font-semibold text-ink">{group.name || "Group"}</span>
+      {/* Header — ten sam rytm co zwykły panel agenta */}
+      <div className="flex items-center justify-between px-5 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {members.length > 0 ? (
+            <div className="flex -space-x-2 shrink-0">
+              {members.slice(0, 3).map((bot) => (
+                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={28} animated={false} />
+              ))}
+            </div>
+          ) : (
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
+              <Users size={16} />
+            </span>
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-semibold text-ink">{group.name || (polish ? "Grupa" : "Group")}</div>
+            <div className="truncate text-[11px] text-ink-secondary">
+              {members.length} {polish ? "botów" : "bots"} · {group.bot_ids.map(nameOf).join(" · ")}
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => void remove()}
@@ -139,11 +166,6 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
             <X size={18} />
           </button>
         </div>
-      </div>
-
-      {/* Skład pokoju — pierwszy bot to owner (engine groups.py: fallback rundy) */}
-      <div className="px-5 pb-2 text-[12px] text-ink-secondary">
-        {group.bot_ids.map(nameOf).join(" · ")}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-3">
