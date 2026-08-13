@@ -23,7 +23,11 @@ export function windowsServerPlan(env = process.env, packagedExe) {
   const runner = join(installDir, "start-server.ps1");
   const entry = join(ROOT, "dist-server", "index.js");
   const staticDir = join(ROOT, "dist");
-  const installedApp = packagedExe || join(localAppData, "Programs", "OpenMausBot", "OpenMausBot.exe");
+  const appCandidates = [
+    join(localAppData, "Programs", "MultiBot", "MultiBot.exe"),
+    join(localAppData, "Programs", "OpenMausBot", "OpenMausBot.exe"), // legacy install
+  ];
+  const installedApp = packagedExe || appCandidates.find((candidate) => existsSync(candidate)) || appCandidates[0];
   const packagedAction = `"${installedApp}" --server-only`;
   const sourceAction = `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${runner}"`;
   return {

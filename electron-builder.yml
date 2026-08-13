@@ -1,6 +1,7 @@
 appId: com.openmausbot.app
-productName: OpenMausBot
-artifactName: OpenMausBot-${version}-${arch}.${ext}
+# Keep legacy appId so existing installs and macOS permissions upgrade in place.
+productName: MultiBot
+artifactName: MultiBot-${version}-${arch}.${ext}
 
 # In-app auto-update reads latest-mac.yml + the .zip from this PUBLIC releases
 # repo (separate from the source repo). Public → no token on users' machines.
@@ -69,15 +70,15 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: OpenMausBot uses the microphone for voice dictation into the composer.
-    NSSpeechRecognitionUsageDescription: OpenMausBot transcribes your voice on-device to type messages for you.
+    NSMicrophoneUsageDescription: MultiBot uses the microphone for voice dictation into the composer.
+    NSSpeechRecognitionUsageDescription: MultiBot transcribes your voice on-device to type messages for you.
   # Notarization runs manually after the build (notarytool + staple),
   # mirroring the BlueyLite ship_release.sh flow.
   notarize: false
 
 dmg:
   sign: true
-  artifactName: OpenMausBot-${version}.dmg
+  artifactName: MultiBot-${version}.dmg
 
 # multibot: Windows. Bez podpisu (brak certyfikatu) — instalator pokaże
 # SmartScreen. icon.ico wygenerowana z build/icon-1024.png.
@@ -92,4 +93,4 @@ nsis:
   perMachine: false # instalacja per-user: bez UAC, apka pisze do %LOCALAPPDATA%
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  artifactName: OpenMausBot-${version}-${arch}-setup.${ext}
+  artifactName: MultiBot-${version}-${arch}-setup.${ext}

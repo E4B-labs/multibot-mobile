@@ -1,248 +1,178 @@
-> ⚠️ **No affiliation with any cryptocurrency.** OpenMausBot has no token. Any coin using the OpenMausBot, Maus, or SupaMaus name is not created, endorsed, or affiliated with this project or its maintainer. I have received no tokens, payment, or allocation from anyone, and I will not be endorsing any token.
+# MultiBot
 
-<div align="center">
+**One private workspace for a fleet of AI bots.**
 
-# OpenMausBot
+MultiBot runs on your device or VPS. Give every bot its own name, model,
+memory, routines, browser computer, skills, and connected tools. Use the same
+workspace from desktop, phone, or any browser through the authenticated PWA.
 
-**Your own team of AI bots, in a chat app.**
-
-<sub>An open-source version of **Grok Bot** — bring-your-own-agent, local-first, on the models you already have.</sub>
-
-Every bot in the sidebar is a real agent — Claude or Codex running locally under the hood — with its own
-personality, its own model, its own cloud computer, and its own connected apps.
-Talk to them like contacts. Watch them work. Approve what matters.
+> MultiBot is an independent MIT-licensed fork. The historical OpenMausBot
+> name remains only in migration paths and internal data directories so existing
+> installations do not lose profiles or transcripts.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Electron](https://img.shields.io/badge/Electron-macOS-2B2E3A?logo=electron&logoColor=9FEAF9)
-![Agents](https://img.shields.io/badge/agents-Claude%20·%20Codex-d97757)
-![PRs](https://img.shields.io/badge/PRs-welcome-38d591)
+![Node](https://img.shields.io/badge/Node-24+-339933?logo=node.js&logoColor=white)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Termux-1084fe)
+![License](https://img.shields.io/badge/license-MIT-38d591)
 
-<br>
+## What you get
 
-<a href="#quick-start">
-  <img src="https://img.shields.io/badge/Quick%20start-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-1084fe?style=for-the-badge&labelColor=070707" alt="Install Multibot" height="40">
-</a>
+| Capability | MultiBot behavior |
+|---|---|
+| Bot fleet | Named bots in one roster; pin, hide, duplicate, rename, and delete them like chats |
+| Provider choice | Claude Code, Codex, Grok, Gemini, Kimi Code, Qwen Code, and custom OpenAI-compatible endpoints |
+| Custom models | Enter key, base URL, and model id once; the model appears in the top picker |
+| Agent work | Streaming replies, tools, approvals, questions, files, screenshots, and interruptions |
+| Memory | Engine-backed facts, graph, markdown view, and retrieval per bot |
+| Routines | Cron/manual runs for every selected driver; engine routines also support webhooks |
+| Skills | Reusable skills, enable/disable, editing, deletion, and teach-a-task for engine bots |
+| Bot groups | `+` → `New group`; select bots and open one shared room |
+| Computers | One persistent browser per bot plus one shared browser profile, with live takeover |
+| Tools | MCP servers, Composio connectors, plugins, and per-bot permissions |
+| Remote use | Token-protected HTTP/WS, one-origin PWA, mobile layout, and Tailscale HTTPS path |
+| Always-on server | Windows startup task, Linux systemd, Docker, or Android Termux service |
 
-<sub>PowerShell · Terminal · Docker · Termux</sub>
-
-<br>
-<br>
-
-<img src="docs/screenshots/hero.png" alt="OpenMausBot — a Telegram-style chat app where every chat is a real AI agent" width="900">
-
-</div>
-
----
-
-## Why
-
-One assistant in one box is the wrong shape for agents. OpenMausBot is an open-source take on **Grok Bot** —
-it keeps the idea (AI as a *messaging app*: a roster of bots you chat with, each with its own personality,
-memory of its thread, model, computer, and apps) and rebuilds it open, local-first, and on the agents you
-already have:
-
-- **Bring your own agents.** Bots run on the `claude`, `codex`, and `grok` CLIs installed on your Mac — your
-  existing logins and subscriptions, no new accounts, no proxy in the middle.
-- **Local first.** One small harness server on `127.0.0.1` owns every agent process. Transcripts, keys, and
-  events live in `~/.openmausbot`, not a cloud.
-- **Agents with hands.** Each bot can get a real computer — a cloud Linux desktop it drives while you watch
-  live, or your own Mac — plus 500+ apps through Composio Connect.
-
-## Features
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🧠 Pick a brain per bot
-
-A model picker with a provider rail — Claude and Codex models side by side, defaults marked, unavailable
-providers dimmed with the reason. Switch a bot's model mid-conversation.
-
-<img src="docs/screenshots/model-picker.png" alt="Model picker with provider rail" width="100%">
-
-</td>
-<td width="50%" valign="top">
-
-### 🖥️ Every bot gets a computer
-
-Open the Computer panel and the bot's cloud desktop spins up on its own — live screen preview while it
-works, "Open desktop" to take over in your browser, or point the bot at *this Mac* instead.
-
-<img src="docs/screenshots/computer-panel.png" alt="Computer panel with live screen preview" width="100%">
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🙋 Bots ask before they act
-
-Shell commands, file edits, and questions surface as inline cards — Allow / Deny / answer in chat. A
-permission broker turns every risky action into a decision you make, for cloud and local computers alike.
-
-<img src="docs/screenshots/approval-card.png" alt="Approval and question cards in chat" width="100%">
-
-</td>
-<td width="50%" valign="top">
-
-### 🔌 Connected apps
-
-A one-click marketplace over Composio Connect: Gmail, Slack, GitHub, Notion, Linear and hundreds more.
-OAuth once, and every bot can use them as tools.
-
-<img src="docs/screenshots/marketplace.png" alt="Connected apps marketplace" width="100%">
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🗂 Manage bots like chats
-
-Right-click any bot: pin, mark unread, edit profile, duplicate, copy conversation ID, hide, delete. It's a
-messaging app — your agents behave like contacts.
-
-<img src="docs/screenshots/context-menu.png" alt="Bot context menu" width="100%">
-
-</td>
-<td width="50%" valign="top">
-
-### 🔑 Keys once, everything lights up
-
-Paste credentials in App Settings — they persist locally and the provider fleet hot-reloads instantly.
-Secrets are write-only: the UI only ever sees "configured" flags.
-
-<img src="docs/screenshots/app-settings.png" alt="App-level settings with API keys" width="100%">
-
-</td>
-</tr>
-</table>
-
-**Also in the box:** streaming replies with tool-run activity chips · native macOS dictation from the
-composer mic (on-device Apple speech recognition — desktop app) · SupaMaus cursor mascots with role-aware
-expressions · screenshots of the bot's work folded into the transcript.
-
-## How it works
-
-Two processes. The app holds no transports of its own — it sends typed commands over HTTP and folds one SSE
-event stream into state. The harness server owns every agent process and normalizes each provider's native
-protocol into one canonical runtime event stream (logged per-thread as NDJSON).
-
-```mermaid
-flowchart LR
-    subgraph app ["App — React + Tailwind (5199)"]
-        UI[Chat UI · model picker · computer panel]
-    end
-    subgraph server ["Harness server (127.0.0.1:8799)"]
-        REG[Driver registry] --> BUS[Event bus → SSE]
-        BROKER[Permission broker]
-    end
-    subgraph agents ["Agents on your Mac"]
-        CL[claude CLI]
-        CX[codex CLI]
-    end
-    UI -- "HTTP commands" --> server
-    BUS -- "one SSE stream" --> UI
-    REG --> CL & CX
-    CL & CX -- "MCP" --> BROKER
-    server -- "Box API" --> BOX[("Cloud computer<br/>box.ascii.dev")]
-    server -- "Composio Connect" --> APPS[("Gmail · Slack · GitHub · …")]
-```
-
-| Layer | Where | What it does |
-|---|---|---|
-| Drivers | `server/drivers/` | One per provider: Claude, Codex, and Grok Build over their local CLIs (stream-JSON / JSON-RPC / ACP), plus a cloud-computer agent. Unknown drivers degrade to "unavailable", never crash the fleet. |
-| Harness | `server/harness/` | Registry (configs → live instances) and the fan-in event bus every client folds. |
-| API | `server/index.ts` | Bots, turns, approvals, model catalog, computer lifecycle, connectors, config — HTTP + SSE. |
-| App | `src/` | The chat shell. Server-backed store, one reducer, zero client-side transports. |
-| Desktop | `electron/` | macOS shell: dictation helper (SFSpeechRecognizer), local screen capture, CUA bridge. |
+Full inventory and current limits: [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Quick start
 
-This repository is private. Authenticate GitHub for `git` once before using
-these commands.
+The repository is private. Authenticate GitHub once before cloning. Every server
+generates an access token on first start, prints it once, and stores it locally.
+You do not create a token manually.
 
-### Windows — PowerShell
+### Windows PowerShell
 
-Requires Git and Node.js 24+. Installs a per-user background server, starts it
-on login, then opens the PWA.
+Requires Git, Node.js 24+, and pnpm. The packaged path installs a per-user
+server task; source mode is better for development.
 
 ```powershell
-git clone https://github.com/clewkord/multibot.git; Set-Location multibot; corepack enable; pnpm install:server:windows; Start-Process http://127.0.0.1:8799
+git clone https://github.com/clewkord/multibot.git
+Set-Location multibot
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev:server    # harness → http://127.0.0.1:8799
+pnpm dev           # UI → http://127.0.0.1:5199
 ```
 
-### macOS — Terminal
+For packaged always-on server:
 
-Requires Git, Node.js 24+, and Xcode Command Line Tools. Builds a local `.dmg`;
-open it and drag Multibot to Applications.
+```powershell
+pnpm install:server:windows
+Start-Process http://127.0.0.1:8799
+```
+
+### macOS
 
 ```sh
-git clone https://github.com/clewkord/multibot.git && cd multibot && corepack enable && pnpm install --frozen-lockfile && pnpm package && open release/*.dmg
+git clone https://github.com/clewkord/multibot.git
+cd multibot
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev:server & pnpm dev
 ```
 
-### Linux / VPS — Docker
+Build desktop package with `pnpm package`. Native dictation requires Electron
+and macOS microphone/speech permissions.
 
-Requires Git and Docker with Compose. Runs the authenticated PWA and engine as
-one container; only port `8799` is published.
+### Linux / VPS
+
+Docker path:
 
 ```sh
-git clone https://github.com/clewkord/multibot.git && cd multibot && bash scripts/install-linux.sh --mode docker
+git clone https://github.com/clewkord/multibot.git
+cd multibot
+bash scripts/install-linux.sh --mode docker
 ```
 
-Without Docker, use `bash scripts/install-linux.sh` on a systemd host after
-installing Node.js 24+, pnpm, Python 3, Git, and systemd.
-
-### Android — Termux
-
-Install Termux and Termux:Boot from F-Droid, authenticate GitHub, then run:
+No Docker, systemd user service:
 
 ```sh
-pkg install -y git openssh && git clone https://github.com/clewkord/multibot.git && cd multibot && bash scripts/install-termux.sh
+bash scripts/install-linux.sh
 ```
 
-Termux installs its own dependencies and registers a persistent service. Android
-does not support the Playwright browser computer; chat, memory, routines, and
-the PWA remain available.
+### Android / Termux
 
-Every server generates its access token automatically on first start and prints
-it once. You do not create it: paste it into the first login screen, then the
-browser remembers it. Keep it private. For remote HTTPS:
+Install Termux and Termux:Boot, then run:
+
+```sh
+pkg install -y git openssh
+git clone https://github.com/clewkord/multibot.git
+cd multibot
+bash scripts/install-termux.sh
+```
+
+Chat, memory, routines, skills, and PWA work on Termux. The Playwright browser
+computer is unavailable on Android.
+
+### Remote HTTPS
+
+Keep harness and engine on loopback. For phone access from another device, use
+Tailscale:
 
 ```sh
 tailscale serve --bg --yes http://127.0.0.1:8799
 ```
 
-Detailed setup, development commands, dry runs, and recovery steps:
-[`MULTIBOT.md`](MULTIBOT.md).
+Plain `http://192.168.x.x` can serve chat, but browser security rules disable
+service-worker installation and microphone access. HTTPS or `localhost` gives
+the full PWA path.
 
-Optional, pasted once in **App Settings** (gear in the sidebar footer):
-
-| Key | Unlocks |
-|---|---|
-| Composio Connect key (`ck_…`) | The connected-apps marketplace |
-| Composio API key (`ak_…`) | The full 500+ app catalog with official logos |
-| Box token ([box.ascii.dev](https://box.ascii.dev)) | Cloud computers for your bots |
+## Development
 
 ```sh
-pnpm typecheck     # app + server
-pnpm build         # typecheck + production build
+pnpm install --frozen-lockfile
+pnpm dev:engine    # Python engine → 127.0.0.1:8700
+pnpm dev:server    # Node harness → 127.0.0.1:8799
+pnpm dev           # React/Vite UI → 127.0.0.1:5199
 ```
 
-## Status
+The engine uses `engine/.venv` in development. See [`MULTIBOT.md`](MULTIBOT.md)
+for Python/Hermes setup, environment variables, data paths, and installers.
 
-The loop works end to end: message → agent → streamed reply → tools → approvals → computer use. Multibot
-also includes custom models, memory, routines, authenticated remote access, PWA installation, and
-Windows/Linux/Termux server installers. See [`MULTIBOT.md`](MULTIBOT.md) for current platform limits.
+## Security model
 
-Contributions welcome — the driver SPI in [`server/contracts.ts`](server/contracts.ts) is deliberately
-small; adding a provider is one file in [`server/drivers/`](server/drivers/) plus a one-line registration.
+- Engine always binds to loopback; only harness is network boundary.
+- HTTP and both WebSocket upgrade paths require bearer token.
+- API keys are write-only and stay in local config; never API responses, logs,
+  commits, or issue reports.
+- Static login assets and health are public; protected API requests return `401`.
+- First remote deployment should use HTTPS/Tailscale, not unauthenticated LAN.
+
+## Working with teammate
+
+Use short-lived branches and pull requests. Keep `main` releasable:
+
+```sh
+git switch main
+git pull --ff-only origin main
+git switch -c feat/<name>-<topic>
+pnpm typecheck && pnpm test && pnpm build
+git push -u origin HEAD
+gh pr create --base main --fill
+```
+
+Detailed ownership, conflict, secrets, and review rules live in
+[`docs/TEAM-WORKFLOW.md`](docs/TEAM-WORKFLOW.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Compare alternatives
+
+See [`docs/COMPARISON.md`](docs/COMPARISON.md) for sourced capability table
+against Hermes Agent, OpenClaw, and Grok (xAI). Short version: MultiBot is the
+workspace layer; Hermes is embedded agent runtime; OpenClaw is messaging
+gateway; Grok is hosted assistant.
+
+## Project status
+
+End-to-end path works: bot → streamed agent turn → tools → approval →
+browser/computer → transcript. Current release includes custom models,
+authenticated remote access, PWA install, groups, routines, memory, skills,
+onboarding, and one-command server installers.
+
+Known limits stay explicit: group rooms currently use shared engine transport
+for CLI shadows; engine-only Memory/Skills are not fabricated for CLI bots;
+native store apps and arbitrary MCP OAuth are separate work.
 
 ## License
 
-[MIT](LICENSE) © 2026 Milind Soni and contributors.
-
-OpenMausBot is an independent, open-source project inspired by Grok Bot. It is
-not affiliated with, endorsed by, or associated with xAI; "Grok" is a trademark
-of its respective owner.
+[MIT](LICENSE) © 2026 MultiBot contributors.

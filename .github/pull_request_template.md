@@ -1,24 +1,21 @@
-<!--
-Please read CONTRIBUTING.md first — it's short. One concern per PR;
-big changes should have an issue agreeing on the approach before code.
--->
-
 ## What changed
 
-## Why
+<!-- Describe user-visible behavior and the reason for the change. -->
 
-## How it was verified
+## Checks
 
-<!-- commands run, platforms tested on, what you clicked through -->
+- [ ] `pnpm typecheck`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+- [ ] `node scripts/selfhost-check.mjs` (installer/runtime changes)
+- [ ] Engine pytest (engine changes)
 
-## Screenshots (UI changes)
+## Safety
 
-<!-- before/after images; video for anything animated -->
+- [ ] No secrets, `.env`, generated user data, or `dist-server/` churn
+- [ ] HTTP/WS authentication and loopback engine boundary unchanged or tested
+- [ ] Existing `~/.openmausbot` migration paths preserved
 
-## Checklist
+## Review notes
 
-- [ ] `pnpm typecheck` and `pnpm test` pass locally
-- [ ] Server behavior changes come with tests (see CONTRIBUTING.md → Tests)
-- [ ] No `dist-server/` edits (it's build output)
-- [ ] macOS-only code is platform-gated; no `shell: true` / cmd.exe string-building
-- [ ] No secrets in logs, responses, events, or argv
+<!-- Mention migration, platform limits, screenshots, or follow-up work. -->

@@ -1,16 +1,20 @@
-# Multibot
+# MultiBot — developer handbook
 
-Fork [OpenMausBot](https://github.com/milind-soni/OpenMausBot) (MIT) z silnikiem
-[slafy-bot](engine/) — Python FastAPI nad [Hermes Agentem](https://github.com/NousResearch/hermes-agent).
-Frontend i harness = OpenMausBot; silnik dokłada: BYOK (OpenRouter/Anthropic/
-OpenAI/custom, lokalne modele, bez subskrypcji vendora), komputery Playwright
-per bot z take-over, rutyny (cron + webhook, działają przy zamkniętej apce),
-multi-agent, pamięć + RAG + graf, skille /slash + teach-a-task, MCP, voice,
-import profili Hermesa, Termux.
+MultiBot is a private fork of [OpenMausBot](https://github.com/milind-soni/OpenMausBot)
+(MIT) with the embedded [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+runtime. Product-facing name is **MultiBot**. `openmausbot` and `.openmausbot`
+remain internal compatibility identifiers so existing installs migrate safely.
+
+The product combines: BYOK and local/custom models, CLI providers, per-bot and
+shared browser computers, routines, groups, memory, skills, MCP/Composio tools,
+voice, profile import, PWA remote access, and Windows/Linux/Termux installers.
+See [`docs/FEATURES.md`](docs/FEATURES.md) for the complete capability map and
+[`docs/COMPARISON.md`](docs/COMPARISON.md) for the sourced comparison table.
 
 Wersja silnika: Hermes Agent `17688f994e6c4c681f8dd3d160b210ffe49aa273`
 (pin używany przez provisioning i instalatory).
-Plan scalenia: `G:\ClaudeCode\plans\optimized-brewing-hamming.md` (lokalny).
+Plan scalenia is historical local context only; repository docs are the source
+of truth for current behavior.
 
 ## Dev (Windows / macOS / Linux)
 
@@ -44,7 +48,7 @@ nie spawnuje. Adres spoza loopback jest odrzucany celowo.
 ## Instalacja (Windows)
 
 ```sh
-pnpm package:win     # → release/OpenMausBot-<wersja>-x64-setup.exe (NSIS, x64)
+pnpm package:win     # → release/MultiBot-<wersja>-x64-setup.exe (NSIS, x64)
 ```
 
 Instalator per-user (bez UAC, bez podpisu — SmartScreen pokaże ostrzeżenie).
@@ -141,4 +145,4 @@ cd engine && .venv/Scripts/python.exe -m pytest -q     # pełna suita silnika
 
 `git fetch upstream && git merge upstream/main`. Zmiany w plikach upstreamu
 wyłącznie małymi addytywnymi blokami znaczonymi `// multibot:`; nowe pliki bez
-kolizji. Silnik wyłączony = zachowanie stock OpenMausBot.
+kolizji. Silnik wyłączony = zachowanie podstawowego harnessa MultiBot.

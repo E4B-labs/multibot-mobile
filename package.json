@@ -1,5 +1,6 @@
 {
-  "name": "openmausbot",
+  "name": "multibot",
+  "description": "Private self-hosted workspace for a fleet of AI bots",
   "private": true,
   "version": "0.1.13",
   "type": "module",
