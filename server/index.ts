@@ -29,6 +29,8 @@ import { deviceInfo } from "./device.ts";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 // multibot: silnik slafy — proxy `/api/engine/*`, pipe WS i uwaga botów (D7)
 import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.ts";
+import { ensureEngine } from "./engine/supervisor.ts";
+import { findExistingEngineProfile, importExistingEngineProfile } from "./engine/bootstrap.ts";
 import { watchEngineAttention } from "./engine/attention.ts";
 import { configureEngineComputer, engineComputer } from "./engine/computer-mcp.ts";
 import { mountEngineProxy } from "./engine/proxy.ts";
@@ -155,12 +157,13 @@ function askBotAndWait(targetBotId: string, message: string, depth: number): Pro
   });
 }
 
-// default selection for new bots: first available instance, claude preferred
+// default selection for new bots: embedded engine first, then CLI fallback.
 async function defaultSelection(described?: Awaited<ReturnType<ProviderRegistry["describe"]>>) {
   const fleet = described ?? (await registry.describe());
   const enabled = fleet.filter((d) => d.enabled !== false);
   const available = enabled.filter((d) => d.snapshot.state === "available");
   const pick =
+    available.find((d) => d.driverKind === "slafy") ??
     available.find((d) => d.driverKind === "claudeAgent") ??
     available[0] ??
     enabled.find((d) => d.driverKind === "claudeAgent") ??
@@ -175,7 +178,29 @@ bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
 // Repair before the first API response, preferring a named custom model.
 store.migrateOrphanedSelections(bootFleet);
+const existingEngineProfile = findExistingEngineProfile(ROOT);
+const hadHarnessBots = store.bots.length > 0;
 store.seedIfEmpty();
+
+// First launch with an existing engine profile: preserve its SOUL, memory,
+// routines and skills by copying it to deterministic thread identity before
+// any UI turn can create a blank profile. Existing harness bots are untouched.
+if (existingEngineProfile && !hadHarnessBots && store.bots.length === 1) {
+  const first = store.bots[0];
+  store.patchBot(first.id, {
+    name: existingEngineProfile.name,
+    ...(existingEngineProfile.title !== undefined ? { title: existingEngineProfile.title } : {}),
+    ...(existingEngineProfile.description !== undefined ? { description: existingEngineProfile.description } : {}),
+    modelSelection: { instanceId: "local", model: bootFleet.find((d) => d.instanceId === "local")?.models.default || "hermes-agent" },
+  });
+  try {
+    const baseUrl = await ensureEngine();
+    await importExistingEngineProfile(baseUrl, existingEngineProfile, engineBotIdFor(first.threadId));
+    console.log(`[multibot] imported existing engine profile "${existingEngineProfile.name}" into first bot`);
+  } catch (error) {
+    console.warn(`[multibot] existing profile import deferred: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 // ── SSE fan-out to clients ─────────────────────────────────────────────
 const sseClients = new Set<ServerResponse>();
@@ -712,6 +737,35 @@ const server = createServer(async (req, res) => {
         sseClients.delete(res);
       });
       return;
+    }
+
+    // multibot: import profile and create matching harness bot in one request.
+    // The engine identity is deterministic, so Memory/Routines/Skills resolve
+    // to the copied profile immediately after import.
+    if (method === "POST" && path === "/api/profiles/import") {
+      const body = await readBody(req);
+      const source = String(body.source ?? "").trim();
+      const name = String(body.name ?? "").trim();
+      if (!source) return json(res, 400, { error: "profile source required" });
+      const bot = store.createBot();
+      store.patchBot(bot.id, {
+        ...(name ? { name } : {}),
+        modelSelection: { instanceId: "local", model: "hermes-agent" },
+      });
+      try {
+        const baseUrl = await ensureEngine();
+        await importExistingEngineProfile(
+          baseUrl,
+          { source, id: name || "imported", name: name || "Imported profile" },
+          engineBotIdFor(bot.threadId),
+        );
+      } catch (error) {
+        store.deleteBot(bot.id);
+        return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
+      const created = { ...store.bot(bot.id)!, messages: store.messagesFor(bot.threadId) };
+      broadcast({ kind: "bot", bot: created });
+      return json(res, 201, { bot: created });
     }
 
     // ── bots ──

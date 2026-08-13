@@ -26,6 +26,11 @@ const ROOT = join(HERE, "..", "..");
 const ENGINE_DIR = join(ROOT, "engine");
 const DEFAULT_URL = "http://127.0.0.1:8700";
 
+export function defaultEngineDataDir(): string {
+  const legacy = join(ROOT, "..", "slafy-bot-data");
+  return existsSync(join(legacy, "profiles")) ? legacy : join(ENGINE_DIR, "..", "engine-data");
+}
+
 export class EngineUnavailableError extends Error {}
 
 /** Python z venvu silnika — ten sam wzór resolvingu co scripts/dev-engine.mjs. */
@@ -111,7 +116,7 @@ function spawnEngine(baseUrl: string) {
   const port = new URL(baseUrl).port || "8700";
   // Domyślne katalogi danych jak w scripts/dev-engine.mjs — silnik trzyma profile
   // botów obok repo, nie w nim.
-  const dataDir = process.env.SLAFY_DATA_DIR ?? join(ENGINE_DIR, "..", "engine-data");
+  const dataDir = process.env.SLAFY_DATA_DIR ?? defaultEngineDataDir();
   const child = spawn(python, engineServerArgs(port), {
     cwd: ENGINE_DIR,
     env: { ...process.env, SLAFY_DATA_DIR: dataDir, HERMES_HOME: process.env.HERMES_HOME ?? dataDir },

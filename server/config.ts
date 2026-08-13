@@ -101,6 +101,9 @@ export function saveConfig(patch: Partial<AppConfig>): void {
 // multibot (G1): stable built-in ids double as reserved custom-model ids and
 // the allow-list for CLI toggles. `computer` is not a command-line tool.
 export const DEFAULT_INSTANCE_CONFIGS = {
+  // multibot: embedded engine is first-class runtime, not a visible vendor.
+  // `driver: "slafy"` remains internal; UI label stays neutral.
+  local: { driver: "slafy", displayName: "Local model" },
   grok: { driver: "grokAgent" },
   gemini: { driver: "geminiAgent" },
   // multibot (G3): official ACP stdio CLIs.

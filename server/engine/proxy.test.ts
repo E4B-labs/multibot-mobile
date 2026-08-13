@@ -183,7 +183,7 @@ describe("engine proxy (/api/engine/*)", () => {
     const saved = await api("POST", "/api/engine/provider/mb-proxy", {
       provider: "openrouter",
       model: "x/y",
-      api_key: "sk-not-a-real-key",
+      api_key: "test-not-a-real-key",
     });
     expect(saved.status).toBe(200);
     expect(saved.body).toMatchObject({ provider: "openrouter", model: "x/y", has_key: true });
@@ -191,7 +191,7 @@ describe("engine proxy (/api/engine/*)", () => {
     const read = await api("GET", "/api/engine/provider/mb-proxy");
     expect(read.status).toBe(200);
     expect(read.body).toMatchObject({ provider: "openrouter", has_key: true });
-    expect(JSON.stringify(read.body)).not.toContain("sk-not-a-real-key");
+    expect(JSON.stringify(read.body)).not.toContain("test-not-a-real-key");
   });
 
   // F9: pokoje grupowe silnika. Nowego UI ani nowej warstwy w harnessie nie ma —
@@ -379,7 +379,7 @@ describe("duplicate = fresh engine identity (D3)", () => {
       const b = await botById(source.id);
       return b && !b.busy ? b : null;
     }, "the source turn to finish");
-    expect((await botById(source.id))!.resumeCursors).toMatchObject({ slafy: `mb-${source.threadId}` });
+    expect((await botById(source.id))!.resumeCursors).toMatchObject({ local: `mb-${source.threadId}` });
 
     // dokładnie to, co robi `duplicateBot` w src/state/store.tsx — plus wroga
     // próba przeniesienia kursorów: gdyby ktoś dopisał je do whitelisty PATCH-a,
@@ -412,5 +412,36 @@ describe("duplicate = fresh engine identity (D3)", () => {
     // dwa boty silnika, każdy dostał wyłącznie swoją turę
     expect(engine.chats.filter((c) => c.botId === `mb-${patched.threadId}`).map((c) => c.message)).toEqual(["kopia"]);
     expect(engine.chats.filter((c) => c.botId === `mb-${source.threadId}`).map((c) => c.message)).toEqual(["pierwsza"]);
+  });
+});
+
+describe("profile import acceptance", () => {
+  it("imports an existing profile into first-class bot and keeps engine features bound", async () => {
+    const imported = await api("POST", "/api/profiles/import", {
+      source: "D:\\tmp\\existing-slafy-profile",
+      name: "Researcher",
+    });
+    expect(imported.status).toBe(201);
+    expect(imported.body.bot).toMatchObject({
+      name: "Researcher",
+      modelSelection: { instanceId: "local", model: "hermes-agent" },
+    });
+    const threadId = imported.body.bot.threadId;
+    const engineBotId = `mb-${threadId}`;
+    expect(engine.imports).toContainEqual({
+      source: "D:\\tmp\\existing-slafy-profile",
+      botId: engineBotId,
+      name: "Researcher",
+    });
+
+    // Same identity must serve every local feature panel, not only chat.
+    expect((await api("GET", `/api/engine/bots/${engineBotId}/memory/facts`)).status).toBe(200);
+    expect((await api("GET", `/api/engine/bots/${engineBotId}/memory/markdown`)).status).toBe(200);
+    expect((await api("GET", `/api/engine/bots/${engineBotId}/memory/graph`)).status).toBe(200);
+    expect((await api("GET", `/api/engine/bots/${engineBotId}/routines`)).status).toBe(200);
+    expect((await api("GET", "/api/engine/skills")).status).toBe(200);
+
+    expect((await api("POST", `/api/bots/${imported.body.bot.id}/messages`, { text: "pamiętaj mnie" })).status).toBe(202);
+    await waitFor(async () => (engine.chats.some((chat) => chat.botId === engineBotId) ? true : null), "imported bot turn");
   });
 });

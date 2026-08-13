@@ -117,6 +117,7 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
       JSON.stringify({
         auth: { token: TOKEN },
         instances: {
+          local: { driver: "slafy", enabled: false },
           claude: { driver: "claudeAgent", config: { cli: FAKE_CLI, permissionMode: "acceptEdits" } },
           // multibot (G1): configured instances are overlays. Keep only the
           // fake Claude live so default selection stays deterministic.

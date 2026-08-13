@@ -112,6 +112,9 @@ czat i pozostałe funkcje działają. HTTPS z Tailscale:
 
 - Provider picker pokazuje flotę CLI oraz nazwane modele `custom`; klucze modeli
   nigdy nie wracają w odpowiedzi API. Własny model dodaje się w App Settings.
+- Przy pierwszym starcie z istniejącym profilem silnika pusty harness tworzy
+  pierwszy bot automatycznie; profil dostaje neutralną nazwę i stałą tożsamość
+  `mb-<threadId>`, więc Memory, Routines i Skills trafiają do właściwego bota.
 - App Settings ma modele custom, przełączniki `allow` dla CLI, import profilu,
   token dostępu i rotację tokena. Dostęp HTTP/WS wymaga Bearer tokena (poza
   health i statycznym ekranem logowania); silnik pozostaje loopback.

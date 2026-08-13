@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const engine = join(root, "engine");
+const legacyData = join(root, "..", "slafy-bot-data");
 const venvPy =
   process.platform === "win32"
     ? join(engine, ".venv", "Scripts", "python.exe")
@@ -22,7 +23,7 @@ if (!existsSync(venvPy)) {
 }
 
 const env = { ...process.env };
-env.SLAFY_DATA_DIR ??= join(engine, "..", "engine-data");
+env.SLAFY_DATA_DIR ??= existsSync(join(legacyData, "profiles")) ? legacyData : join(engine, "..", "engine-data");
 env.HERMES_HOME ??= env.SLAFY_DATA_DIR;
 
 const child = spawn(venvPy, ["-m", "uvicorn", "server.app:app", "--port", "8700"], {

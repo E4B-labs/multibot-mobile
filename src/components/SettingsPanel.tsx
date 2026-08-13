@@ -1,4 +1,4 @@
-import { Brain, ChevronLeft, MessagesSquare, Wand2, X } from "lucide-react";
+import { Brain, CalendarClock, ChevronLeft, MessagesSquare, Wand2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore, formatTime, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
@@ -203,6 +203,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  const instance = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
+  const isEngineBot = instance?.driverKind === "slafy";
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -326,8 +328,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
 
           {/* multibot: service-only controls remain for bots routed through local
               runtime; model credentials live in App Settings. */}
-          {state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
-            "slafy" && (
+          {isEngineBot && (
             <>
               <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
               <EngineUsage key={`f10-${bot.id}`} bot={bot} />
@@ -365,7 +366,35 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                   Manage Skills
                 </button>
               </div>
+              <div className="rounded-xl bg-card p-4">
+                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
+                  <CalendarClock size={16} className="text-ink-secondary" />
+                  Routines
+                </div>
+                <div className="mt-0.5 text-[13px] text-ink-secondary">
+                  Recurring tasks this bot runs in the background.
+                </div>
+                <button
+                  onClick={() => dispatch({ type: "toggleRoutines", open: true })}
+                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+                >
+                  Manage Routines
+                </button>
+              </div>
             </>
+          )}
+
+          {!isEngineBot && (
+            <div className="rounded-xl bg-card p-4">
+              <div className="text-[15px] font-medium text-ink">Memory, routines and skills</div>
+              <div className="mt-1 text-[13px] text-ink-secondary">
+                {instance?.displayName ?? "This command-line bot"} exposes chat only. Switch this bot
+                to a local model to use Memory, Routines and Skills.
+              </div>
+              <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+                Unavailable for this CLI
+              </div>
+            </div>
           )}
 
           <div className="rounded-xl bg-card p-4">

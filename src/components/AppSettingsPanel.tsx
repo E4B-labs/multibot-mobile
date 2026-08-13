@@ -15,6 +15,9 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+const slug = (value: string) =>
+  value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
+
 // multibot: F10 — import existing profile into local service. UI gada wyłącznie z
 // przelotką harnessu (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>`):
 //   POST /api/engine/import/inspect {source} — podgląd bez kopiowania
@@ -22,13 +25,11 @@ interface BeforeInstallPromptEvent extends Event {
 //     profile ROOT, odpowiedź niesie `profiles: [nazwy]` i wtedy dociągamy
 //     inspect per podprofil (`<root>/profiles/<nazwa>`, mieszane separatory
 //     łyka pathlib), 422 = to nie profil,
-//   POST /api/engine/import {source, bot_id} — kopia profilu jako bot silnika
-//     (201 = bot dict {id, name, ...}); 409 = id zajęte, 422 = złe id
+//   POST /api/profiles/import {source, name} — kopia profilu + odpowiadający bot
+//     harnessu; engine id `mb-<threadId>` jest nadawane automatycznie.
 //     (regex `^[a-z0-9][a-z0-9_-]{0,63}$`, engine/server/bots.py).
-// Import tworzy WYŁĄCZNIE bota silnika — czaty tej apki bindują boty per wątek
-// (`mb-<threadId>`, server/drivers/slafy.ts), więc sukces mówi to wprost i
-// odsyła do "create a new bot with the slafy driver". 502/503 z przelotki =
-// konwencja "Engine offline" (jak EngineAutonomy), reszta błędów = `detail`.
+// Import tworzy bota harnessu i jego profil silnika atomowo. 502/503 z przelotki
+// = konwencja "Engine offline" (jak EngineAutonomy), reszta błędów = `detail`.
 
 /** Mirror of engine `importer.inspect()` (engine/server/importer.py). */
 interface InspectOut {
@@ -61,17 +62,6 @@ async function api(path: string, init?: RequestInit): Promise<any> {
   return body;
 }
 
-/** Bot id z nazwy profilu, dopasowany do regexu silnika. */
-function slug(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^[-_]+/, "")
-      .slice(0, 64) || "imported"
-  );
-}
-
 function summary(p: InspectOut): string {
   const parts = [
     p.skills > 0 && `${p.skills} skill${p.skills === 1 ? "" : "s"}`,
@@ -85,13 +75,13 @@ function summary(p: InspectOut): string {
 }
 
 export function ProfileImport() {
+  const { dispatch } = useStore();
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState<"inspect" | "import" | null>(null);
   // found[0] = źródło; przy ROOT-cie dalej idą podprofile z `profiles/`
   const [found, setFound] = useState<InspectOut[] | null>(null);
   const [isRoot, setIsRoot] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [botId, setBotId] = useState("");
   const [done, setDone] = useState<{ id: string; name: string } | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +94,6 @@ export function ProfileImport() {
 
   const select = (p: InspectOut) => {
     setSelected(p.source);
-    setBotId(slug(p.name));
     setDone(null);
   };
 
@@ -140,15 +129,18 @@ export function ProfileImport() {
   };
 
   const doImport = () => {
-    if (!selected || !botId) return;
+    if (!selected) return;
     setBusy("import");
     setError(null);
     setOffline(false);
-    api("/api/engine/import", {
+    api("/api/profiles/import", {
       method: "POST",
-      body: JSON.stringify({ source: selected, bot_id: botId }),
+      body: JSON.stringify({ source: selected, name: found?.find((p) => p.source === selected)?.name ?? "Imported profile" }),
     })
-      .then((bot: { id: string; name: string }) => setDone(bot))
+      .then(({ bot }: { bot: any }) => {
+        dispatch({ type: "botAdded", bot });
+        setDone(bot);
+      })
       .catch(fail)
       .finally(() => setBusy(null));
   };
@@ -208,17 +200,12 @@ export function ProfileImport() {
 
       {selected && !done && (
         <div className="mt-3 flex items-end gap-2">
-          <label className="block w-full">
-            <div className="mb-1 text-[12px] text-ink-secondary">Bot id in the service</div>
-            <input
-              className={inputClass}
-              value={botId}
-              onChange={(e) => setBotId(e.target.value)}
-            />
-          </label>
+          <div className="flex-1 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+            A new bot and its local profile will be created automatically.
+          </div>
           <button
             onClick={doImport}
-            disabled={!botId || busy !== null}
+            disabled={busy !== null}
             className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
           >
             {busy === "import" ? "Importing…" : "Import"}
@@ -228,10 +215,8 @@ export function ProfileImport() {
 
       {done && (
         <div className="mt-3 text-[13px] text-ink-secondary">
-          Imported as local bot <span className="text-ink">&ldquo;{done.id}&rdquo;</span> — SOUL,
-          memory and chat history copied; its skills are now shared with every local bot. It
-          won&rsquo;t appear as a chat here on its own — create a new bot with this custom model to
-          use it.
+          Imported as local bot <span className="text-ink">&ldquo;{done.name}&rdquo;</span> — SOUL,
+          memory, routines, chat history and skills are connected to this bot.
         </div>
       )}
 

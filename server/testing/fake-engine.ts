@@ -25,6 +25,8 @@ export interface FakeEngine {
   url: string;
   /** id botów utworzonych przez POST /api/bots, w kolejności. */
   createdBots: string[];
+  /** profile imports accepted by POST /api/import, in order. */
+  imports: Array<{ source: string; botId: string; name: string }>;
   /** ciała żądań czatu: `{ botId, message }`. */
   chats: Array<{ botId: string; message: string }>;
   /** ostatnio ustawiony provider (BYOK), bez klucza. */
@@ -81,6 +83,7 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
   const state: FakeEngine = {
     url: "",
     createdBots: [],
+    imports: [],
     chats: [],
     provider: { has_key: false },
     computerModes: {},
@@ -166,6 +169,32 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     }
     if (method === "GET" && path === "/api/bots") {
       return json(200, state.createdBots.map((id) => ({ id, name: id })));
+    }
+
+    // Profile feature surfaces used by the acceptance flow.
+    const memory = path.match(/^\/api\/bots\/([^/]+)\/memory\/(facts|graph|markdown)$/);
+    if (memory && method === "GET") {
+      const botId = decodeURIComponent(memory[1]);
+      if (!state.createdBots.includes(botId)) return json(404, { detail: "no such bot" });
+      if (memory[2] === "facts") return json(200, []);
+      if (memory[2] === "graph") return json(200, { nodes: [], edges: [] });
+      return json(200, { content: "" });
+    }
+    const routines = path.match(/^\/api\/bots\/([^/]+)\/routines$/);
+    if (routines && method === "GET") {
+      const botId = decodeURIComponent(routines[1]);
+      if (!state.createdBots.includes(botId)) return json(404, { detail: "no such bot" });
+      return json(200, []);
+    }
+    if (method === "GET" && path === "/api/skills") return json(200, []);
+
+    if (method === "POST" && path === "/api/import") {
+      const body = await readBody(req);
+      const botId = String(body.bot_id ?? "");
+      if (state.createdBots.includes(botId)) return json(409, { detail: "exists" });
+      state.createdBots.push(botId);
+      state.imports.push({ source: String(body.source ?? ""), botId, name: String(body.name ?? "") });
+      return json(201, { id: botId, name: body.name ?? botId });
     }
 
     const messages = path.match(/^\/api\/bots\/([^/]+)\/messages$/);
