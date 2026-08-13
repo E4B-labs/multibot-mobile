@@ -11,6 +11,9 @@ import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 // multibot: F6 — panel rutyn silnika slafy
 import { RoutinesPanel } from "@/components/RoutinesPanel";
+// multibot: F8 — panele pamięci i skilli silnika slafy
+import { MemoryPanel } from "@/components/MemoryPanel";
+import { SkillsPanel } from "@/components/SkillsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
@@ -50,6 +53,9 @@ function Shell() {
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {/* multibot: F6 — klucz per bot.id wymusza remount + świeży GET przy przełączeniu bota */}
       {state.routinesOpen && slafyBot && <RoutinesPanel key={bot.id} bot={bot} />}
+      {/* multibot: F8 — pamięć i skille, ten sam gate i ta sama zasada klucza */}
+      {state.memoryOpen && slafyBot && <MemoryPanel key={bot.id} bot={bot} />}
+      {state.skillsOpen && slafyBot && <SkillsPanel key={bot.id} bot={bot} />}
       {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
       </div>

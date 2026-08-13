@@ -100,6 +100,9 @@ interface AppState {
   appSettingsOpen: boolean;
   // multibot: F6 — panel rutyn silnika slafy, ten sam prawy slot co settings/computer
   routinesOpen: boolean;
+  // multibot: F8 — panele pamięci i skilli silnika slafy, ten sam prawy slot
+  memoryOpen: boolean;
+  skillsOpen: boolean;
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
   /** latest live frame of a bot's computer, per botId */
@@ -145,6 +148,9 @@ type Action =
   | { type: "toggleAppSettings"; open?: boolean }
   // multibot: F6 — otwarcie/zamknięcie panelu rutyn
   | { type: "toggleRoutines"; open?: boolean }
+  // multibot: F8 — otwarcie/zamknięcie paneli pamięci i skilli
+  | { type: "toggleMemory"; open?: boolean }
+  | { type: "toggleSkills"; open?: boolean }
   | {
       type: "updateBot";
       botId: string;
@@ -327,6 +333,8 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
       };
     }
     case "togglePlugins":
@@ -339,6 +347,8 @@ function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
       };
     }
     case "toggleAppSettings": {
@@ -350,6 +360,8 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         pluginsOpen: open ? false : state.pluginsOpen,
         routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
       };
     }
     // multibot: F6 — panel rutyn wypycha pozostałych lokatorów prawego slotu
@@ -361,6 +373,33 @@ function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
+      };
+    }
+    // multibot: F8 — panele pamięci i skilli, ta sama zasada wzajemnego wykluczania
+    case "toggleMemory": {
+      const open = action.open ?? !state.memoryOpen;
+      return {
+        ...state,
+        memoryOpen: open,
+        skillsOpen: open ? false : state.skillsOpen,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+      };
+    }
+    case "toggleSkills": {
+      const open = action.open ?? !state.skillsOpen;
+      return {
+        ...state,
+        skillsOpen: open,
+        memoryOpen: open ? false : state.memoryOpen,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
       };
     }
     case "updateBot": {
@@ -392,6 +431,8 @@ const initialState: AppState = {
   computerOpen: false,
   appSettingsOpen: false,
   routinesOpen: false,
+  memoryOpen: false,
+  skillsOpen: false,
   streaming: {},
   screens: {},
   provisioning: {},

@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Mic, Square } from "lucide-react";
+import { Plus, Mic, Square, Wand2 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { MausAvatar } from "./Avatar";
@@ -16,6 +16,24 @@ function mentionQueryAt(text: string, caret: number): { start: number; query: st
   const query = upto.slice(at + 1);
   if (query.length > 24 || query.includes("@") || query.includes("\n")) return null;
   return { start: at, query };
+}
+
+// multibot: F8 — /slash autocomplete. Skill wysyła się jako ZWYKŁA wiadomość:
+// gateway silnika sam rozwiązuje `/nazwa reszta` na treść skilla
+// (engine/server/gateway.py → skills.slash_message), więc picker tylko wstawia
+// tekst. Zapytanie jest aktywne, dopóki cała treść to jeden token "/..." —
+// spacja kończy komendę i zamyka picker (rozłączne z @mention: tam pierwszym
+// znakiem tokenu jest "@" po spacji, tu "/" na początku wiadomości).
+function slashQuery(text: string): string | null {
+  if (!/^\/\S*$/.test(text)) return null;
+  return text.slice(1).toLowerCase();
+}
+
+/** Wiersze pickera: kształt z GET /api/engine/skills (engine/server/skills.py). */
+interface SlashSkill {
+  name: string;
+  command: string;
+  description: string;
 }
 
 export function Composer({ bot }: { bot: Bot }) {
@@ -103,6 +121,46 @@ export function Composer({ bot }: { bot: Bot }) {
 
   useEffect(() => setHighlight(0), [mention?.start, mention?.query]);
 
+  // multibot: F8 — picker skilli po "/": mechanika 1:1 z @mention (strzałki,
+  // Enter/Tab wstawia, Esc chowa do następnej zmiany tekstu). Listę bierzemy
+  // leniwie przy pierwszym "/" — tylko dla botów na driverze slafy; silnik
+  // offline = brak listy = brak pickera, wiadomość idzie jak zwykły tekst.
+  const slafyDriver =
+    state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
+    "slafy";
+  const [slashSkills, setSlashSkills] = useState<SlashSkill[] | null>(null);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [slashHighlight, setSlashHighlight] = useState(0);
+  const slashQ = slafyDriver ? slashQuery(text) : null;
+  useEffect(() => {
+    if (slashQ === null || slashSkills !== null) return;
+    let alive = true;
+    fetch("/api/engine/skills")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((ss: SlashSkill[]) => alive && setSlashSkills(ss))
+      .catch(() => alive && setSlashSkills([]));
+    return () => {
+      alive = false;
+    };
+  }, [slashQ, slashSkills]);
+  const slashCandidates = useMemo(() => {
+    if (slashQ === null || slashDismissed || !slashSkills) return [];
+    return slashSkills.filter((s) => !slashQ || s.name.toLowerCase().includes(slashQ)).slice(0, 6);
+  }, [slashQ, slashDismissed, slashSkills]);
+  const slashOpen = slashCandidates.length > 0;
+  useEffect(() => setSlashHighlight(0), [slashQ]);
+
+  const pickSlash = (skill: SlashSkill) => {
+    const next = `${skill.command} `;
+    setText(next);
+    setCaret(next.length);
+    setSlashDismissed(true); // wybór kończy komendę — następny Enter wysyła
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+    });
+  };
+
   const pickMention = (peer: Bot) => {
     if (!mention) return;
     const after = text.slice(caret);
@@ -182,6 +240,32 @@ export function Composer({ bot }: { bot: Bot }) {
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
+        {/* multibot: F8 — picker skilli po "/", ten sam dropdown co @mention */}
+        {slashOpen && (
+          <div className="absolute bottom-full left-10 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg">
+            {slashCandidates.map((skill, i) => (
+              <button
+                key={skill.name}
+                onClick={() => pickSlash(skill)}
+                onMouseEnter={() => setSlashHighlight(i)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left",
+                  i === slashHighlight ? "bg-raised-hover" : "",
+                )}
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center text-ink-secondary">
+                  <Wand2 size={15} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-medium text-ink">{skill.command}</span>
+                  {skill.description && (
+                    <span className="block truncate text-xs text-ink-secondary">{skill.description}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         {pickerOpen && (
           <div className="absolute bottom-full left-10 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg">
             {candidates.map((peer, i) => (
@@ -215,10 +299,31 @@ export function Composer({ bot }: { bot: Bot }) {
             setText(e.target.value);
             setCaret(e.target.selectionStart ?? e.target.value.length);
             setDismissedAt(null);
+            setSlashDismissed(false); // multibot: F8 — Esc chowa picker tylko do następnej zmiany
           }}
           onKeyUp={(e) => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
           onClick={(e) => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
           onKeyDown={(e) => {
+            // multibot: F8 — nawigacja pickera skilli; rozłączny z @mention
+            // (slash tylko, gdy cała treść to "/token"), więc bez kolizji gałęzi
+            if (slashOpen) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const delta = e.key === "ArrowDown" ? 1 : -1;
+                setSlashHighlight((h) => (h + delta + slashCandidates.length) % slashCandidates.length);
+                return;
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                pickSlash(slashCandidates[slashHighlight]);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setSlashDismissed(true);
+                return;
+              }
+            }
             if (pickerOpen) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();

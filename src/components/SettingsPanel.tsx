@@ -1,4 +1,4 @@
-import { ChevronLeft, X } from "lucide-react";
+import { Brain, ChevronLeft, Wand2, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
@@ -169,6 +169,38 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <>
               <EngineProviderCard key={bot.id} bot={bot} />
               <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
+              {/* multibot: F8 — wejścia do paneli pamięci i skilli; panele żyją
+                  w prawym slocie (Shell), więc karta tylko przełącza flagę. */}
+              <div className="rounded-xl bg-card p-4">
+                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
+                  <Brain size={16} className="text-ink-secondary" />
+                  Memory
+                </div>
+                <div className="mt-0.5 text-[13px] text-ink-secondary">
+                  Facts this bot has learned, its long-term notes, and how they connect.
+                </div>
+                <button
+                  onClick={() => dispatch({ type: "toggleMemory", open: true })}
+                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+                >
+                  View Memory
+                </button>
+              </div>
+              <div className="rounded-xl bg-card p-4">
+                <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
+                  <Wand2 size={16} className="text-ink-secondary" />
+                  Skills
+                </div>
+                <div className="mt-0.5 text-[13px] text-ink-secondary">
+                  Reusable playbooks shared by every bot — teach new ones by demonstration.
+                </div>
+                <button
+                  onClick={() => dispatch({ type: "toggleSkills", open: true })}
+                  className="mt-3 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+                >
+                  Manage Skills
+                </button>
+              </div>
             </>
           )}
 
