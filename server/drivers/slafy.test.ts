@@ -123,6 +123,78 @@ describe("SlafyDriver turns (fake engine)", () => {
     expect(completed).toMatchObject({ ok: false });
   });
 
+  // ── F4: zgody ────────────────────────────────────────────────────────────
+  // Test kluczowy fazy: tura STOI na `request.opened`, a dopiero odpowiedź
+  // przez `respondToRequest` doprowadza strumień do `turn.completed`.
+  it("opens a permission request mid-turn and finishes the turn after allow", async () => {
+    await create("approval");
+    await instance.adapter.sendTurn({ threadId: "t-ask", text: "usun plik" });
+    const opened: any = await recorder.until((e) => e.type === "request.opened");
+
+    expect(opened).toMatchObject({
+      requestType: "permission",
+      tool: "terminal",
+      choices: ["Allow", "Deny", "Always allow"],
+    });
+    expect(opened.summary).toContain("rm -rf /tmp/x");
+    expect(opened.requestId).toBe(engine.approvalRequestId);
+    // Tura wisi: nic po prośbie nie przyszło i silnik nie zna jeszcze decyzji.
+    expect(recorder.events.some((e) => e.type === "turn.completed")).toBe(false);
+    expect(engine.approvals).toEqual([]);
+
+    await instance.adapter.respondToRequest("t-ask", opened.requestId, { behavior: "allow" });
+    const completed = await recorder.until((e) => e.type === "turn.completed");
+
+    expect(engine.approvals).toEqual([
+      { botId: "mb-t-ask", requestId: opened.requestId, decision: "allow" },
+    ]);
+    expect(recorder.events.find((e) => e.type === "request.resolved")).toMatchObject({
+      requestId: opened.requestId,
+      behavior: "allow",
+      source: "user",
+    });
+    expect(recorder.events.find((e) => e.type === "item.completed")).toMatchObject({
+      itemType: "assistant_text",
+      text: "Zrobione.",
+    });
+    expect(completed).toMatchObject({ ok: true });
+  });
+
+  it("denies on Deny and on anything it cannot map, and passes Always allow through", async () => {
+    for (const [decision, behavior, message] of [
+      ["deny", "deny", undefined],
+      ["always", "answer", "Always allow"],
+      ["deny", "answer", "Może później"], // nieznana opcja = odmowa, nigdy zgoda
+    ] as const) {
+      await create("approval");
+      const threadId = `t-${decision}-${behavior}`;
+      await instance.adapter.sendTurn({ threadId, text: "usun plik" });
+      const opened: any = await recorder.until((e) => e.type === "request.opened");
+
+      await instance.adapter.respondToRequest(threadId, opened.requestId, { behavior, message });
+      const completed = await recorder.until((e) => e.type === "turn.completed");
+
+      expect(engine.approvals.at(-1)).toMatchObject({ decision });
+      expect(completed).toMatchObject({ ok: true }); // odmowa domyka turę, nie wywraca jej
+      const text = recorder.events.find((e) => e.type === "item.completed") as any;
+      expect(text.text).toBe(decision === "deny" ? "Nie mam zgody." : "Zrobione.");
+
+      recorder.stop();
+      await instance.dispose();
+      await engine.close();
+    }
+  });
+
+  it("rejects an answer to a request the engine no longer knows", async () => {
+    await create("approval");
+    await instance.adapter.sendTurn({ threadId: "t-stale", text: "usun plik" });
+    await recorder.until((e) => e.type === "request.opened");
+
+    await expect(
+      instance.adapter.respondToRequest("t-stale", "req-nieznane", { behavior: "allow" }),
+    ).rejects.toThrow(/404/);
+  });
+
   it("builds the model catalog per instance without touching describe()", async () => {
     await create();
     expect(instance.models).toEqual({

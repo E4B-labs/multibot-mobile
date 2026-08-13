@@ -31,11 +31,19 @@ DLACZEGO `agent.disabled_toolsets`, A NIE `platform_toolsets.api_server`
     doda jutro. Odejmowanie nie ma tego problemu — dotyka wyłącznie nazwanych.
 
 ponytail: bez własnej bazy uprawnień — źródłem prawdy jest `config.yaml`
-profilu, tak jak przy providerze i pamięci. Ceiling: ziarno toolsetowe. Zgoda
-per pojedyncze narzędzie wymaga własnego toolsetu (`toolsets.create_custom_toolset`)
-albo pluginu `pre_tool_call` (APPROVALS-RECON §1.3) — dopisać, gdy ktoś poprosi
-o "browser tak, ale bez browser_exec".
+profilu, tak jak przy providerze i pamięci. Ceiling: ziarno toolsetowe.
+
+ALLOWLISTA ZGÓD (faza F4)
+    Drugie, WĘŻSZE ziarno: pojedyncze narzędzie zatwierdzone na stałe
+    odpowiedzią "always" w karcie zgody. Nie idzie do `config.yaml`, tylko do
+    `approvals.json` w profilu — plik czyta plugin `slafy_approvals` w procesie
+    gatewaya (`server/approval_plugin/`), a `config.yaml` jest tam parsowany
+    przez Hermesa i nie chcemy mu tam wstawiać obcych kluczy. Twarde on/off
+    toolsetów obowiązuje NIEZALEŻNIE i wcześniej: wyłączonego narzędzia model
+    nie dostaje w ofercie, więc allowlista nie potrafi go przywrócić.
 """
+
+import json
 
 import yaml
 
@@ -104,3 +112,35 @@ def set(bot_id: str, toolset: str, enabled: bool) -> dict[str, bool]:  # noqa: A
             yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8"
         )
     return get(bot_id)
+
+
+# --------------------------------------------------------------------------- #
+# Allowlista zgód (faza F4) — patrz docstring modułu.
+# --------------------------------------------------------------------------- #
+def _allow_path(bot_id: str):
+    return profile_dir(bot_id) / "approvals.json"  # ValueError na złym id → 422
+
+
+def allowlist(bot_id: str) -> list[str]:
+    """Narzędzia zatwierdzone na stałe dla tego bota."""
+    path = _allow_path(bot_id)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # brak pliku albo śmieci = pusta allowlista
+        return []
+    return [str(t) for t in (data.get("allow") or [])] if isinstance(data, dict) else []
+
+
+def always_allow(bot_id: str, tool: str) -> list[str]:
+    """Dopisz narzędzie do allowlisty (decyzja "always"). Idempotentne.
+
+    Zapis na dysk, nie do pamięci — o to chodzi w "always przeżywa restart".
+    """
+    tools = allowlist(bot_id)
+    if tool in tools:
+        return tools
+    tools.append(tool)
+    path = _allow_path(bot_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"allow": tools}, ensure_ascii=False), encoding="utf-8")
+    return tools

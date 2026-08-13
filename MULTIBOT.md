@@ -49,7 +49,7 @@ UI w przeglądarce telefonu na porcie harnessa; `ENGINE_URL=http://127.0.0.1:870
 
 ```sh
 pnpm test                       # vitest harnessa (bez zmian upstreamu)
-cd engine && .venv/Scripts/python.exe -m pytest -q     # 233+ pytest silnika
+cd engine && .venv/Scripts/python.exe -m pytest -q     # 249+ pytest silnika
 ```
 
 ## Higiena upstream

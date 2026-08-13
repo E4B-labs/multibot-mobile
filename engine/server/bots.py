@@ -22,6 +22,12 @@ _BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 _DEFAULT_DATA_DIR = r"G:\Projects\slafy-bot-data"
 
+# Tryb pracy bota (faza F4): `approval` = narzędzia z kategorii ryzykownych czekają
+# na zgodę człowieka, `autonomous` = lecą bez pytania. BRAK klucza w `bot.json`
+# znaczy `approval` — dlatego `create_bot` go nie wpisuje: nowy bot jest ostrożny
+# z definicji, a kształt zwrotki CRUD-u zostaje bez zmian.
+AUTONOMY = ("approval", "autonomous")
+
 _SOUL = """# {name}
 
 **Rola:** {title}
@@ -92,7 +98,16 @@ def update_bot(bot_id: str, **fields) -> dict:
     bot = get_bot(bot_id)
     if bot is None:
         raise KeyError(bot_id)
-    bot.update({k: v for k, v in fields.items() if k in ("name", "title", "description", "avatar")})
+    # `autonomy` czyta plugin `slafy_approvals` PROSTO Z `bot.json` profilu
+    # (faza F4) — dlatego walidujemy wartość tutaj, a nie tylko w warstwie HTTP:
+    # literówka w trybie znaczyłaby "pytaj o zgodę" albo "nie pytaj", w zależności
+    # od tego, jak plugin ją zinterpretuje.
+    if "autonomy" in fields and fields["autonomy"] not in AUTONOMY:
+        raise ValueError(f"invalid autonomy: {fields['autonomy']!r} (oczekiwane {AUTONOMY})")
+    bot.update(
+        {k: v for k, v in fields.items()
+         if k in ("name", "title", "description", "avatar", "autonomy")}
+    )
     _write(bot)  # SOUL.md odtwarzany razem z bot.json — inaczej zostaje nieaktualna tożsamość
     return bot
 

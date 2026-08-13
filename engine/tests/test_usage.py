@@ -2,8 +2,8 @@
 
 `record/get/all` to czysty odczyt/zapis `$SLAFY_DATA_DIR/usage.json`, więc same
 testy akumulacji obchodzą się bez profilu (tylko `SLAFY_DATA_DIR` na tmp). Test
-capture'u i endpointy potrzebują prawdziwego bota — mockujemy `httpx.post` tak
-jak `test_permissions.py`/`test_skills.py`.
+capture'u i endpointy potrzebują prawdziwego bota — transport podmienia
+`mock_llm.fake_transport`, tak jak w `test_permissions.py`/`test_skills.py`.
 
 ZAKAZ C: wszystko w `tmp_path`/basetemp na D:.
 """
@@ -14,6 +14,7 @@ os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 
 import json  # noqa: E402
 
+import mock_llm  # noqa: E402  # pytest wrzuca `tests/` na sys.path (brak __init__.py)
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -98,21 +99,13 @@ def test_missing_field_in_usage_block_counts_as_zero(data_dir):
 # capture w gateway.chat
 # --------------------------------------------------------------------------- #
 def test_chat_records_usage(bot, data_dir, monkeypatch):
-    """`chat()` po `raise_for_status` doklejeuje `usage` z odpowiedzi — bez
-    zmiany zwrotu `{reply, session_id}`."""
-
-    class _Resp:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {
-                "choices": [{"message": {"content": "ok"}}],
-                "usage": {"prompt_tokens": 11, "completion_tokens": 22, "total_tokens": 33},
-            }
-
-    monkeypatch.setattr(gateway, "ensure_running", lambda *a, **k: None)
-    monkeypatch.setattr(gateway.httpx, "post", lambda *a, **k: _Resp())
+    """`chat()` przelicza `usage` runu (`input_tokens`/`output_tokens`) na język
+    OpenAI i doklei je do licznika — bez zmiany zwrotu `{reply, session_id}`."""
+    mock_llm.fake_transport(
+        monkeypatch,
+        gateway,
+        tokens={"input_tokens": 11, "output_tokens": 22, "total_tokens": 33},
+    )
 
     out = gateway.chat(bot, "cześć")
 
@@ -128,17 +121,8 @@ def test_chat_records_usage(bot, data_dir, monkeypatch):
 
 
 def test_chat_without_usage_block_does_not_raise(bot, monkeypatch):
-    """Odpowiedź bez `usage` (starszy serwer/stream-off) = brak zapisu, nie błąd."""
-
-    class _Resp:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"choices": [{"message": {"content": "ok"}}]}
-
-    monkeypatch.setattr(gateway, "ensure_running", lambda *a, **k: None)
-    monkeypatch.setattr(gateway.httpx, "post", lambda *a, **k: _Resp())
+    """Run bez bloku `usage` = brak zapisu, nie błąd."""
+    mock_llm.fake_transport(monkeypatch, gateway)
 
     assert gateway.chat(bot, "cześć")["reply"] == "ok"
     assert usage.get(bot)["turns"] == 0

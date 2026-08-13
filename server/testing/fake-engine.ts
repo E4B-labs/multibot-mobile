@@ -12,7 +12,8 @@ import type { Duplex } from "node:stream";
 export type FakeEngineMode =
   | "happy" // working → 3 delty → usage → done
   | "error" // done nigdy nie przychodzi, silnik zgłasza event `error`
-  | "kill"; // gniazdo ginie po dwóch deltach — silnik ubity w połowie tury
+  | "kill" // gniazdo ginie po dwóch deltach — silnik ubity w połowie tury
+  | "approval"; // working → approval → STOP; reszta dopiero po decyzji (F4)
 
 export interface EngineMessage {
   role: string;
@@ -32,6 +33,10 @@ export interface FakeEngine {
   history: Record<string, EngineMessage[]>;
   /** stan uwagi (D7) czytany przy podłączeniu klienta WS. */
   attention: Record<string, string | null>;
+  /** decyzje zgód: `{ botId, requestId, decision }` w kolejności (F4). */
+  approvals: Array<{ botId: string; requestId: string; decision: string }>;
+  /** id prośby, którą wystawia tryb `approval` — test zna je z góry. */
+  approvalRequestId: string;
   mode: FakeEngineMode;
   /** liczba żywych klientów `/api/ws`. */
   wsClients(): number;
@@ -55,6 +60,8 @@ function wsTextFrame(text: string): Buffer {
 
 export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<FakeEngine> {
   const sockets = new Set<Duplex>();
+  /** requestId → resolver tury czekającej na decyzję (tryb `approval`). */
+  const pending = new Map<string, (decision: string) => void>();
   const state: FakeEngine = {
     url: "",
     createdBots: [],
@@ -62,6 +69,8 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     provider: { has_key: false },
     history: {},
     attention: {},
+    approvals: [],
+    approvalRequestId: "req-1",
     mode,
     wsClients: () => sockets.size,
     push: (event) => {
@@ -144,6 +153,20 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
       return json(200, state.provider);
     }
 
+    // F4: odpowiedź na zgodę odwiesza turę stojącą w `chat` (patrz `pending`).
+    const approval = path.match(/^\/api\/bots\/([^/]+)\/approvals\/([^/]+)$/);
+    if (approval && method === "POST") {
+      const botId = decodeURIComponent(approval[1]);
+      const requestId = decodeURIComponent(approval[2]);
+      const body = await readBody(req);
+      const resolve = pending.get(requestId);
+      if (!resolve) return json(404, { detail: "no such approval request" });
+      pending.delete(requestId);
+      state.approvals.push({ botId, requestId, decision: body.decision });
+      resolve(String(body.decision ?? "deny"));
+      return json(200, { request_id: requestId, bot_id: botId, decision: body.decision });
+    }
+
     const chat = path.match(/^\/api\/bots\/([^/]+)\/chat$/);
     if (chat && method === "POST") {
       const botId = decodeURIComponent(chat[1]);
@@ -160,6 +183,31 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
         return res.end();
       }
       res.write(frame("working", { tool: { toolCallId: "call-1", name: "search", status: "running" } }));
+
+      if (state.mode === "approval") {
+        // Silnik pyta i STOI — jak zaparkowany wątek tury (server/approvals.py).
+        const requestId = state.approvalRequestId;
+        res.write(
+          frame("approval", {
+            bot_id: botId,
+            request_id: requestId,
+            tool: "terminal",
+            args_preview: 'terminal {"command": "rm -rf /tmp/x"}',
+            ts: new Date().toISOString(),
+          }),
+        );
+        const decision = await new Promise<string>((resolve) => pending.set(requestId, resolve));
+        res.write(frame("approval_resolved", { request_id: requestId, decision }));
+        const reply = decision === "deny" ? "Nie mam zgody." : "Zrobione.";
+        res.write(frame("delta", { text: reply }));
+        (state.history[botId] ??= []).push(
+          { role: "user", content: body.message },
+          { role: "assistant", content: reply },
+        );
+        res.write(frame("done", { reply, session_id: `slafy-${botId}`, finish_reason: "stop" }));
+        return res.end();
+      }
+
       res.write(frame("delta", { text: "Hello" }));
       res.write(frame("delta", { text: ", " }));
       if (state.mode === "kill") {
@@ -208,6 +256,8 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
   state.url = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
   state.close = () =>
     new Promise<void>((resolve) => {
+      for (const answer of pending.values()) answer("deny"); // nie zostawiaj wiszącej tury
+      pending.clear();
       for (const s of sockets) s.destroy(); // gniazda po upgrade nie należą już do serwera
       sockets.clear();
       server.closeAllConnections?.();

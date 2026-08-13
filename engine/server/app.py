@@ -63,8 +63,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from server import (
-    bots, computer, files, gateway, groups, importer, interbot, memory, permissions, plugins,
-    providers, routines, skills, teach, usage, voice,
+    approvals, bots, computer, files, gateway, groups, importer, interbot, memory, permissions,
+    plugins, providers, routines, skills, teach, usage, voice,
 )
 
 app = FastAPI(title="slafy-bot core")
@@ -103,6 +103,8 @@ class BotPatch(BaseModel):
     title: str | None = None
     description: str | None = None
     avatar: dict | None = None
+    # faza F4: "approval" (default) albo "autonomous"; zła wartość → 422 z `bots`.
+    autonomy: str | None = None
 
 
 class ProviderIn(BaseModel):
@@ -184,6 +186,10 @@ class PermissionIn(BaseModel):
     enabled: bool
 
 
+class ApprovalIn(BaseModel):
+    decision: str
+
+
 def _error(status: int, exc: Exception) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=status)
 
@@ -224,6 +230,7 @@ _ws_clients: set[WebSocket] = set()
 
 async def _broadcast(event: dict) -> None:
     """Rozeslij event do wszystkich klientow WS; padniete usun po cichu."""
+    _bind_approvals()  # patrz `_bind_approvals` — tania, idempotentna
     for ws in list(_ws_clients):
         try:
             await ws.send_json(event)
@@ -243,9 +250,46 @@ def _message_event(bot_id: str, role: str, content: str) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Zgody (faza F4). Prośba rodzi się w WĄTKU tury (`gateway.chat*` jest sync), a
+# WS-y żyją na pętli — `server/approvals.py` potrzebuje więc referencji na pętlę
+# i na korutynę, która rozgłasza. Wiążemy leniwie, z pierwszej rzeczy, jaka
+# przyjdzie po pętli (`_broadcast`, handshake WS); brak wiązania = prośba i tak
+# jedzie strumieniem SSE tury i endpointem odpowiedzi, więc to degradacja, nie
+# awaria. ponytail: bez `startup`/lifespan, bo połowa testów tworzy `TestClient`
+# bez kontekstu i te hooki wtedy nie chodzą.
+# --------------------------------------------------------------------------- #
+# bot_id → powód uwagi z nieodebranej zgody; konsumowany na koniec tury.
+_approval_timeouts: dict[str, str] = {}
+
+
+async def _approval_notify(event: dict) -> None:
+    """Event zgody z wątku tury: na WS, a nieodebrana prośba dodatkowo w uwagę."""
+    await _broadcast(event)
+    if event.get("decision") != "timeout":
+        return
+    reason = f"Nikt nie potwierdził użycia narzędzia {event['tool']} — odmówiono"
+    # OD RAZU, nie dopiero na końcu tury: rutyna (cron/webhook), pokój grupowy i
+    # delegacja nie przechodzą przez `_finish_attention`, a to właśnie tam — przy
+    # zamkniętej apce — cisza jest najbardziej prawdopodobna. Wpis w słowniku
+    # zostaje, żeby koniec tury INTERAKTYWNEJ nie zgasił dopiero co zapalonej
+    # kropki (`_set_attention` bez zmiany stanu jest no-opem, więc drugi zapis
+    # nic nie kosztuje).
+    _approval_timeouts[event["bot_id"]] = reason
+    await _set_attention(event["bot_id"], reason)
+
+
+def _bind_approvals() -> None:
+    try:
+        approvals.bind(asyncio.get_running_loop(), _approval_notify)
+    except RuntimeError:  # wołane spoza pętli — nic do zapamiętania
+        pass
+
+
 @app.websocket("/api/ws")
 async def ws_events(ws: WebSocket) -> None:
     await ws.accept()
+    _bind_approvals()  # klient podłączony przed pierwszą turą też ma dostać zgody
     _ws_clients.add(ws)
     try:
         while True:
@@ -385,9 +429,9 @@ async def _handle_mentions(from_bot: str, message: str) -> list[dict]:
 # Stan uwagi (UI-SPEC §13): "bot czeka na człowieka". ponytail: heurystyka na
 # markerach w odpowiedzi, zero klasyfikatora LLM — dodatkowa tura modelu na każdą
 # wiadomość kosztowałaby tokeny i sekundy, a fałszywy alarm to jedna pomarańczowa
-# kropka do zignorowania. Ceiling: markery są dosłowne i dwujęzyczne; upgrade to
-# realny approval przez `/v1/runs` (Hermes pauzuje turę — APPROVALS-RECON §2.2),
-# gdy ciągłość sesji na runs zostanie rozwiązana.
+# kropka do zignorowania. Ceiling: markery są dosłowne i dwujęzyczne.
+# Od fazy F4 heurystyka NIE jest już jedynym źródłem: prośba o zgodę, na którą
+# nikt nie odpowiedział, zapala uwagę twardo (`_finish_attention`).
 # --------------------------------------------------------------------------- #
 _ATTENTION_MARKERS = (
     "sign in", "log in", "logging in", "approve", "hand back", "hand it back",
@@ -442,6 +486,15 @@ async def _set_attention(bot_id: str, reason: str | None) -> None:
     await _broadcast({"type": "attention", "bot_id": bot_id, "reason": reason})
 
 
+async def _finish_attention(bot_id: str, reply: str) -> None:
+    """Uwaga na koniec tury: marker w odpowiedzi ALBO nieodebrana prośba o zgodę.
+
+    Sama heurystyka markerów tego drugiego nie złapie — po odmowie z timeoutu bot
+    zwykle pisze, że sobie poradził inaczej, i czyszczenie stanu skasowałoby
+    jedyny ślad, że coś przeszło mu koło nosa."""
+    await _set_attention(bot_id, _attention_reason(reply) or _approval_timeouts.pop(bot_id, None))
+
+
 @app.get("/api/bots/{bot_id}/attention")
 def bot_attention(bot_id: str) -> dict:
     """Stan uwagi przy montowaniu UI (WS łapie tylko zmiany od teraz)."""
@@ -461,7 +514,7 @@ async def _run_chat(bot_id: str, message: str) -> dict:
         # Po odpowiedzi, przed delegacjami: marker = bot czeka na człowieka, brak
         # markera = czyścimy poprzednie czekanie (tura bez markera znaczy, że bot
         # ruszył dalej).
-        await _set_attention(bot_id, _attention_reason(result["reply"]))
+        await _finish_attention(bot_id, result["reply"])
         delegated = await _handle_mentions(bot_id, message)
         if delegated:  # pole opcjonalne — brak @mention = kontrakt {reply, session_id} bez zmian
             result = {**result, "delegated": delegated}
@@ -500,7 +553,7 @@ async def _stream_chat(bot_id: str, message: str):
                 reply = event["reply"]
             yield frame(event.pop("type"), event)
         await _broadcast(_message_event(bot_id, "assistant", reply))
-        await _set_attention(bot_id, _attention_reason(reply))
+        await _finish_attention(bot_id, reply)
     except Exception as exc:  # padnięty gateway = event w strumieniu, nie 500 bez ciała
         yield frame("error", {"message": f"{type(exc).__name__}: {exc}"})
     finally:
@@ -535,6 +588,26 @@ def get_permissions(bot_id: str) -> dict[str, bool]:
 def set_permissions(bot_id: str, body: PermissionIn) -> dict[str, bool]:
     _require(bot_id)  # inaczej zapisalibyśmy config.yaml w katalogu widmo
     return permissions.set(bot_id, body.toolset, body.enabled)  # ValueError → 422
+
+
+# --------------------------------------------------------------------------- #
+# Zgody (faza F4): odpowiedź człowieka odblokowuje ZAPARKOWANĄ turę. Endpoint
+# jest świadomie głupi — cała logika (mapowanie na `once`/`deny` Hermesa, dopis
+# do allowlisty przy "always") siedzi w `gateway._approval`, obok pauzy.
+# --------------------------------------------------------------------------- #
+@app.post("/api/bots/{bot_id}/approvals/{request_id}")
+def resolve_approval(bot_id: str, request_id: str, body: ApprovalIn) -> dict:
+    _require(bot_id)
+    # ValueError (zła decyzja) → 422, KeyError (nieznana/wygasła prośba) → 404.
+    return approvals.resolve(request_id, body.decision)
+
+
+@app.get("/api/bots/{bot_id}/approvals")
+def list_approvals(bot_id: str) -> list[dict]:
+    """Wiszące prośby bota — UI montujące się w trakcie pauzy (WS łapie tylko
+    zmiany od teraz), tak samo jak `GET /attention`."""
+    _require(bot_id)
+    return [r for r in approvals.pending() if r["bot_id"] == bot_id]
 
 
 # --------------------------------------------------------------------------- #

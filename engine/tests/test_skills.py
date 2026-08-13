@@ -1,7 +1,7 @@
 """Warstwa skilli — wspólny katalog (junction), CRUD po plikach i `/slash` w czacie.
 
 Bez gatewaya i bez LLM-a: skill kładziemy na dysk wprost (format agentskills.io
-= `SKILL.md` + frontmatter), a `httpx.post` w `gateway.chat` podmieniamy fake'iem,
+= `SKILL.md` + frontmatter), a transport `gateway.chat` podmieniamy fake'iem,
 żeby zobaczyć, CO naprawdę leci do Hermesa. Sam `skill_manage`, walidacja i
 progressive disclosure to kod Hermesa — nie retestujemy go (gate fazy 9 = Task 4).
 
@@ -13,6 +13,7 @@ import os
 
 os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 
+import mock_llm  # noqa: E402  # pytest wrzuca `tests/` na sys.path (brak __init__.py)
 import pytest
 import yaml
 from fastapi.testclient import TestClient
@@ -49,26 +50,10 @@ def _put_skill(name: str = "demo-greet", content: str = _SKILL_MD):
     return d
 
 
-class _Resp:
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return {"choices": [{"message": {"content": "ok"}}]}
-
-
 @pytest.fixture
 def sent(monkeypatch):
     """`gateway.chat` bez gatewaya — zwracamy body wysłane do Hermesa."""
-    captured: dict = {}
-
-    def fake_post(url, json=None, headers=None, timeout=None):
-        captured.update(json)
-        return _Resp()
-
-    monkeypatch.setattr(gateway, "ensure_running", lambda: None)
-    monkeypatch.setattr(gateway.httpx, "post", fake_post)
-    return captured
+    return mock_llm.fake_transport(monkeypatch, gateway)
 
 
 # --------------------------------------------------------------------------- #
@@ -175,7 +160,7 @@ def test_slash_sends_skill_invocation_to_gateway(two_bots, sent):
 
     gateway.chat("ala", "/demo-greet dla Kasi")
 
-    content = sent["messages"][0]["content"]
+    content = sent["input"]
     assert content != "/demo-greet dla Kasi"
     assert "Say hello" in content  # ciało skilla wklejone
     assert "demo-greet" in content
@@ -189,13 +174,13 @@ def test_slash_sends_skill_invocation_to_gateway(two_bots, sent):
 
 def test_unknown_slash_passes_through(two_bots, sent):
     gateway.chat("ala", "/nie-ma-takiego zrób coś")
-    assert sent["messages"][0]["content"] == "/nie-ma-takiego zrób coś"
+    assert sent["input"] == "/nie-ma-takiego zrób coś"
 
     gateway.chat("ala", "zwykła wiadomość")
-    assert sent["messages"][0]["content"] == "zwykła wiadomość"
+    assert sent["input"] == "zwykła wiadomość"
 
     gateway.chat("ala", "/")  # goły slash nie może wywrócić czatu
-    assert sent["messages"][0]["content"] == "/"
+    assert sent["input"] == "/"
 
 
 def test_chat_ensures_junction_and_disables_curator(two_bots, sent):

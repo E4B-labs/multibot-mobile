@@ -113,7 +113,7 @@ def client(monkeypatch, tmp_path):
 def mock_gateway(monkeypatch):
     """Mock LLM-a pod adresem gatewaya."""
     url, stop = mock_llm.start()
-    mock_llm.requests_seen.clear()
+    mock_llm.reset()
     monkeypatch.setattr(gateway, "ensure_running", lambda: None)
     monkeypatch.setattr(gateway, "GATEWAY_URL", url)
     try:
@@ -190,8 +190,24 @@ def test_chat_proxies_to_gateway(client, mock_gateway):
     assert r.json() == {"reply": mock_llm.REPLY, "session_id": "slafy-ala"}
 
     sent = mock_llm.requests_seen[-1]
-    assert sent["messages"][-1] == {"role": "user", "content": "czesc"}
-    assert sent["stream"] is False
+    assert sent["input"] == "czesc"
+    assert sent["session_id"] == "slafy-ala"
+
+
+def test_chat_carries_session_history_to_the_run(client, mock_gateway):
+    """Ciągłość sesji na `/v1/runs`: endpoint sam historii NIE dociąga (robił to
+    nagłówek `X-Hermes-Session-Id` na `/v1/chat/completions`), więc silnik dosyła
+    ją w `conversation_history` — z tej samej sesji `slafy-<bot>`."""
+    client.post("/api/bots", json={"id": "ala", "name": "Ala"})
+
+    client.post("/api/bots/ala/chat", json={"message": "pierwsza"})
+    assert mock_llm.requests_seen[-1]["conversation_history"] == []  # świeża sesja
+
+    client.post("/api/bots/ala/chat", json={"message": "druga"})
+    assert mock_llm.requests_seen[-1]["conversation_history"] == [
+        {"role": "user", "content": "pierwsza"},
+        {"role": "assistant", "content": mock_llm.REPLY},
+    ]
 
 
 def test_chat_hits_profile_prefixed_route(client, mock_gateway):
@@ -199,7 +215,7 @@ def test_chat_hits_profile_prefixed_route(client, mock_gateway):
     inaczej każdy bot gadałby profilem domyślnym (api_server.py:1962-1998)."""
     client.post("/api/bots", json={"id": "ala", "name": "Ala"})
     client.post("/api/bots/ala/chat", json={"message": "czesc"})
-    assert gateway.chat_url("ala") == f"{gateway.GATEWAY_URL}/p/ala/v1/chat/completions"
+    assert gateway.runs_url("ala") == f"{gateway.GATEWAY_URL}/p/ala/v1/runs"
 
 
 def test_chat_for_missing_bot_is_404(client, mock_gateway):
@@ -227,6 +243,7 @@ def _sse_events(raw: str) -> list[tuple[str, dict]]:
 
 def test_chat_stream_emits_sse_events(client, mock_gateway):
     client.post("/api/bots", json={"id": "ala", "name": "Ala"})
+    mock_llm.scenario("tool")  # tura z narzędziem: start + koniec = dwa `working`
     r = client.post("/api/bots/ala/chat?stream=1", json={"message": "czesc"})
 
     assert r.status_code == 200
@@ -234,17 +251,15 @@ def test_chat_stream_emits_sse_events(client, mock_gateway):
 
     events = _sse_events(r.text)
     kinds = [name for name, _ in events]
-    assert kinds == ["working", "delta", "delta", "delta", "usage", "done"]
+    assert kinds == ["working", "working", "delta", "delta", "delta", "usage", "done"]
 
     payloads = dict(zip(kinds, [p for _, p in events]))
+    assert [p["tool"]["status"] for n, p in events if n == "working"] == ["running", "done"]
     assert "".join(p["text"] for name, p in events if name == "delta") == mock_llm.REPLY
     assert payloads["usage"] == {"input": 1, "output": 3}
     assert payloads["done"]["reply"] == mock_llm.REPLY
     assert payloads["done"]["session_id"] == "slafy-ala"
     assert payloads["done"]["finish_reason"] == "stop"
-
-    sent = mock_llm.requests_seen[-1]
-    assert sent["stream"] is True  # non-stream wysyła False — patrz test wyżej
 
 
 def test_chat_stream_reports_gateway_failure_as_error_event(client, monkeypatch):

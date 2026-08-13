@@ -229,6 +229,58 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       }
     };
 
+    // ── F4: zgody ──────────────────────────────────────────────────────────
+    // Silnik wystawia prośbę eventem SSE `approval` i STOI, aż ktoś odpowie na
+    // `POST /api/bots/<bot>/approvals/<request_id>`. Tu tłumaczymy to na parę
+    // kanoniczną `request.opened` / `request.resolved` — czyli na dokładnie te
+    // eventy, z których index.ts składa kartę Allow/Deny w czacie.
+    //
+    // Mapowanie decyzji: kontrakt (`contracts.ts`) zna tylko allow/deny/answer,
+    // a silnik dodatkowo „always". Front wysyła etykietę klikniętej opcji jako
+    // `answer` + `message`, więc „Always allow" rozpoznajemy po treści. Wszystko,
+    // czego nie umiemy zmapować, leci jako ODMOWA — zgoda przez pomyłkę byłaby
+    // gorsza niż niepotrzebne pytanie.
+    const requestTurn = new Map<string, string>(); // requestId → turnId, na którym padła prośba
+    const decisionOf = (behavior: string, message?: string) => {
+      if (behavior === "allow") return "allow";
+      if (behavior === "answer" && /always/i.test(message ?? "")) return "always";
+      return "deny";
+    };
+
+    const respondToRequest = async (
+      threadId: string,
+      requestId: string,
+      decision: { behavior: "allow" | "deny" | "answer"; message?: string },
+    ) => {
+      // `engineBaseUrl`, nie `ensureEngine`: odpowiadamy na prośbę ŻYWEJ tury,
+      // więc silnik z definicji stoi — podnoszenie go tutaj tylko maskowałoby
+      // wyścig (prośba z procesu, którego już nie ma).
+      const botId = engineBotId(threadId);
+      const value = decisionOf(decision.behavior, decision.message);
+      const res = await fetch(
+        `${engineBaseUrl()}/api/bots/${encodeURIComponent(botId)}/approvals/${encodeURIComponent(requestId)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ decision: value }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!res.ok) {
+        // 404 = prośba wygasła (timeout silnika) albo odpowiedział ktoś inny.
+        throw new Error(`engine approval → HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+      }
+      const turnId = requestTurn.get(requestId) ?? active.get(threadId)?.turnId ?? newId();
+      requestTurn.delete(requestId);
+      emit({
+        ...base(threadId, turnId),
+        type: "request.resolved",
+        requestId,
+        behavior: value === "always" ? "allow" : value,
+        source: "user",
+      });
+    };
+
     const sendTurn = async (turn: SendTurnInput) => {
       const { threadId } = turn;
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
@@ -282,6 +334,40 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
                   seenTools.add(itemId);
                   emit({ ...evt, type: "item.started", itemType: "tool", title: tool.name ?? "tool" });
                 }
+                break;
+              }
+              case "approval": {
+                const requestId = String(payload.request_id ?? "");
+                if (!requestId) break;
+                requestTurn.set(requestId, turnId);
+                emit({
+                  ...base(threadId, turnId),
+                  requestId,
+                  type: "request.opened",
+                  requestType: "permission",
+                  tool: String(payload.tool ?? "tool"),
+                  summary: String(payload.args_preview || payload.tool || "Tool use"),
+                  // Etykiety, nie kody: index.ts wkłada je wprost w kartę, a front
+                  // odsyła klikniętą etykietę (patrz `decisionOf`).
+                  choices: ["Allow", "Deny", "Always allow"],
+                  raw: { source: "slafy.approval", payload },
+                });
+                break;
+              }
+              case "approval_resolved": {
+                // Rozstrzygnięcie, którego NIE zrobił ten klient: timeout silnika
+                // albo odpowiedź z innej karty. `respondToRequest` emituje swoje
+                // własne `request.resolved`, a index.ts pomija już odpowiedzianą
+                // kartę — więc podwójny event jest nieszkodliwy.
+                const requestId = String(payload.request_id ?? "");
+                if (!requestId || !requestTurn.delete(requestId)) break;
+                emit({
+                  ...base(threadId, turnId),
+                  requestId,
+                  type: "request.resolved",
+                  behavior: payload.decision === "allow" || payload.decision === "always" ? "allow" : "deny",
+                  source: payload.decision === "timeout" ? "timeout" : "engine",
+                });
                 break;
               }
               case "usage":
@@ -367,9 +453,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
         // (Hermes nie ma anulowania w locie). Odpowiedź wyląduje w historii bota
         // i zobaczy ją następna tura. Prawdziwe przerwanie = osobny endpoint silnika.
         interruptTurn: async (threadId) => active.get(threadId)?.abort.abort(),
-        // Approvals (`request.opened`/`respondToRequest`) to faza F4 — silnik ma
-        // tryb `manual`, ale nie wystawia jeszcze pytań na tym strumieniu.
-        respondToRequest: async () => {},
+        respondToRequest,
         hasSession: (threadId) => active.has(threadId),
         stopAll: async () => {
           for (const { abort } of active.values()) abort.abort();
@@ -385,6 +469,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
         disposed = true;
         clearTimeout(syncTimer);
         for (const { abort } of active.values()) abort.abort();
+        requestTurn.clear(); // zerwane tury nie mają już czego rozstrzygać
         listeners.clear();
       },
     };

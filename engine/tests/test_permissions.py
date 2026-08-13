@@ -23,12 +23,13 @@ import os
 
 os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 
+import mock_llm  # noqa: E402  # pytest wrzuca `tests/` na sys.path (brak __init__.py)
 import pytest  # noqa: E402
 import yaml  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from server import app as app_module  # noqa: E402
-from server import bots, gateway, permissions  # noqa: E402
+from server import approvals, bots, gateway, permissions  # noqa: E402
 from server.bots import profile_dir  # noqa: E402
 
 BOT = "ala"
@@ -168,27 +169,23 @@ def test_ensure_approvals_writes_manual_and_is_idempotent(bot):
 
 def test_ensure_approvals_merges_existing_block(bot):
     cfg = _cfg(bot)
-    cfg["approvals"] = {"timeout": 60}
+    cfg["approvals"] = {"cron_mode": "deny"}
     _write_cfg(bot, cfg)
 
     gateway._ensure_approvals_config(bot)
 
-    assert _cfg(bot)["approvals"] == {"timeout": 60, "mode": "manual"}
+    assert _cfg(bot)["approvals"] == {
+        "cron_mode": "deny",  # obcy klucz przeżywa merge
+        "mode": "manual",
+        "timeout": int(approvals.timeout()) + gateway._APPROVALS_GRACE,
+    }
 
 
 def test_chat_runs_the_approvals_ensure_chain(bot, monkeypatch):
     """`_ensure_approvals_config` musi wisieć w łańcuchu `chat()`, nie tylko
     istnieć — inaczej profil nigdy nie dostanie `manual`."""
 
-    class _Resp:
-        def raise_for_status(self) -> None:
-            pass
-
-        def json(self) -> dict:
-            return {"choices": [{"message": {"content": "ok"}}]}
-
-    monkeypatch.setattr(gateway, "ensure_running", lambda *a, **k: None)
-    monkeypatch.setattr(gateway.httpx, "post", lambda *a, **k: _Resp())
+    mock_llm.fake_transport(monkeypatch, gateway)
 
     gateway.chat(bot, "cześć")
 

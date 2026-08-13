@@ -99,6 +99,41 @@ Zero własnej pętli agenta — gadamy HTTP-em do gotowego serwera Hermesa
       To jedyne pewne miejsce: `write_config()` dotyka wyłącznie configu root-a i
       tylko przy podnoszeniu gatewaya, a `providers.set_provider()` odpala się
       dopiero wtedy, gdy ktoś ustawi BYOK.
+
+(e) DLACZEGO TURA PRZENIOSŁA SIĘ NA `/v1/runs` (faza F4) I JAK PRZEŻYŁA SESJA
+    Zgoda człowieka ma PAUZOWAĆ turę, a nie być relacjonowana po fakcie. Bramka
+    zgód blokuje wątek agenta tylko wtedy, gdy dla sesji zarejestrowano callback
+    powiadomienia — `register_gateway_notify` woła WYŁĄCZNIE `_handle_runs`
+    (`api_server.py:6707`). Bez niego bramka wraca modelowi z
+    `status: approval_required` i tura leci dalej (`tools/approval.py:3322-3339`),
+    czyli `/v1/chat/completions` nie pauzuje NIGDY, niezależnie od `approvals.mode`.
+
+    CIĄGŁOŚĆ SESJI — to było ryzyko tej migracji i rozwiązuje je ciało żądania:
+
+        POST /p/<bot>/v1/runs
+        {"input": <wiadomość>, "session_id": "slafy-<bot>", "conversation_history": [...]}
+
+    - `session_id` jedzie DALEJ do `_create_agent(session_id=...)` razem z
+      `session_db=self._ensure_session_db()` (`api_server.py:2908-2914`), więc
+      `AIAgent` dopisuje turę do TEGO SAMEGO wiersza `hermes_state.db`, do którego
+      pisała ścieżka `/v1/chat/completions`. Id liczymy jak dotąd z `bot_id`
+      (`session_id()`), czyli nadal nie trzymamy żadnego stanu.
+    - Historii `/v1/runs` sam NIE dociąga (umie tylko `conversation_history` z
+      ciała i `previous_response_id` z pamięci procesu — `api_server.py:6510-6537`),
+      w odróżnieniu od `/v1/chat/completions`, gdzie robi to nagłówek
+      `X-Hermes-Session-Id` (`api_server.py:4133-4141`). Dosyłamy ją sami, tym
+      samym odczytem, którym UI maluje wątek (`messages()` → `_history()`).
+    - Duplikatów nie ma: `_flush_messages_to_session_db` pomija wiadomości
+      przekazane jako `conversation_history` PO TOŻSAMOŚCI obiektów (`messages`
+      jest ich płytką kopią — `run_agent.py:2066-2072`), więc do bazy trafia
+      wyłącznie nowa tura.
+    - `instructions` świadomie NIE wysyłamy: ephemeral system prompt PRZYKRYŁBY
+      `SOUL.md` profilu, czyli tożsamość bota.
+
+    Cena: `/v1/runs` nie przyjmuje id sesji nagłówkiem, więc scenariusze z JAWNĄ,
+    inną sesją (gate fazy 8) zostają na `chat_url()`. `/v1/runs/<id>/stop`
+    (prawdziwe przerwanie tury) zostaje na później — `interruptTurn` harnessu
+    nadal tylko zrywa strumień.
 """
 
 import json
@@ -113,7 +148,7 @@ from pathlib import Path
 import httpx
 import yaml
 
-from server import plugins, skills, usage
+from server import approvals, permissions, plugins, skills, usage
 from server.bots import data_dir, profile_dir
 
 GATEWAY_URL = os.environ.get("SLAFY_GATEWAY_URL", "http://127.0.0.1:8642")
@@ -131,14 +166,20 @@ multiplex_profiles: true
 plugins:
   enabled:
     - browser/slafy
+    - slafy_approvals
 browser:
   cloud_provider: slafy
   backend: "off"
   inactivity_timeout: 3600
 """
 
-# Źródło pluginu w repo → kopia w katalogu danych (patrz (d) w docstringu).
+# Źródła pluginów w repo → kopie w katalogu danych (patrz (d) w docstringu).
+# `browser/slafy` siedzi w kategorii (klucz `browser/slafy`), `slafy_approvals`
+# płasko (klucz `slafy_approvals`) — oba układy są wspierane
+# (`hermes_cli/plugins.py::_scan_directory`), a polityka zgód nie należy do
+# żadnej kategorii backendów Hermesa.
 _PLUGIN_SRC = Path(__file__).resolve().parent / "browser_plugin"
+_APPROVAL_PLUGIN_SRC = Path(__file__).resolve().parent / "approval_plugin"
 
 # Provider jawnie w configu KAŻDEGO profilu — auto-preferencja Hermesa zna tylko
 # `("browser-use", "browserbase")`, a `backend: "off"` powstrzymuje auto-przełączkę
@@ -174,7 +215,12 @@ _STT_CFG = {"language": "pl"}
 # Default Hermesa to `smart` (config_defaults.py:2118) — pomocniczy LLM sam
 # zatwierdza "low-risk" niebezpieczne komendy, więc "bot wraca po zgodę" byłoby
 # cichą fikcją (APPROVALS-RECON §Top3.1). Dla floty botów: `manual`.
-_APPROVALS_CFG = {"mode": "manual"}
+_APPROVALS_MODE = "manual"
+# O ile Hermes ma czekać DŁUŻEJ niż my (`approvals.timeout()`). Jego bramka i
+# nasza kolejka mierzą ten sam czas z dwóch stron; gdyby Hermes odmówił pierwszy
+# (jego default to 300 s — `tools/approval.py:_get_approval_timeout`), user
+# dostałby kartę, której odpowiedź nie ma już czego odblokować.
+_APPROVALS_GRACE = 300
 _MEMORY_CFG = {"provider": "holographic"}
 _MEMORY_PLUGIN_CFG = {
     "hermes-memory-store": {
@@ -209,7 +255,15 @@ def session_id(bot_id: str) -> str:
 
 
 def chat_url(bot_id: str) -> str:
+    """Endpoint OpenAI-compatible. Tura go NIE używa od fazy F4 (patrz `runs_url`);
+    zostaje dla scenariuszy, które potrzebują tury z JAWNYM id sesji, bo `/v1/runs`
+    bierze je z ciała żądania (gate fazy 8: dwie sesje jednego bota)."""
     return f"{GATEWAY_URL}/p/{bot_id}/v1/chat/completions"
+
+
+def runs_url(bot_id: str) -> str:
+    """Ścieżka tury od fazy F4 — jedyna z REALNĄ pauzą na zgodę (patrz (e))."""
+    return f"{GATEWAY_URL}/p/{bot_id}/v1/runs"
 
 
 def _auth() -> dict:
@@ -235,12 +289,13 @@ def write_config(port: int | None = None) -> None:
     home = data_dir()
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.yaml").write_text(_CONFIG_YAML.format(port=port), encoding="utf-8")
-    shutil.copytree(
-        _PLUGIN_SRC,
-        home / "plugins" / "browser" / "slafy",
-        dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
+    for src, dst in (
+        (_PLUGIN_SRC, home / "plugins" / "browser" / "slafy"),
+        (_APPROVAL_PLUGIN_SRC, home / "plugins" / "slafy_approvals"),
+    ):
+        shutil.copytree(
+            src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__")
+        )
 
 
 def _ensure_browser_config(bot_id: str) -> None:
@@ -296,28 +351,32 @@ def _ensure_stt_config(bot_id: str) -> None:
     path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
+def _approvals_cfg() -> dict:
+    """Blok `approvals:` profilu. Wyliczany, nie stały — `timeout` musi nadążać
+    za `SLAFY_APPROVAL_TIMEOUT` (patrz `_APPROVALS_GRACE`)."""
+    return {"mode": _APPROVALS_MODE, "timeout": int(approvals.timeout()) + _APPROVALS_GRACE}
+
+
 def _ensure_approvals_config(bot_id: str) -> None:
-    """Ustaw `approvals.mode: manual` w `config.yaml` profilu bota. Idempotentne.
+    """Ustaw `approvals.mode: manual` + `timeout` w `config.yaml` profilu bota.
+    Idempotentne.
 
-    Merge, nie podmiana — w bloku `approvals:` siedzą też `timeout`, `cron_mode`,
-    `deny` (globy blokujące bezwarunkowo) i `smart_policy`.
+    Merge, nie podmiana — w bloku `approvals:` siedzą też `cron_mode`, `deny`
+    (globy blokujące bezwarunkowo) i `smart_policy`.
 
-    ponytail: sam `mode` — reszta zostaje na defaultach Hermesa. Ceiling: na
-    ścieżce `/v1/chat/completions` `manual` NIE pauzuje tury (kolejka gateway
-    istnieje wyłącznie na `/v1/runs` — APPROVALS-RECON §2.3), więc realny efekt
-    to "bez auto-zatwierdzania przez aux-LLM": bot zamiast po cichu wykonać
-    niebezpieczną komendę relacjonuje, że potrzebuje zgody — i to łapie
-    heurystyka uwagi w `app._run_chat`. Pełna pauza dojdzie razem z migracją tury
-    na `/v1/runs`.
+    Od fazy F4 `manual` PAUZUJE turę naprawdę: tura idzie przez `/v1/runs`, gdzie
+    gateway rejestruje callback zgód (`api_server.py:6707`), a bramka blokuje
+    wątek agenta do decyzji człowieka. Na `/v1/chat/completions` ten sam tryb
+    oddawał modelowi `approval_required` bez pauzy (`tools/approval.py:3322`).
     """
     path = profile_dir(bot_id) / "config.yaml"
     if not path.parent.is_dir():
         return
     cfg = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
-    approvals = {**(cfg.get("approvals") or {}), **_APPROVALS_CFG}
-    if approvals == cfg.get("approvals"):
+    block = {**(cfg.get("approvals") or {}), **_approvals_cfg()}
+    if block == cfg.get("approvals"):
         return
-    cfg["approvals"] = approvals
+    cfg["approvals"] = block
     path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
@@ -409,9 +468,9 @@ def _prepare(bot_id: str, message: str) -> tuple[str, str]:
     procesu, configi profilu, pluginy, skille i rozwinięcie slasha.
 
     multibot: wyciągnięte z `chat()` po to, żeby wariant streamowany
-    (`chat_stream`) robił dokładnie ten sam prep. `httpx.post` ZOSTAJE w `chat()`
-    — testy podmieniają `gateway.httpx.post` (test_skills, test_usage,
-    test_permissions), więc przeniesienie żądania do helpera zerwałoby im mocka.
+    (`chat_stream`) robił dokładnie ten sam prep. Od fazy F4 obie ścieżki to
+    JEDEN generator (`chat()` go zwija), więc prep ma już tylko jedno wywołanie —
+    helper zostaje, bo trzyma kolejność ensure-chainu w jednym miejscu.
     """
     ensure_running()
     _ensure_profile_key(bot_id)
@@ -427,102 +486,157 @@ def _prepare(bot_id: str, message: str) -> tuple[str, str]:
     return skills.slash_message(bot_id, message), session_id(bot_id)
 
 
-def chat(bot_id: str, message: str) -> dict:
-    """Jedna tura rozmowy z botem. Non-stream — wariant SSE to `chat_stream`."""
-    message, sid = _prepare(bot_id, message)
-    response = httpx.post(
-        chat_url(bot_id),
-        json={
-            "model": "hermes-agent",
-            "messages": [{"role": "user", "content": message}],
-            "stream": False,
-        },
-        headers={"X-Hermes-Session-Id": sid, **_auth()},
-        timeout=300.0,  # tura agenta z tool-callami potrafi trwać minuty
+def _history(bot_id: str) -> list[dict]:
+    """Historia bota jako `conversation_history` dla `/v1/runs` — patrz (e)."""
+    return [{"role": m["role"], "content": m["content"]} for m in messages(bot_id)]
+
+
+def _run_events(bot_id: str, run_id: str) -> Iterator[dict]:
+    """Strumień zdarzeń runu. `GET /v1/runs/<id>/events`, SSE.
+
+    Ramki NIE mają linii `event:` — `_sse_frame` woła się tu bez tego argumentu
+    (`api_server.py:6943`), więc nazwa zdarzenia siedzi w polu `event` PAYLOADU.
+    Poza ramkami lecą komentarze (`: keepalive` co 30 s, `: stream closed` na
+    koniec), które po prostu pomijamy — one też trzymają połączenie żywe, więc
+    read-timeout wystarczy krótszy niż najdłuższa możliwa pauza na zgodę.
+    """
+    with httpx.stream(
+        "GET",
+        f"{runs_url(bot_id)}/{run_id}/events",
+        headers=_auth(),
+        timeout=httpx.Timeout(30.0, read=120.0),
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            line = line.rstrip("\r")
+            if not line.startswith("data:"):
+                continue
+            try:
+                yield json.loads(line[5:].strip())
+            except ValueError:  # ramka nie-JSON = nic, czego umiemy użyć
+                continue
+
+
+def _approval(bot_id: str, run_id: str, event: dict) -> Iterator[dict]:
+    """Zgoda: rozgłoś prośbę, ZAPARKUJ turę, odeślij decyzję do Hermesa.
+
+    Nazwę narzędzia niesie `pattern_key`: eskalacja z naszego pluginu ma postać
+    `plugin_rule:<tool>` (bo `rule_key` = nazwa narzędzia — `server/approval_plugin/`),
+    a wbudowana bramka niebezpiecznych komend Hermesa własnego prefiksu nie ma i
+    dotyczy zawsze powłoki. Podgląd argumentów bierzemy z `description` (nasz
+    plugin wkłada tam `tool {args}`), a dla komendy z `command`.
+    """
+    key = str(event.get("pattern_key") or "")
+    tool = key[len("plugin_rule:"):] if key.startswith("plugin_rule:") else "terminal"
+    preview = str(event.get("description") or event.get("command") or tool)
+
+    request_id, frame = approvals.open(bot_id, tool, preview)
+    yield frame
+    decision = approvals.wait(request_id)
+    if decision == "always":
+        # Źródłem prawdy jest NASZA allowlista, nie permanentna allowlista
+        # Hermesa: plugin sprawdza ją przed eskalacją, więc następnym razem
+        # bramka w ogóle się nie odpali. Do Hermesa idzie zwykłe `once`.
+        permissions.always_allow(bot_id, tool)
+    httpx.post(
+        f"{runs_url(bot_id)}/{run_id}/approval",
+        json={"choice": "once" if decision in ("allow", "always") else "deny"},
+        headers=_auth(),
+        timeout=30.0,
     )
-    response.raise_for_status()
-    data = response.json()
-    # Miernik zużycia siedzi OBOK kontraktu {reply, session_id} — brak bloku
-    # `usage` (stary serwer / stream) = no-op, nigdy wyjątek (usage.record).
-    usage.record(bot_id, data.get("usage"))
-    return {
-        "reply": data["choices"][0]["message"]["content"],
-        "session_id": sid,
-    }
+    yield {"type": "approval_resolved", "request_id": request_id, "decision": decision}
 
 
 def chat_stream(bot_id: str, message: str) -> Iterator[dict]:
-    """Ta sama tura co `chat()`, ale strumieniowana — generator eventów.
+    """Jedna tura rozmowy z botem jako generator eventów.
 
-    multibot (faza F2): proxy SSE gatewaya Hermesa. Ten sam prep i ten sam
-    endpoint `POST /p/<bot>/v1/chat/completions`, tylko `stream: True`, więc
-    ścieżka non-stream zostaje nietknięta.
-
-    Format po stronie Hermesa (`api_server.py:4405-4590`): najpierw ramka z
-    `delta.role`, potem ramki `delta.content`, tool-activity jako WŁASNY event
-    `hermes.tool.progress` (`api_server.py:4441-4442`), na koniec ramka z
-    `finish_reason` + `usage` i `data: [DONE]`.
+    multibot (faza F4): tura idzie przez `/v1/runs` — patrz (e) w docstringu
+    modułu. `POST` oddaje `run_id` od razu (202), a treść płynie osobnym
+    strumieniem `GET /v1/runs/<run_id>/events`.
 
     Yielduje słowniki: `delta` (kawałek tekstu), `working` (aktywność
-    narzędzia), `usage` (tokeny), `done` (pełna odpowiedź + `session_id`).
-    Błąd sieci/HTTP leci wyjątkiem — mapuje go warstwa HTTP (`server/app.py`).
+    narzędzia), `approval` (prośba o zgodę — tu tura STOI), `approval_resolved`,
+    `usage` (tokeny), `done` (pełna odpowiedź + `session_id`).
+    Błąd sieci/HTTP/runu leci wyjątkiem — mapuje go warstwa HTTP (`server/app.py`).
     """
     message, sid = _prepare(bot_id, message)
+    history = _history(bot_id)
+    response = httpx.post(
+        runs_url(bot_id),
+        json={"input": message, "session_id": sid, "conversation_history": history},
+        headers=_auth(),
+        timeout=60.0,  # samo przyjęcie runu; robota leci w tle
+    )
+    response.raise_for_status()
+    run_id = response.json()["run_id"]
+
     parts: list[str] = []
+    output = ""
     finish_reason = None
-    with httpx.stream(
-        "POST",
-        chat_url(bot_id),
-        json={
-            "model": "hermes-agent",
-            "messages": [{"role": "user", "content": message}],
-            "stream": True,
-        },
-        headers={"X-Hermes-Session-Id": sid, **_auth()},
-        timeout=300.0,  # jak w `chat()` — tura z tool-callami trwa minuty
-    ) as response:
-        response.raise_for_status()
-        event = None
-        for line in response.iter_lines():
-            line = line.rstrip("\r")
-            if not line:  # pusta linia = koniec ramki, `event:` nie przechodzi dalej
-                event = None
-                continue
-            if line.startswith("event:"):
-                event = line[6:].strip()
-                continue
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if data == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data)
-            except ValueError:  # ramka nie-JSON = nic, czego umiemy użyć
-                continue
-            if event == "hermes.tool.progress":
-                yield {"type": "working", "tool": chunk}
-                continue
-            choice = (chunk.get("choices") or [{}])[0]
-            text = (choice.get("delta") or {}).get("content")
-            if text:
+    for event in _run_events(bot_id, run_id):
+        kind = event.get("event")
+        if kind == "message.delta":
+            if text := event.get("delta"):
                 parts.append(text)
                 yield {"type": "delta", "text": text}
-            if choice.get("finish_reason"):
-                finish_reason = choice["finish_reason"]
-            if chunk.get("usage"):
-                usage.record(bot_id, chunk["usage"])  # jak w `chat()` — nigdy nie rzuca
+        elif kind in ("tool.started", "tool.completed"):
+            # Bez `toolCallId` po stronie Hermesa — driver harnessu składa id
+            # itemu z nazwy, więc start i koniec tego samego narzędzia trafiają
+            # w jedną kartę.
+            yield {
+                "type": "working",
+                "tool": {
+                    "name": event.get("tool") or "tool",
+                    "status": "running" if kind == "tool.started" else "done",
+                    "preview": event.get("preview"),
+                },
+            }
+        elif kind == "approval.request":
+            yield from _approval(bot_id, run_id, event)
+        elif kind == "run.completed":
+            finish_reason = "stop"
+            output = str(event.get("output") or "")
+            u = event.get("usage") or {}
+            # Run liczy `input_tokens`/`output_tokens`, a `usage.record` (i UI)
+            # mówi językiem OpenAI — mapujemy w jednym miejscu.
+            counted = {
+                "prompt_tokens": u.get("input_tokens") or 0,
+                "completion_tokens": u.get("output_tokens") or 0,
+                "total_tokens": u.get("total_tokens") or 0,
+            }
+            if any(counted.values()):
+                usage.record(bot_id, counted)  # nigdy nie rzuca
                 yield {
                     "type": "usage",
-                    "input": chunk["usage"].get("prompt_tokens", 0),
-                    "output": chunk["usage"].get("completion_tokens", 0),
+                    "input": counted["prompt_tokens"],
+                    "output": counted["completion_tokens"],
                 }
+            break
+        elif kind in ("run.failed", "run.cancelled"):
+            raise RuntimeError(event.get("error") or f"hermes {kind}")
+    # Deltami płynie ta sama treść co w `output`; `output` jest awaryjny, bo
+    # provider bez streamingu nie wyemituje ani jednej `message.delta`.
     yield {
         "type": "done",
-        "reply": "".join(parts),
+        "reply": "".join(parts) or output,
         "session_id": sid,
         "finish_reason": finish_reason,
     }
+
+
+def chat(bot_id: str, message: str) -> dict:
+    """Ta sama tura co `chat_stream`, zwinięta do `{reply, session_id}`.
+
+    Kontrakt bez zmian od fazy 1 — zmienił się wyłącznie transport pod spodem.
+    Eventy pośrednie (w tym `approval`) NIE giną: prośba o zgodę idzie na WS z
+    rejestru (`server/approvals.py`), więc rutyny, grupy, delegacje i dyktowanie
+    też potrafią zapytać człowieka.
+    """
+    done: dict = {}
+    for event in chat_stream(bot_id, message):
+        if event["type"] == "done":
+            done = event
+    return {"reply": done.get("reply", ""), "session_id": done.get("session_id") or session_id(bot_id)}
 
 
 def messages(bot_id: str) -> list[dict]:
