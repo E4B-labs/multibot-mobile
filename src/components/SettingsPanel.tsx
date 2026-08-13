@@ -1,4 +1,5 @@
 import { Brain, ChevronLeft, Wand2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
@@ -29,6 +30,77 @@ function Field({
 
 const inputCls =
   "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none focus:border-hairline";
+
+// multibot: F10 — licznik zużycia tokenów silnika slafy, karta pod EngineAutonomy.
+// Jeden GET przy otwarciu panelu (mount; karta keyowana bot.id jak F4), zero
+// pollingu:
+//   GET /api/engine/bots/mb-<threadId>/usage — {prompt_tokens, completion_tokens,
+//     total_tokens, turns} (engine/server/usage.py).
+// 404 = bot silnika jeszcze nie istnieje (wstaje leniwie przy pierwszej
+// wiadomości) = zero użycia, nie błąd; 502/503/błąd sieci = "Engine offline". Kosztu nie
+// pokazujemy — silnik zlicza wyłącznie tokeny.
+interface EngineUsageOut {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  turns: number;
+}
+
+const ZERO_USAGE: EngineUsageOut = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 };
+
+function EngineUsage({ bot }: { bot: Bot }) {
+  // Ten sam wzorzec id co EngineAutonomy: domyślny botPrefix "mb-" z
+  // decodeConfig w server/drivers/slafy.ts.
+  const engineBotId = `mb-${bot.threadId}`;
+  const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
+  const [usage, setUsage] = useState<EngineUsageOut>(ZERO_USAGE);
+
+  useEffect(() => {
+    fetch(`/api/engine/bots/${engineBotId}/usage`)
+      .then((res) => {
+        if (res.status === 404) return ZERO_USAGE; // brak bota = brak użycia
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<EngineUsageOut>;
+      })
+      .then((u) => {
+        setUsage(u);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("offline"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  const stat = (value: string, label: string) => (
+    <div>
+      <div className="text-[20px] font-semibold tabular-nums text-ink">{value}</div>
+      <div className="text-[12px] text-ink-secondary">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Usage</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        Tokens this bot has used on the engine
+      </div>
+      {status === "offline" ? (
+        <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
+          <span className="size-1.5 rounded-full bg-raised-hover" />
+          Engine offline
+        </div>
+      ) : status === "ready" && usage.turns === 0 ? (
+        <div className="mt-3 text-[13px] text-ink-secondary">No usage yet</div>
+      ) : status === "ready" ? (
+        <div className="mt-3 flex gap-6">
+          {stat(fmt(usage.prompt_tokens), "Tokens in")}
+          {stat(fmt(usage.completion_tokens), "Tokens out")}
+          {stat(fmt(usage.turns), "Turns")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
@@ -169,6 +241,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <>
               <EngineProviderCard key={bot.id} bot={bot} />
               <EngineAutonomy key={`f4-${bot.id}`} bot={bot} />
+              <EngineUsage key={`f10-${bot.id}`} bot={bot} />
               {/* multibot: F8 — wejścia do paneli pamięci i skilli; panele żyją
                   w prawym slocie (Shell), więc karta tylko przełącza flagę. */}
               <div className="rounded-xl bg-card p-4">
