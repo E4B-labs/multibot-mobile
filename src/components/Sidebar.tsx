@@ -19,6 +19,8 @@ import { useStore, formatTime, type Bot } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
+// multibot: F11 — status silnika dla warunkowej kropki w stopce
+import { engineOnline } from "@/lib/engineStatus";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -207,6 +209,30 @@ export function Sidebar() {
   const { state, dispatch } = useStore();
   const [menu, setMenu] = useState<MenuState | null>(null);
 
+  // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
+  // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
+  // nie odpytujemy). Boty i instancje hydratują się async, więc efekt na
+  // [hasSlafyBot] odpala się raz, gdy flaga stanie się prawdą — to jest to
+  // "jedno sprawdzenie przy mount aplikacji"; kolejne robi AppSettingsPanel
+  // przy otwarciu. Zero pollingu.
+  const hasSlafyBot = state.bots.some(
+    (b) =>
+      state.instances.find((i) => i.instanceId === b.modelSelection.instanceId)?.driverKind ===
+      "slafy",
+  );
+  const [engineOffline, setEngineOffline] = useState(false);
+  useEffect(() => {
+    if (!hasSlafyBot) {
+      setEngineOffline(false);
+      return;
+    }
+    let alive = true;
+    void engineOnline().then((ok) => alive && setEngineOffline(!ok));
+    return () => {
+      alive = false;
+    };
+  }, [hasSlafyBot]);
+
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
@@ -259,6 +285,17 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
+        {/* multibot: F11 — subtelna kropka statusu silnika, tylko offline+slafy;
+            szara bg-raised-hover = konwencja "Engine offline" z EngineProviderCard */}
+        {engineOffline && (
+          <div
+            title="Slafy engine offline — bots on the local engine can't run. Check App Settings."
+            className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
+          >
+            <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
+            Engine offline
+          </div>
+        )}
         <button
           onClick={() => dispatch({ type: "togglePlugins", open: true })}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"

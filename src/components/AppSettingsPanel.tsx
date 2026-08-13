@@ -7,6 +7,8 @@ import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
 import { useUpdaterState } from "@/lib/updater";
 import { cn } from "@/lib/cn";
+// multibot: F11 — status silnika dla EngineStatusRow
+import { engineOnline } from "@/lib/engineStatus";
 
 // multibot: F10 — import profilu Hermesa do silnika slafy. UI gada wyłącznie z
 // przelotką harnessu (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>`):
@@ -233,6 +235,35 @@ function HermesImport() {
   );
 }
 
+// multibot: F11 — status silnika slafy: jeden GET przy każdym otwarciu panelu
+// (mount = otwarcie, panel renderuje się warunkowo w App.tsx), zero pollingu.
+// Czemu tu: to jedyne panelowe miejsce "app-level" (per-bot rzeczy żyją w
+// SettingsPanel), a sekcje silnika (Hermes import) już tu mieszkają.
+// Kropka: bg-success = działa, bg-raised-hover = konwencja "Engine offline"
+// z EngineProviderCard/HermesImport.
+function EngineStatusRow() {
+  const [online, setOnline] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void engineOnline().then((ok) => alive && setOnline(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Slafy engine</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        The local engine behind BYOK bots, routines and skills.
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
+        <span className={cn("size-1.5 rounded-full", online ? "bg-success" : "bg-raised-hover")} />
+        {online === null ? "Checking…" : online ? "Running" : "Engine offline"}
+      </div>
+    </div>
+  );
+}
+
 /** Name + email, persisted to /api/config {profile} on blur. Prefilled from
  * the current config (the values are echoed back — they're not secrets). */
 function ProfileFields() {
@@ -365,6 +396,9 @@ export function AppSettingsPanel() {
             <ApiKeyRow section="box" label="Box token" placeholder="Token from box.ascii.dev" />
           </div>
         </div>
+
+        {/* multibot: F11 — status silnika nad sekcją importu Hermesa */}
+        <EngineStatusRow />
 
         <HermesImport />
 
