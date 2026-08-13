@@ -30,6 +30,64 @@ export function Composer({ bot }: { bot: Bot }) {
   // what was typed before the mic went on — partials append after it
   const baseText = useRef("");
 
+  // multibot: Web Speech API dictation — works in any Chrome, including plain
+  // vite on Windows. The Electron bridge keeps priority when present (packaged
+  // macOS: webkitSpeechRecognition exists there but its recognition service
+  // fails without a Google key); Web Speech covers every browser without the
+  // bridge. Final results append after baseText; interim results show live in
+  // the input. Recognition language follows navigator.language. Second mic
+  // click / Esc stops.
+  const WebSpeech: (new () => any) | undefined =
+    (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+  const webSpeechActive = !!WebSpeech && !window.ogb;
+  const webRec = useRef<any>(null);
+  useEffect(() => {
+    if (!recording || !webSpeechActive) return;
+    setSpeechError(null);
+    const rec: any = new WebSpeech();
+    webRec.current = rec;
+    rec.lang = navigator.language || "en-US";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) {
+          const t = String(r[0]?.transcript ?? "").trim();
+          if (t) baseText.current = baseText.current ? `${baseText.current} ${t}` : t;
+        } else {
+          interim += r[0]?.transcript ?? "";
+        }
+      }
+      const shown = interim.trim()
+        ? baseText.current
+          ? `${baseText.current} ${interim.trim()}`
+          : interim.trim()
+        : baseText.current;
+      setText(shown);
+    };
+    rec.onerror = (e: any) => {
+      if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+        setSpeechError("Dictation needs microphone access — allow it for this site.");
+      } else if (e?.error && e.error !== "aborted" && e.error !== "no-speech") {
+        setSpeechError(`Dictation failed: ${e.error}`);
+      }
+      setRecording(false);
+    };
+    rec.onend = () => setRecording(false);
+    rec.start();
+    return () => {
+      webRec.current = null;
+      rec.onresult = rec.onerror = rec.onend = null;
+      try {
+        rec.stop();
+      } catch {
+        /* already stopped */
+      }
+    };
+  }, [recording, WebSpeech]);
+
   // ── @mention picker (tag another bot; the agent reaches it via ask_bot) ──
   const mention = mentionQueryAt(text, caret);
   const candidates = useMemo(() => {
@@ -71,6 +129,8 @@ export function Composer({ bot }: { bot: Bot }) {
   // helper runs; the final transcript stays in the box, ready to edit/send
   useEffect(() => {
     if (!recording) return;
+    // multibot: Web Speech owns this recording when the bridge is absent
+    if (webSpeechActive) return;
     const bridge = window.ogb;
     if (!bridge) {
       setRecording(false);
@@ -100,6 +160,12 @@ export function Composer({ bot }: { bot: Bot }) {
   }, [recording]);
 
   const toggleMic = () => {
+    // multibot: bridge first (packaged app), Web Speech in plain browsers
+    if (webSpeechActive) {
+      baseText.current = text.trim();
+      setRecording((r) => !r);
+      return;
+    }
     if (!window.ogb) {
       setSpeechError("Voice input needs the desktop app — run pnpm dev:desktop.");
       return;

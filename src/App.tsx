@@ -10,6 +10,8 @@ import { PluginsPanel } from "@/components/PluginsPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
+// multibot: Cmd/Ctrl+K paleta komend
+import { CmdK } from "@/components/CmdK";
 
 function Shell() {
   const { state } = useStore();
@@ -18,6 +20,8 @@ function Shell() {
     <div className="flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
       <UpdateBanner />
+      {/* multibot: Cmd/Ctrl+K command palette — fixed overlay, renders null until opened */}
+      <CmdK />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
       {bot ? (

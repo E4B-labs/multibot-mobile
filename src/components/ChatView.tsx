@@ -6,6 +6,8 @@ import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
 import { Composer } from "./Composer";
+// multibot: TTS głośniczek przy wiadomościach bota (tylko driver slafy)
+import { SpeakButton } from "./SpeakButton";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 
@@ -21,7 +23,8 @@ function Bubble({ message }: { message: Message }) {
   const collapsible =
     user && !expanded && (text.length > USER_COLLAPSE_CHARS || text.split("\n").length > USER_COLLAPSE_LINES);
   return (
-    <div className={cn("flex w-full", user ? "justify-end" : "justify-start")}>
+    // multibot: group/msg reveals the SpeakButton (TTS) on bubble hover
+    <div className={cn("group/msg flex w-full", user ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "max-w-[70%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
@@ -42,7 +45,11 @@ function Bubble({ message }: { message: Message }) {
             )}
           </>
         ) : (
-          <ChatMarkdown text={text} />
+          <>
+            <ChatMarkdown text={text} />
+            {/* multibot: TTS — see SpeakButton.tsx; renders null off-slafy */}
+            <SpeakButton text={text} />
+          </>
         )}
       </div>
     </div>
