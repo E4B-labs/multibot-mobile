@@ -55,6 +55,9 @@ export interface Bot {
   mascotExpression?: string | null;
   unread: boolean;
   busy?: boolean;
+  // multibot: why the bot is waiting on a human (login/captcha/question); null/absent = not waiting.
+  // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
+  needsAttention?: string | null;
   modelSelection: ModelSelection;
   /** Where this bot's computer runs; unset = auto (cloud box if one exists, else local). */
   computer?: "cloud" | "local" | "off";

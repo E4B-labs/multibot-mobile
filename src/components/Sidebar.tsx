@@ -185,8 +185,17 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
           <span className="truncate text-[13px] text-ink-secondary">
             {preview(bot)}
           </span>
-          {bot.unread && (
-            <span className="size-2 shrink-0 rounded-full bg-accent" />
+          {/* multibot: needs-attention dot — same pattern as the unread dot below,
+              warning color + reason tooltip; wins over unread (more urgent). */}
+          {bot.needsAttention != null ? (
+            <span
+              title={bot.needsAttention}
+              className="size-2 shrink-0 rounded-full bg-warning"
+            />
+          ) : (
+            bot.unread && (
+              <span className="size-2 shrink-0 rounded-full bg-accent" />
+            )
           )}
         </div>
       </div>
