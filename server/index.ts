@@ -50,12 +50,32 @@ const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
   ".css": "text/css",
+  ".webmanifest": "application/manifest+json",
+  ".wasm": "application/wasm",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".json": "application/json",
   ".woff2": "font/woff2",
 };
+
+// multibot (G5): browser must revalidate install metadata and worker code;
+// Vite's fingerprinted assets are safe to retain for the app-shell cache.
+function staticHeaders(file: string): Record<string, string> {
+  const name = file.toLowerCase().replace(/\\/g, "/");
+  const installMetadata = name.endsWith("/index.html") || name.endsWith(".webmanifest") || /\/(?:sw|service-worker)\.js$/.test(name);
+  return {
+    "content-type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
+    "cache-control": installMetadata
+      ? "no-cache"
+      : name.includes("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=3600",
+    "x-content-type-options": "nosniff",
+    ...(/\/(?:sw|service-worker)\.js$/.test(name) ? { "service-worker-allowed": "/" } : {}),
+  };
+}
 
 ensureDirs();
 const cfg = loadConfig();
@@ -585,7 +605,8 @@ function provisionJob() {
 // ── HTTP plumbing ─────────────────────────────────────────────────────
 function json(res: ServerResponse, status: number, body: unknown) {
   const data = JSON.stringify(body);
-  res.writeHead(status, { "content-type": "application/json" });
+  // API data is never part of the PWA app-shell cache.
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(data);
 }
 
@@ -1049,13 +1070,13 @@ const server = createServer(async (req, res) => {
       if (file !== root && !file.startsWith(root + sep)) return json(res, 404, { error: "not found" });
       try {
         const data = readFileSync(file);
-        res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+        res.writeHead(200, staticHeaders(file));
         return res.end(method === "HEAD" ? undefined : data);
       } catch {
         // SPA fallback
         try {
           const data = readFileSync(join(STATIC_DIR, "index.html"));
-          res.writeHead(200, { "content-type": "text/html" });
+          res.writeHead(200, staticHeaders(join(STATIC_DIR, "index.html")));
           return res.end(method === "HEAD" ? undefined : data);
         } catch {
           /* fall through to 404 */

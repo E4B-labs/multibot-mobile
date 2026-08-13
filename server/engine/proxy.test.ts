@@ -192,6 +192,7 @@ describe("engine proxy (/api/engine/*)", () => {
   it("streams SSE chunk by chunk instead of buffering it", async () => {
     const res = await fetch(`${BASE}/api/engine/slow-stream`, { headers: { authorization: `Bearer ${TOKEN}` } });
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-store");
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
 

@@ -58,7 +58,10 @@ export function Composer({ bot }: { bot: Bot }) {
   // click / Esc stops.
   const WebSpeech: (new () => any) | undefined =
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
-  const webSpeechActive = !!WebSpeech && !window.ogb;
+  // multibot: G5 — microphone APIs require secure context; localhost remains
+  // the browser exception, plain LAN HTTP must explain limitation clearly.
+  const secureContext = window.isSecureContext || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  const webSpeechActive = !!WebSpeech && !window.ogb && secureContext;
   const webRec = useRef<any>(null);
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
@@ -219,6 +222,10 @@ export function Composer({ bot }: { bot: Bot }) {
   }, [recording]);
 
   const toggleMic = () => {
+    if (!secureContext && !window.ogb) {
+      setSpeechError("Dictation is unavailable over plain HTTP. Open this app on localhost or HTTPS (for example Tailscale).");
+      return;
+    }
     // multibot: bridge first (packaged app), Web Speech in plain browsers
     if (webSpeechActive) {
       baseText.current = text.trim();
@@ -235,6 +242,11 @@ export function Composer({ bot }: { bot: Bot }) {
 
   return (
     <div className="px-5 pb-5 pt-2">
+      {!secureContext && !window.ogb && (
+        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+          Dictation needs a secure context: use HTTPS or localhost. Plain HTTP on a LAN cannot access the microphone.
+        </div>
+      )}
       {speechError && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           {speechError}

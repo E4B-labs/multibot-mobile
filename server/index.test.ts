@@ -35,6 +35,10 @@ beforeAll(async () => {
   mkdirSync(staticDir, { recursive: true });
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>Multibot login</title>");
   writeFileSync(join(staticDir, "app.js"), "console.log('login shell')");
+  writeFileSync(join(staticDir, "manifest.webmanifest"), JSON.stringify({ name: "Multibot", start_url: "/" }));
+  writeFileSync(join(staticDir, "sw.js"), "self.addEventListener('fetch', () => {})");
+  mkdirSync(join(staticDir, "assets"));
+  writeFileSync(join(staticDir, "assets", "app-abc123.js"), "console.log('fingerprinted')");
   mkdirSync(join(home, ".openmausbot"), { recursive: true });
   writeFileSync(
     join(home, ".openmausbot", "config.json"),
@@ -112,10 +116,43 @@ describe("harness HTTP API", () => {
     const page = await fetch(`${BASE}/`);
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("Multibot login");
+    expect(page.headers.get("cache-control")).toBe("no-cache");
+    expect(page.headers.get("x-content-type-options")).toBe("nosniff");
     expect((await fetch(`${BASE}/app.js`)).status).toBe(200);
     expect((await fetch(`${BASE}/api/bots`)).status).toBe(401);
     expect((await fetch(`${BASE}/api/auth/check`)).status).toBe(401);
     expect((await fetch(`${BASE}/webhooks/routine-id`, { method: "POST" })).status).toBe(401);
+  });
+
+  it("serves installable PWA files with update-safe MIME and cache headers", async () => {
+    const manifest = await fetch(`${BASE}/manifest.webmanifest`);
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers.get("content-type")).toBe("application/manifest+json");
+    expect(manifest.headers.get("cache-control")).toBe("no-cache");
+
+    const worker = await fetch(`${BASE}/sw.js`);
+    expect(worker.status).toBe(200);
+    expect(worker.headers.get("content-type")).toBe("text/javascript");
+    expect(worker.headers.get("cache-control")).toBe("no-cache");
+    expect(worker.headers.get("service-worker-allowed")).toBe("/");
+
+    const asset = await fetch(`${BASE}/assets/app-abc123.js`);
+    expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    const head = await fetch(`${BASE}/manifest.webmanifest`, { method: "HEAD" });
+    expect(await head.text()).toBe("");
+  });
+
+  it("keeps API data authenticated, JSON, and out of caches", async () => {
+    const unauthorized = await fetch(`${BASE}/api/bots`);
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("cache-control")).toBe("no-store");
+    expect(unauthorized.headers.get("content-type")).toBe("application/json");
+
+    const authorized = await fetch(`${BASE}/api/bots`, { headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(authorized.status).toBe(200);
+    expect(authorized.headers.get("cache-control")).toBe("no-store");
+    expect(authorized.headers.get("content-type")).toBe("application/json");
+    expect((await authorized.json() as { bots: unknown[] }).bots).toBeDefined();
   });
 
   it("seeds one starter bot with its greeting", async () => {

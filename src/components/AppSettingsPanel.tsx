@@ -11,6 +11,10 @@ import { authFetch, setAuthToken } from "@/lib/auth";
 // multibot: F11 — status silnika dla EngineStatusRow
 import { engineOnline } from "@/lib/engineStatus";
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+}
+
 // multibot: F10 — import existing profile into local service. UI gada wyłącznie z
 // przelotką harnessu (`server/engine/proxy.ts`: `/api/engine/<rest>` → `/api/<rest>`):
 //   POST /api/engine/import/inspect {source} — podgląd bez kopiowania
@@ -358,6 +362,62 @@ function AccessTokenSettings() {
   );
 }
 
+function InstallAppSettings() {
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  useEffect(() => {
+    const onPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallEvent(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallEvent(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+  const install = async () => {
+    if (!installEvent) return;
+    await installEvent.prompt();
+    setInstallEvent(null);
+  };
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  const isAppleMobile = /iPhone|iPad|iPod/.test(userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const installHint = isAppleMobile
+    ? "iPhone/iPad Safari: Share → Add to Home Screen."
+    : /Android/.test(userAgent)
+      ? "Android Chrome: ⋮ → Install app or Add to Home screen."
+      : /Firefox/.test(userAgent)
+        ? "Firefox: open this page in Chrome or Edge to install it as an app."
+        : "Chrome/Edge: use the install icon in the address bar or browser menu.";
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Install app</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {installed
+          ? "Multibot is installed on this device."
+          : "Use Multibot as a full-screen app on phone or computer."}
+      </div>
+      {installEvent ? (
+        <button onClick={() => void install()} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
+          Install Multibot
+        </button>
+      ) : !installed ? (
+        <div className="mt-3 text-[12px] text-ink-secondary">
+          {installHint}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 interface CustomModel {
   id: string;
   displayName: string;
@@ -640,6 +700,7 @@ export function AppSettingsPanel() {
 
         {/* multibot: G2 — server token, masked until explicitly shown. */}
         <AccessTokenSettings />
+        <InstallAppSettings />
 
         {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
         <CustomModels />

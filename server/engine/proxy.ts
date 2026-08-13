@@ -32,7 +32,7 @@ function rewrite(pathname: string, method: string): { path: string; method: stri
 }
 
 function fail(res: ServerResponse, status: number, error: string) {
-  if (!res.headersSent) res.writeHead(status, { "content-type": "application/json" });
+  if (!res.headersSent) res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify({ error }));
 }
 
@@ -55,6 +55,8 @@ async function proxyHttp(req: IncomingMessage, res: ServerResponse) {
     (up) => {
       const out: Record<string, string | string[]> = { ...(up.headers as any) };
       for (const h of HOP_BY_HOP) delete out[h];
+      // PWA caches shell only; every engine response stays network-owned.
+      out["cache-control"] = "no-store";
       res.writeHead(up.statusCode ?? 502, out);
       up.pipe(res);
     },

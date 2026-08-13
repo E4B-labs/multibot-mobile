@@ -83,7 +83,7 @@ function Shell() {
     state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
       "slafy";
   return (
-    <div className="flex h-full flex-col">
+    <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
       <UpdateBanner />
       {/* multibot: Cmd/Ctrl+K command palette — fixed overlay, renders null until opened */}
