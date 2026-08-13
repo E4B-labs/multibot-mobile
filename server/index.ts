@@ -189,7 +189,11 @@ store.seedIfEmpty();
 // also eligible, so a Termux Hermes home discovered after first boot migrates
 // without deleting the user's harness data.
 const seededPlaceholder = store.bots.length === 1 && store.bots[0]?.name === "Milind" && store.bots[0]?.modelSelection.instanceId === "claude";
-if (existingEngineProfile && (!hadHarnessBots || seededPlaceholder) && store.bots.length === 1) {
+// Re-check local first bot on every restart: the engine data directory can be
+// new while harness bots.json already exists (fresh Termux/service rebuild).
+// Import endpoint is idempotent and returns 409 when target already exists.
+const localFirstBot = store.bots.length === 1 && store.bots[0]?.modelSelection.instanceId === "local";
+if (existingEngineProfile && (!hadHarnessBots || seededPlaceholder || localFirstBot) && store.bots.length === 1) {
   const first = store.bots[0];
   store.patchBot(first.id, {
     name: existingEngineProfile.name,
