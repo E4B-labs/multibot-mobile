@@ -100,7 +100,7 @@ bus.attach(registry.instances());
 // agents-proxy calls; regenerated each boot (the proxy gets it via env).
 const COMMS_TOKEN = randomBytes(24).toString("hex");
 // Cap message chains: depth 0 = a user-initiated turn (may ask a peer);
-// a peer invoked via ask_bot runs at depth 1 and gets NO agents tool, so
+// a peer invoked via ask_bot runs at depth 1 and gets no MCP child, so
 // A→B is allowed but B→C (and A→B→A loops) never start.
 const MAX_COMMS_DEPTH = 1;
 // multibot (F9): głębokość tury, która TERAZ trwa u danego bota — druga (i
@@ -603,18 +603,14 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
-      // peer-agent comms: give a user-initiated turn the list_bots/ask_bot
-      // tools. A comms-invoked turn (depth ≥ cap) gets none — hard recursion
-      // stop, so the user's tokens can't be burned by a bot-to-bot loop.
-      // Only drivers that mount the tools get the integration (and, via the
-      // integrations.agents gate below, the prompt hint) — a bot on a driver
-      // without it must not be told about tools it cannot call. Any bot can
-      // still be the TARGET of ask_bot regardless of its driver.
+      // MultiBot management MCP: same local stdio shape as upstream
+      // OpenMausBot. Mount on every user turn, including a one-bot workspace;
+      // this proxy also carries memory, skills, routines, profile, device,
+      // files and terminal. Depth-limited peer turns get no child to prevent
+      // recursion.
       if (
         commsDepth < MAX_COMMS_DEPTH &&
-        (canUseIntegration(bot.threadId, "delegation") || workspace.access(bot.id).access === "read-only") &&
-        instance.adapter.capabilities.agentsMcp === true &&
-        store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0
+        instance.adapter.capabilities.agentsMcp === true
       ) {
         integrations.agents = agentsIntegration(bot.id, commsDepth);
       }

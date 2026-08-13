@@ -59,7 +59,7 @@ const TOOLS = [
   { name: "write_file", description: "Write a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
   { name: "run_command", description: "Run a host command with arguments.", inputSchema: { type: "object", properties: { command: { type: "string" }, args: { type: "array", items: { type: "string" } }, cwd: { type: "string" } }, required: ["command"] } },
   { name: "get_device_info", description: "Read verified host device facts (platform, Android model, Termux, RAM and installed runtimes).", inputSchema: { type: "object", properties: {} } },
-];
+].filter((tool) => DEPTH < 1 || !["list_bots", "ask_bot"].includes(tool.name));
 
 type Json = Record<string, unknown>;
 const send = (msg: Json) => process.stdout.write(JSON.stringify(msg) + "\n");
