@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { mentionedBots } from "./store.ts";
+import { chainDepth, mentionedBots } from "./store.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
@@ -43,6 +43,21 @@ describe("mentionedBots", () => {
   it("ignores emails, hidden bots, and mid-word @", () => {
     expect(mentionedBots("mail milind@milind.dev please", peers)).toEqual([]);
     expect(mentionedBots("@Ghost around?", peers)).toEqual([]);
+  });
+});
+
+// multibot (F9): cap łańcucha delegacji. Deklaracja wołającego nie może go
+// obniżyć — bot silnika trzyma agents zamontowane na stałe, więc deklaruje 0 na
+// każdym hopie i bez tego A→B→A→… nie miałoby dna.
+describe("chainDepth", () => {
+  it("takes the running turn's depth over a stale claim", () => {
+    expect(chainDepth(0, 1)).toBe(1);
+    expect(chainDepth("0", 2)).toBe(2);
+  });
+  it("keeps the claim when no turn is tracked, and floors junk at 0", () => {
+    expect(chainDepth(1, undefined)).toBe(1);
+    expect(chainDepth(undefined, undefined)).toBe(0);
+    expect(chainDepth("nonsense", undefined)).toBe(0);
   });
 });
 

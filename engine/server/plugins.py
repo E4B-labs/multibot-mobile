@@ -179,6 +179,23 @@ def ensure_bot(bot_id: str) -> None:
     _merge_config(bot_id, _expand(_read()))
 
 
+def set_bot_server(bot_id: str, name: str, spec: dict) -> None:
+    """Serwer MCP przypięty do JEDNEGO profilu — z pominięciem `plugins.json`.
+
+    Faza F9: warstwę komunikacji bot↔bot daje harness (`agents`, stdio MCP), a
+    jego `env` niesie tożsamość KONKRETNEGO bota (`OMB_BOT_ID`). `install()`
+    rozprowadza jeden zestaw na wszystkie profile, więc dałby całej flocie jedno
+    id — stąd zapis wprost do configu profilu.
+
+    Poza `plugins.json` znaczy też: `_distribute` (merge, nie nadpisanie) tego
+    wpisu nie rusza, `list_installed` nie pokazuje go w marketplace, a `remove`
+    nie ma czego kasować. Idempotentne — `_merge_config` nie tyka pliku, gdy
+    wynik jest ten sam.
+    """
+    _check(name, "mcp server name")
+    _merge_config(bot_id, {name: spec})
+
+
 def list_installed() -> list[dict]:
     return [_info(name, spec) for name, spec in sorted(_read().items())]
 

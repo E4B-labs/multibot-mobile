@@ -23,7 +23,7 @@ import { EventBus } from "./harness/bus.ts";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
 import * as mcpConnectors from "./mcp-connectors.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { mentionedBots, Store, type Message } from "./store.ts";
+import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
@@ -54,6 +54,12 @@ const COMMS_TOKEN = randomBytes(24).toString("hex");
 // a peer invoked via ask_bot runs at depth 1 and gets NO agents tool, so
 // A→B is allowed but B→C (and A→B→A loops) never start.
 const MAX_COMMS_DEPTH = 1;
+// multibot (F9): głębokość tury, która TERAZ trwa u danego bota — druga (i
+// wiarygodniejsza) połowa `chainDepth` w `store.ts`. Upstream ufa `depth` z env
+// proxy, co działa, dopóki proxy startuje raz na turę (claude/ACP); bot silnika
+// ma agents zamontowane na stałe w profilu (`drivers/slafy.ts`, `syncAgents`),
+// więc tam deklaracja zamarza na 0.
+const activeCommsDepth = new Map<string, number>();
 // proxy entry: .ts in dev (node type-strips), .js in the packaged dist-server
 const agentsProxyPath = (() => {
   const ts = join(dirname(fileURLToPath(import.meta.url)), "drivers", "agents-proxy.ts");
@@ -216,6 +222,7 @@ bus.subscribe((event: RuntimeEvent) => {
       const frame = stopScreenPoller(bot.id);
       if (frame) pushMessage({ role: "bot", kind: "screen", png: frame.png, mime: frame.mime });
       store.patchBot(bot.id, { busy: false, unread: true });
+      activeCommsDepth.delete(bot.id); // multibot (F9): tura skończona — licznik też
       broadcast({ kind: "bot", bot: store.bot(bot.id) });
       break;
     }
@@ -336,6 +343,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
   // in the background — box provisioning can take ~90s and must never
   // hang the HTTP request
   store.patchBot(bot.id, { busy: true, unread: false });
+  activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
   broadcast({ kind: "bot", bot: store.bot(bot.id) });
 
   void (async () => {
@@ -430,6 +438,7 @@ async function startTurn(botId: string, text: string, opts?: { commsDepth?: numb
       });
       broadcast({ kind: "message", threadId: bot.threadId, message: failure });
       store.patchBot(bot.id, { busy: false });
+      activeCommsDepth.delete(bot.id); // multibot (F9): tura padła — licznik też
       broadcast({ kind: "bot", bot: store.bot(bot.id) });
     }
   })();
@@ -496,7 +505,18 @@ const server = createServer(async (req, res) => {
         const self = url.searchParams.get("self");
         const bots = store.bots
           .filter((b) => b.id !== self && !b.hidden)
-          .map((b) => ({ id: b.id, name: b.name, model: b.modelSelection.model, busy: !!b.busy }));
+          .map((b) => ({
+            id: b.id,
+            name: b.name,
+            model: b.modelSelection.model,
+            busy: !!b.busy,
+            // multibot (F9): delegacja PO OPISIE. Bez tego pola wołający wybiera
+            // adresata wyłącznie po nazwie — a nazwa nie mówi, czym bot się
+            // zajmuje. To ta sama persona (`title`/`description` z BotRecord),
+            // którą bot dostaje w swoim `system`, więc flota opisuje się floci
+            // dokładnie tak, jak opisał ją użytkownik.
+            description: [b.title, b.description].filter(Boolean).join(" — "),
+          }));
         return json(res, 200, { bots });
       }
       if (method === "POST" && path === "/api/internal/ask-bot") {
@@ -504,7 +524,10 @@ const server = createServer(async (req, res) => {
         const fromBotId = String(body.fromBotId ?? "");
         const toBotId = String(body.toBotId ?? "");
         const message = String(body.message ?? "").trim();
-        const depth = Number(body.depth ?? 0) || 0;
+        // multibot (F9): głębokość bierzemy z WIĘKSZEJ z dwóch — deklaracji proxy
+        // i tury, która u wołającego trwa. Proxy bota silnika deklaruje 0 na
+        // zawsze (env zamrożony w profilu), więc bez mapy łańcuch nie miałby dna.
+        const depth = chainDepth(body.depth, activeCommsDepth.get(fromBotId));
         if (!toBotId || !message) return json(res, 400, { error: "toBotId and message required" });
         if (toBotId === fromBotId) return json(res, 400, { error: "a bot cannot message itself" });
         if (depth >= MAX_COMMS_DEPTH) return json(res, 200, { error: "message chains are limited to one hop" });

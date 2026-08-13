@@ -145,6 +145,11 @@ class PluginIn(BaseModel):
     spec: dict | None = None
 
 
+class BotMcpIn(BaseModel):
+    # F9: serwer MCP przypięty do jednego bota (harnessowy `agents`).
+    spec: dict
+
+
 class AccountIn(BaseModel):
     label: str
 
@@ -703,6 +708,29 @@ async def speak(bot_id: str, body: SpeakIn) -> Response:
         # który ma być 500). edge_tts to usługa Microsoftu — 502 jest tu uczciwe.
         return _error(502, exc)
     return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.put("/api/bots/{bot_id}/mcp/{name}")
+def set_bot_mcp(bot_id: str, name: str, body: BotMcpIn) -> dict:
+    """Serwer MCP przypięty do JEDNEGO bota (faza F9, warstwa komunikacji harnessu).
+
+    `/api/plugins/install` rozprowadza wpis na WSZYSTKIE profile — dla `agents`
+    to za dużo: jego `env` niesie id konkretnego bota, więc wspólny wpis dałby
+    flocie jedną tożsamość. Tu piszemy wprost do configu profilu.
+
+    Nieznany bot → 404 ZANIM tkniemy dysk: `_merge_config` po cichu nic nie robi,
+    gdy katalogu profilu nie ma, a cichy no-op zostawiłby bota bez narzędzi i bez
+    śladu. Sync (jak `/api/plugins/install`): to zapis jednego YAML-a.
+    """
+    _require(bot_id)
+    plugins._check(name, "mcp server name")  # ValueError → 422, przed dyskiem
+    spec = {k: v for k, v in body.spec.items() if k in _SPEC_KEYS}
+    # Wpis bez transportu jest martwy w `mcp_servers` (i leci przez
+    # `_validate_mcp_server_entry` Hermesa) — odsiewamy go na wejściu, jak install.
+    if not (spec.get("url") or spec.get("command")):
+        raise ValueError("spec needs `url` (HTTP/SSE) or `command` (stdio)")
+    plugins.set_bot_server(bot_id, name, spec)
+    return {"bot_id": bot_id, "name": name, "installed": True}
 
 
 @app.get("/api/bots/{bot_id}/interbot")

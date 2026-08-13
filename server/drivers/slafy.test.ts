@@ -229,6 +229,47 @@ describe("SlafyDriver turns (fake engine)", () => {
     }
   });
 
+  // F9: multi-agent. Warstwa komunikacji jest harnessu (`integrations.agents` =
+  // spawn `drivers/agents-proxy.ts`), silnik dostaje ją jak każdy inny MCP —
+  // tyle że PER BOT, bo w env siedzi id konkretnego bota.
+  it("declares agentsMcp so the harness mounts the peer-comms tools", async () => {
+    await create();
+    expect(instance.adapter.capabilities.agentsMcp).toBe(true);
+  });
+
+  it("mounts the harness agents proxy into the engine bot's own profile", async () => {
+    await create();
+    const agents = {
+      command: "/usr/bin/node",
+      args: ["/app/server/drivers/agents-proxy.ts"],
+      env: { OMB_HARNESS_URL: "http://127.0.0.1:8799", OMB_BOT_ID: "bot-1", OMB_COMMS_TOKEN: "tok", OMB_TURN_DEPTH: "0" },
+    };
+    await instance.adapter.sendTurn({ threadId: "t-agents", text: "czesc", integrations: { agents } });
+    await recorder.until((e) => e.type === "turn.completed");
+
+    // spec 1:1 ze spawnu harnessu — stdio Hermesa ma dokładnie ten kształt
+    expect(engine.botMcp["mb-t-agents"]?.["mb-agents"]).toEqual(agents);
+    expect(engine.botMcpCalls).toEqual(["PUT mb-t-agents/mb-agents"]);
+    // ...i NIE w globalnym rejestrze pluginów: tamten idzie na wszystkie profile,
+    // a `OMB_BOT_ID` jest inny dla każdego bota.
+    expect(engine.plugins["mb-agents"]).toBeUndefined();
+
+    // ten sam spawn = zero HTTP przy kolejnej turze
+    await instance.adapter.sendTurn({ threadId: "t-agents", text: "druga", integrations: { agents } });
+    await recorder.until(() => recorder.events.filter((e) => e.type === "turn.completed").length === 2);
+    expect(engine.botMcpCalls).toHaveLength(1);
+  });
+
+  it("runs the turn even when the agents mount fails, and retries next turn", async () => {
+    await create();
+    // spawn bez transportu → 422 z trasy per-bot; tura ma to przeżyć
+    const agents = { command: "", args: [], env: {} };
+    await instance.adapter.sendTurn({ threadId: "t-agents-fail", text: "czesc", integrations: { agents } });
+    await recorder.until((e) => e.type === "turn.completed");
+    expect(recorder.events.at(-1)).toMatchObject({ type: "turn.completed", ok: true });
+    expect(engine.botMcp["mb-t-agents-fail"]).toBeUndefined();
+  });
+
   it("builds the model catalog per instance without touching describe()", async () => {
     await create();
     expect(instance.models).toEqual({

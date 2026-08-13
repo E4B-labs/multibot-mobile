@@ -41,6 +41,12 @@ export interface FakeEngine {
   plugins: Record<string, Record<string, unknown>>;
   /** ślad wywołań `/api/plugins*`: `["GET", "POST mb-echo", "DELETE mb-stare"]`. */
   pluginCalls: string[];
+  /** pokoje grupowe (F9) w kolejności utworzenia. */
+  groups: Array<{ id: string; name: string; bot_ids: string[] }>;
+  /** serwery MCP przypięte do jednego bota (F9), `botId → {nazwa: spec}`. */
+  botMcp: Record<string, Record<string, Record<string, unknown>>>;
+  /** ślad wywołań `PUT /api/bots/:id/mcp/:name`: `["PUT mb-t1/mb-agents"]`. */
+  botMcpCalls: string[];
   mode: FakeEngineMode;
   /** liczba żywych klientów `/api/ws`. */
   wsClients(): number;
@@ -79,6 +85,9 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
     approvalRequestId: "req-1",
     plugins: {},
     pluginCalls: [],
+    groups: [],
+    botMcp: {},
+    botMcpCalls: [],
     mode,
     upgradePaths: [],
     wsClients: () => sockets.size,
@@ -205,6 +214,50 @@ export async function startFakeEngine(mode: FakeEngineMode = "happy"): Promise<F
       delete state.plugins[name];
       res.writeHead(204);
       return res.end();
+    }
+
+    // F9: pokoje grupowe (`engine/server/groups.py`). Trasy trzyma silnik, ale UI
+    // dosięga ich przez przelotkę `/api/engine/*`, więc fake musi je mieć, żeby
+    // dało się pokazać round-trip. `owner` = pierwszy bot pokoju (routing po
+    // opisie to sprawa silnika, nie przelotki), event `group` na turę — jak `_broadcast`.
+    if (method === "POST" && path === "/api/groups") {
+      const body = await readBody(req);
+      const botIds: string[] = Array.isArray(body.bot_ids) ? body.bot_ids : [];
+      if (!botIds.length) return json(422, { detail: "group needs at least one bot" });
+      for (const id of botIds) if (!state.createdBots.includes(id)) return json(422, { detail: `unknown bot: ${id}` });
+      const group = { id: `g-${state.groups.length + 1}`, name: String(body.name ?? ""), bot_ids: botIds };
+      state.groups.push(group);
+      return json(201, group);
+    }
+    if (method === "GET" && path === "/api/groups") return json(200, state.groups);
+    const groupChat = path.match(/^\/api\/groups\/([^/]+)\/chat$/);
+    if (groupChat && method === "POST") {
+      const group = state.groups.find((g) => g.id === decodeURIComponent(groupChat[1]));
+      if (!group) return json(404, { detail: "no such group" });
+      const body = await readBody(req);
+      const turns = group.bot_ids.map((id) => ({ bot_id: id, reply: `${id}: ${body.message}` }));
+      for (const turn of turns) {
+        (state.history[turn.bot_id] ??= []).push(
+          { role: "user", content: String(body.message ?? "") },
+          { role: "assistant", content: turn.reply },
+        );
+        state.push({ type: "group", group_id: group.id, bot_id: turn.bot_id, msg: turn.reply });
+      }
+      return json(200, { turns, owner: group.bot_ids[0] });
+    }
+
+    // F9: serwer MCP przypięty do JEDNEGO bota — tędy driver dosyła warstwę
+    // komunikacji harnessu (`agents`). 404 na nieznanego bota, jak silnik.
+    const botMcp = path.match(/^\/api\/bots\/([^/]+)\/mcp\/([^/]+)$/);
+    if (botMcp && method === "PUT") {
+      const botId = decodeURIComponent(botMcp[1]);
+      const name = decodeURIComponent(botMcp[2]);
+      const body = await readBody(req);
+      if (!state.createdBots.includes(botId)) return json(404, { detail: `no such bot: ${botId}` });
+      if (!body.spec || !(body.spec.url || body.spec.command)) return json(422, { detail: "spec needs a transport" });
+      state.botMcpCalls.push(`PUT ${botId}/${name}`);
+      (state.botMcp[botId] ??= {})[name] = body.spec;
+      return json(200, { bot_id: botId, name, installed: true });
     }
 
     const chat = path.match(/^\/api\/bots\/([^/]+)\/chat$/);

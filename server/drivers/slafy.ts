@@ -32,6 +32,10 @@ import { appendNative } from "./native.ts";
 const DRIVER_KIND = "slafy";
 /** Prefiks naszych wpisów w `/api/plugins` silnika — patrz `syncConnectors`. */
 export const ENGINE_PLUGIN_PREFIX = "mb-";
+/** Nazwa wpisu `mcp_servers` z warstwą komunikacji harnessu — patrz `syncAgents`.
+ * Kolizji nie ma: `agents` jest zarezerwowane w `mcp-connectors.ts`, a ten wpis
+ * żyje w configu PROFILU, nie w `plugins.json`, więc prune z F7 go nie widzi. */
+export const ENGINE_AGENTS_MCP = "mb-agents";
 
 /** Domyślny prefiks id bota w silniku. Odwzorowanie `mb-<threadId>` jest
  * wyliczalne w obie strony, więc nikt (ani driver, ani harness przy uwadze
@@ -185,6 +189,49 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       syncedConnectors = signature;
     };
 
+    // ── F9: warstwa komunikacji harnessu (agents MCP) → profil bota ─────────
+    // Multi-agent zostaje ICH: `integrations.agents` to gotowy kontrakt spawnu
+    // `drivers/agents-proxy.ts` (list_bots / ask_bot), który routuje z powrotem
+    // do harnessu — więc to harness dalej jest jedynym właścicielem tur, zgód i
+    // limitu rekurencji, a bot silnika dosięga KAŻDEGO bota floty (claude, codex,
+    // slafy), nie tylko swoich. Silnik dokłada do tego swoją delegację po opisie
+    // (`interbot.route_by_description`) i grupy — transport ma jeden.
+    //
+    // Zero renderowania: kształt `{command, args, env}` JEST kształtem wpisu
+    // stdio w `mcp_servers` Hermesa (dokładnie to, co `engineSpec` oddaje dla
+    // konektora stdio), więc przekazujemy go 1:1.
+    //
+    // PER BOT, nie przez `/api/plugins/install`: tamta trasa rozprowadza jeden
+    // zestaw na wszystkie profile, a `OMB_BOT_ID` w env jest inny dla każdego
+    // bota — wspólny wpis dałby całej flocie tożsamość jednego z nich.
+    const syncedAgents = new Map<string, string>();
+    const syncAgents = async (
+      baseUrl: string,
+      botId: string,
+      agents: NonNullable<SendTurnInput["integrations"]>["agents"],
+    ) => {
+      if (!agents) return; // tura bez peerów albo driver bez uprawnienia — nie ma co montować
+      const signature = JSON.stringify(agents);
+      if (syncedAgents.get(botId) === signature) return; // ten sam spawn — zero HTTP
+      // `OMB_COMMS_TOKEN` rotuje przy każdym starcie harnessu, a ta mapa żyje tyle
+      // co instancja drivera — więc pierwsza tura po restarcie i tak dosyła nowy.
+      const res = await fetch(
+        `${baseUrl}/api/bots/${encodeURIComponent(botId)}/mcp/${encodeURIComponent(ENGINE_AGENTS_MCP)}`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ spec: { command: agents.command, args: agents.args, env: agents.env } }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          `engine PUT /api/bots/${botId}/mcp/${ENGINE_AGENTS_MCP} → HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`,
+        );
+      }
+      syncedAgents.set(botId, signature);
+    };
+
     // ── D4: attach-sync ────────────────────────────────────────────────────
     // Rutyny (cron/webhook) i rozmowy międzybotowe chodzą w silniku także przy
     // zamkniętej apce. Przy podłączeniu instancji dosyłamy to, czego transkrypt
@@ -335,6 +382,12 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       // zostaje niezapisany, więc następna tura spróbuje jeszcze raz.
       await syncConnectors(baseUrl).catch((e) =>
         appendNative(threadId, { dir: "out", source: "slafy.mcp", msg: { error: String(e) } }),
+      );
+      // F9: to samo co wyżej i z tego samego powodu — PO `ensureBot`, bo silnik
+      // pisze do configu PROFILU (bez profilu merge jest cichym no-opem), i bez
+      // wywracania tury, gdy nie wyjdzie: rozmowa bez ask_bot jest lepsza niż brak.
+      await syncAgents(baseUrl, botId, turn.integrations?.agents).catch((e) =>
+        appendNative(threadId, { dir: "out", source: "slafy.agents", msg: { error: String(e) } }),
       );
 
       const turnId = newId();
@@ -497,7 +550,11 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
       snapshot,
       adapter: {
         provider: DRIVER_KIND,
-        capabilities: { sessionModelSwitch: "unsupported" },
+        // F9: `agentsMcp` = "ten driver zamontuje `integrations.agents` jako
+        // narzędzia" — montuje je nie w procesie agenta (nie ma go), tylko w
+        // profilu bota po stronie silnika (`syncAgents`). Dla harnessu to ta sama
+        // obietnica, więc gate w `index.ts` i podpowiedź w personie zostają wspólne.
+        capabilities: { sessionModelSwitch: "unsupported", agentsMcp: true },
         sendTurn,
         // Zrywamy TYLKO nasz strumień — tura po stronie silnika dobiegnie końca
         // (Hermes nie ma anulowania w locie). Odpowiedź wyląduje w historii bota

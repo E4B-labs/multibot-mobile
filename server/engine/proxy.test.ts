@@ -150,6 +150,33 @@ describe("engine proxy (/api/engine/*)", () => {
     expect(JSON.stringify(read.body)).not.toContain("sk-not-a-real-key");
   });
 
+  // F9: pokoje grupowe silnika. Nowego UI ani nowej warstwy w harnessie nie ma —
+  // grupy jadą tą samą przelotką co reszta silnika, więc dowodem jest round-trip
+  // create → chat przez `/api/engine/*` na boty w kształcie harnessu (`mb-<threadId>`).
+  it("round-trips the engine's group rooms for harness-shaped bots", async () => {
+    await api("POST", "/api/engine/bots", { id: "mb-grp-a", name: "A" });
+    await api("POST", "/api/engine/bots", { id: "mb-grp-b", name: "B" });
+
+    const made = await api("POST", "/api/engine/groups", { name: "pokoj", bot_ids: ["mb-grp-a", "mb-grp-b"] });
+    expect(made.status).toBe(201);
+    expect(made.body.bot_ids).toEqual(["mb-grp-a", "mb-grp-b"]);
+    expect((await api("GET", "/api/engine/groups")).body.map((g: any) => g.id)).toContain(made.body.id);
+
+    const round = await api("POST", `/api/engine/groups/${made.body.id}/chat`, { message: "czesc" });
+    expect(round.status).toBe(200);
+    expect(round.body.turns.map((t: any) => t.bot_id)).toEqual(["mb-grp-a", "mb-grp-b"]);
+    expect(round.body.owner).toBe("mb-grp-a");
+
+    // TRANSPARENCY: wypowiedź grupowa siada w historii KAŻDEGO bota pokoju, czyli
+    // w tym samym `GET /api/bots/<id>/messages`, z którego attach-sync (D4) dosyła
+    // harnessowi tury zrobione bez jego udziału — wątek grupy nie jest niewidzialny.
+    const history = await api("GET", "/api/engine/bots/mb-grp-b/messages");
+    expect(history.body.map((m: any) => m.content)).toContain("mb-grp-b: czesc");
+
+    // nieznany pokój zostaje 404 SILNIKA, nie 500 przelotki
+    expect((await api("POST", "/api/engine/groups/widmo/chat", { message: "x" })).status).toBe(404);
+  });
+
   it("streams SSE chunk by chunk instead of buffering it", async () => {
     const res = await fetch(`${BASE}/api/engine/slow-stream`);
     expect(res.headers.get("content-type")).toContain("text/event-stream");

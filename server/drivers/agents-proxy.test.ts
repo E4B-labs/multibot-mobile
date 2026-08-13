@@ -46,7 +46,18 @@ beforeAll(async () => {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(
         JSON.stringify({
-          bots: [{ id: "bot-helper", name: "Helper", model: "fake-model", busy: false }],
+          bots: [
+            {
+              id: "bot-helper",
+              name: "Helper",
+              model: "fake-model",
+              busy: false,
+              // multibot (F9): persona bota z BotRecord — po niej wołający wybiera adresata
+              description: "Research assistant — digs through papers and summarises them",
+            },
+            // bez opisu: linijka ma zostać poprawna, nie dokleić pustego myślnika
+            { id: "bot-plain", name: "Plain", model: "fake-model", busy: true, description: "" },
+          ],
         }),
       );
     }
@@ -110,6 +121,15 @@ describe("agents-proxy MCP surface", () => {
     expect(text).toContain("Helper");
     expect(text).toContain("bot-helper");
     expect(lastAuth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  // multibot (F9): delegacja po opisie — bez tego pola adresata da się wybrać
+  // tylko po nazwie, a nazwa nie mówi, czym bot się zajmuje.
+  it("renders each peer's description so the caller can delegate by capability", async () => {
+    const text = (await callTool("list_bots", {})).result.content[0].text;
+    expect(text).toContain("Research assistant — digs through papers");
+    // bot bez opisu zostaje bez doklejonego myślnika
+    expect(text).toContain("- Plain (id: bot-plain, model: fake-model, busy)");
   });
 
   it("ask_bot forwards sender + depth and returns the reply", async () => {
