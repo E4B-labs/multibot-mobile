@@ -59,8 +59,11 @@ export interface Bot {
   // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
   needsAttention?: string | null;
   modelSelection: ModelSelection;
-  /** Where this bot's computer runs; unset = auto (cloud box if one exists, else local). */
-  computer?: "cloud" | "local" | "off";
+  /** Where this bot's computer runs; unset = auto (cloud box if one exists, else local).
+   * multibot (F5): "playwright" = the bot's own engine-hosted browser (persistent
+   * profile, live view + take-over in ComputerPanel). Explicit choice only — auto
+   * never resolves to it. Mirrors `BotRecord.computer` in server/store.ts. */
+  computer?: "cloud" | "local" | "playwright" | "off";
   pinned?: boolean;
   hidden?: boolean;
   messages: Message[];

@@ -210,7 +210,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               Where this bot's computer runs{bot.computer ? "" : " (currently: auto)"}
             </div>
             <div className="mt-3 flex overflow-hidden rounded-lg border border-hairline/40">
-              {(["cloud", "local", "off"] as const).map((mode, i) => (
+              {/* multibot (F5): fourth mode — the bot's own engine browser */}
+              {(["cloud", "local", "playwright", "off"] as const).map((mode, i) => (
                 <button
                   key={mode}
                   onClick={() => patch({ computer: mode })}
