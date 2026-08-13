@@ -38,7 +38,7 @@ export const jobProgress = (job: SetupJob) => ({
   step: job.title,
   message: job.output.at(-1) ?? job.title,
   done: job.status === "succeeded",
-  ...(job.kind === "cli-login" ? { output: [...job.output] } : {}),
+  ...(job.kind === "cli-login" || job.kind === "cli-install" ? { output: [...job.output] } : {}),
   ...(job.status === "failed" ? { error: job.error ?? "setup failed" } : {}),
 });
 

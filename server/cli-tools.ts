@@ -10,6 +10,8 @@ export interface CliToolMetadata {
   driverKind: string;
   displayName: string;
   install?: CliInstall;
+  /** Uses scripts/install-claude.mjs with native/proot fallback. */
+  installStrategy?: "claude-native";
   /** Interactive OAuth/subscription login; never automated by server. */
   loginCommand?: string;
   /** Fixed interactive command; stdin stays attached for OAuth prompts. */
@@ -36,6 +38,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     id: "claude",
     driverKind: "claudeAgent",
     displayName: "Claude Code",
+    installStrategy: "claude-native",
     loginCommand: "claude",
     login: { command: "claude", args: [] },
     install: { command: "npm", args: ["install", "-g", "@anthropic-ai/claude-code@latest"] },

@@ -18,6 +18,7 @@ export const CLI_TOOLS = [
         id: "claude",
         driverKind: "claudeAgent",
         displayName: "Claude Code",
+        installStrategy: "claude-native",
         loginCommand: "claude",
         login: { command: "claude", args: [] },
         install: { command: "npm", args: ["install", "-g", "@anthropic-ai/claude-code@latest"] },

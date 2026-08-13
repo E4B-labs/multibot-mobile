@@ -719,11 +719,23 @@ async function cliToolsStatus() {
             detected: instance?.snapshot.state === "available",
             reason: instance?.snapshot.reason,
             version: instance?.snapshot.version ?? undefined,
-            installCommand: installCommandText(tool.install),
+            installCommand: tool.installStrategy === "claude-native"
+                ? "Native installer for this device"
+                : installCommandText(tool.install),
             loginCommand: tool.loginCommand ?? null,
             loginAvailable: Boolean(tool.login),
         };
     });
+}
+function cliInstallSpec(tool) {
+    if (tool.installStrategy === "claude-native") {
+        const scriptInRepo = join(ROOT, "scripts", "install-claude.mjs");
+        const script = existsSync(scriptInRepo) ? scriptInRepo : join(ROOT, "install-claude.mjs");
+        return existsSync(script)
+            ? { command: process.execPath, args: [script] }
+            : null;
+    }
+    return tool.install ?? null;
 }
 function provisionJob() {
     const target = process.env.OMB_ENGINE_RUNTIME || join(DATA_DIR, "engine-runtime");
@@ -1384,7 +1396,8 @@ const server = createServer(async (req, res) => {
             const tool = CLI_TOOLS.find((item) => item.id === toolId);
             if (!tool)
                 return json(res, 404, { error: "no such command-line tool" });
-            if (!tool.install)
+            const install = cliInstallSpec(tool);
+            if (!install)
                 return json(res, 409, { error: "automatic install unavailable; use official CLI instructions" });
             const temp = join(DATA_DIR, "tmp");
             mkdirSync(temp, { recursive: true });
@@ -1392,10 +1405,10 @@ const server = createServer(async (req, res) => {
                 key: `cli-install:${tool.id}`,
                 kind: "cli-install",
                 title: `Install ${tool.displayName}`,
-                command: tool.install.command,
-                args: tool.install.args,
+                command: install.command,
+                args: install.args,
                 cwd: DATA_DIR,
-                env: { TMP: temp, TEMP: temp },
+                env: { TMP: temp, TEMP: temp, ELECTRON_RUN_AS_NODE: "1" },
             });
             return json(res, 202, { id: job.id, job });
         }

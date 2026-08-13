@@ -50,6 +50,9 @@ extraResources:
   # sprawdzona.
   - from: scripts/provision-engine.mjs
     to: provision-engine.mjs
+  # multibot: platform-aware Claude Code installer used by Settings → CLI.
+  - from: scripts/install-claude.mjs
+    to: install-claude.mjs
 
 mac:
   # multibot: speech-helper to binarka ze Swifta (`pnpm build:speech`, swiftc

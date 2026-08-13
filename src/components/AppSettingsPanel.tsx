@@ -548,9 +548,11 @@ function CustomModels() {
 function CommandLineTools() {
   type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean };
   type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
+  type InstallSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
   const [cli, setCli] = useState<CliRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [installJob, setInstallJob] = useState<InstallSession | null>(null);
   const [login, setLogin] = useState<LoginSession | null>(null);
 
   useEffect(() => {
@@ -583,7 +585,7 @@ function CommandLineTools() {
         if (!line) continue;
         const event = JSON.parse(line.slice(6)) as { output?: string[]; done: boolean; error?: string };
         setLogin((current) => current?.jobId === jobId
-          ? { ...current, toolId, output: event.output ?? current.output, done: event.done, error: event.error }
+          ? { ...current, toolId, output: event.output ?? current.output, done: event.done || Boolean(event.error), error: event.error }
           : current);
       }
       if (part.done) break;
@@ -615,23 +617,50 @@ function CommandLineTools() {
     await api(`/api/progress/${encodeURIComponent(login.jobId)}/stop`, { method: "POST" }).catch(() => {});
   };
 
+  const followInstall = async (jobId: string, toolId: string) => {
+    const response = await authFetch(`/api/progress/${encodeURIComponent(jobId)}`);
+    if (!response.ok || !response.body) throw new Error(`Install stream failed (${response.status})`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const part = await reader.read();
+      buffer += decoder.decode(part.value ?? new Uint8Array(), { stream: !part.done });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        const line = frame.split("\n").find((item) => item.startsWith("data: "));
+        if (!line) continue;
+        const event = JSON.parse(line.slice(6)) as { output?: string[]; done: boolean; error?: string };
+        setInstallJob((current) => current?.jobId === jobId
+          ? { ...current, toolId, output: event.output ?? current.output, done: event.done || Boolean(event.error), error: event.error }
+          : current);
+      }
+      if (part.done) break;
+    }
+  };
+
   const install = async (tool: (typeof cli)[number]) => {
     if (installing) return;
     setInstalling(tool.id);
     try {
       const response = await api(`/api/cli-tools/${encodeURIComponent(tool.id)}/install`, { method: "POST" });
-      // Onboarding owns live SSE progress. App Settings only starts the same
-      // durable job, then refreshes detection after a short grace period.
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const refreshed = await api("/api/cli-tools");
-      setCli(refreshed.tools ?? []);
-      if (response.id && !refreshed.tools?.some((item: (typeof cli)[number]) => item.id === tool.id && item.detected)) {
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        const latest = await api("/api/cli-tools");
-        setCli(latest.tools ?? []);
-      }
+      setInstallJob({
+        toolId: tool.id,
+        jobId: response.id,
+        output: response.job?.output ?? [],
+        done: response.job?.status !== "running",
+        error: response.job?.error,
+      });
+      await followInstall(response.id, tool.id);
+    } catch (error) {
+      setInstallJob((current) => current?.toolId === tool.id
+        ? { ...current, done: true, error: error instanceof Error ? error.message : String(error) }
+        : { toolId: tool.id, jobId: "", output: [], done: true, error: error instanceof Error ? error.message : String(error) });
     } finally {
       setInstalling(null);
+      const refreshed = await api("/api/cli-tools").catch(() => ({ tools: [] }));
+      setCli(refreshed.tools ?? []);
     }
   };
 
@@ -656,7 +685,7 @@ function CommandLineTools() {
                   onClick={() => void install(item)}
                   disabled={installing !== null}
                   className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                >{installing === item.id ? "Installing…" : "Install"}</button>}
+                >{installing === item.id ? "Installing…" : installJob?.toolId === item.id && installJob.error ? "Retry install" : "Install"}</button>}
                 {item.loginAvailable && <button
                   onClick={() => void startLogin(item)}
                   disabled={login !== null || !item.detected}
@@ -671,6 +700,15 @@ function CommandLineTools() {
                 />
               </div>
             </div>
+            {installJob?.toolId === item.id && (
+              <div className="mx-2 mb-2 rounded-lg bg-inset p-2">
+                <div className="mb-1 text-[11px] text-ink-secondary">
+                  {installJob.done ? (installJob.error ? "Installation failed." : "Installation finished. Refreshing detection…") : "Installation running; keep this panel open or return later."}
+                </div>
+                <pre className="max-h-36 overflow-auto whitespace-pre-wrap text-[11px] text-ink">{installJob.output.join("\n")}</pre>
+                {installJob.error && <div className="mt-1 text-[11px] text-danger">{installJob.error}</div>}
+              </div>
+            )}
             {login?.toolId === item.id && (
               <div className="mx-2 mb-2 rounded-lg bg-inset p-2">
                 <div className="mb-1 text-[11px] text-ink-secondary">

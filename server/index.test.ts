@@ -360,6 +360,7 @@ describe("harness HTTP API", () => {
     expect(listed.body.tools.find((tool: { id: string }) => tool.id === "claude")).toMatchObject({
       loginCommand: "claude",
       loginAvailable: true,
+      installCommand: "Native installer for this device",
     });
     expect(listed.body.tools.find((tool: { id: string }) => tool.id === "codex")).toMatchObject({
       loginCommand: "codex --login",
