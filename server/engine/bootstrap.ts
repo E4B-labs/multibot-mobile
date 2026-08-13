@@ -64,6 +64,9 @@ export function findExistingEngineProfile(root: string): ExistingEngineProfile |
       ? [join(root, "..", "slafy-bot-data")]
       : []),
     join(homedir(), ".openmausbot", "engine-data"),
+    // Hermes Agent's native Termux home is the user's existing profile.
+    // Import metadata only; secrets stay inside the profile copy.
+    ...(process.env.OMB_PORT === undefined || process.env.OMB_PORT === "8799" ? [join(homedir(), ".hermes")] : []),
   ].filter((value): value is string => Boolean(value));
   const seen = new Set<string>();
   for (const candidate of candidates) {

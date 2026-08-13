@@ -185,8 +185,11 @@ store.seedIfEmpty();
 
 // First launch with an existing engine profile: preserve its SOUL, memory,
 // routines and skills by copying it to deterministic thread identity before
-// any UI turn can create a blank profile. Existing harness bots are untouched.
-if (existingEngineProfile && !hadHarnessBots && store.bots.length === 1) {
+// any UI turn can create a blank profile. A seeded "Milind" placeholder is
+// also eligible, so a Termux Hermes home discovered after first boot migrates
+// without deleting the user's harness data.
+const seededPlaceholder = store.bots.length === 1 && store.bots[0]?.name === "Milind" && store.bots[0]?.modelSelection.instanceId === "claude";
+if (existingEngineProfile && (!hadHarnessBots || seededPlaceholder) && store.bots.length === 1) {
   const first = store.bots[0];
   store.patchBot(first.id, {
     name: existingEngineProfile.name,
