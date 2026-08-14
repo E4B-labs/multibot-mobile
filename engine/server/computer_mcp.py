@@ -108,6 +108,22 @@ async def click(x: float, y: float, button: str = "left") -> str:
 
 
 @mcp.tool()
+async def move(points: list[list[float]]) -> str:
+    """Przesuń kursor po podanych punktach `[[x, y], ...]` (piksele CSS aktywnej karty).
+
+    Sam ruch, bez klikania — kursor jest widoczny na ekranie komputera, więc tym
+    pokazujesz użytkownikowi, gdzie patrzysz, i najeżdżasz na elementy reagujące
+    na hover. Jedno wywołanie robi całą trasę, więc ruch jest płynny; osobne
+    wywołanie na punkt daje skoki.
+    """
+    events = [{"kind": "mouse", "type": "mouseMoved", "x": float(p[0]), "y": float(p[1])} for p in points]
+    if not events:
+        return "brak punktów"
+    await _input(events)
+    return f"przesunięto kursor przez {len(events)} punktów"
+
+
+@mcp.tool()
 async def type_text(text: str) -> str:
     """Wpisz tekst tam, gdzie stoi kursor (najpierw kliknij w pole)."""
     return await _input([{"kind": "text", "text": text}])

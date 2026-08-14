@@ -695,6 +695,7 @@ async function startTurn(
             ? " You share one persistent computer with the user's other bots — a Linux desktop with a browser, a terminal and files, all one environment." +
               " Anything you leave there (open tabs, downloads, logins) is visible to them and to the user, and they may change it while you work, so re-check the screen instead of trusting what you saw earlier." +
               " Take a screenshot or read the page first, then click/type_text/key/scroll on what you actually see; navigate opens a URL and read_page returns the page text." +
+              " move takes a list of points and glides the cursor along them — the user watches that cursor, so use it to show where you are looking or to hover something." +
               " computer_exec runs commands inside your computer, never on the user's machine. The user sees this same screen and may take control — if input comes back user_has_control, wait and keep watching rather than retrying."
             : "") +
           (integrations.agents

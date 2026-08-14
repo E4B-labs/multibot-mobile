@@ -112,6 +112,8 @@ async def _exercise(params: StdioServerParameters) -> None:
             assert image.mimeType == "image/jpeg"
 
             assert not (await client.call_tool("click", {"x": 12, "y": 34})).isError
+            moved = await client.call_tool("move", {"points": [[5, 6], [7, 8], [9, 10]]})
+            assert not moved.isError
             page = await client.call_tool("read_page", {})
             assert "tekst strony" in str(page.content[0].text)
 
@@ -122,11 +124,16 @@ def test_handshake_tools_and_calls(params):
     paths = [(method, path) for method, path, _ in _FakeEngine.calls]
     # bot zakładany raz, leniwie; przeglądarka podnoszona przed KAŻDYM narzędziem
     assert paths.count(("POST", "/api/bots")) == 1
-    assert paths.count(("POST", f"/api/bots/{_BOT}/computer/start")) == 3
+    assert paths.count(("POST", f"/api/bots/{_BOT}/computer/start")) == 4
     # klik jedzie jednym żądaniem: trzy zdarzenia myszy w jednej sesji CDP silnika
     click = next(body for method, path, body in _FakeEngine.calls if path.endswith("/computer/input"))
     assert [e["type"] for e in click["events"]] == ["mouseMoved", "mousePressed", "mouseReleased"]
     assert click["events"][1] == {"kind": "mouse", "x": 12, "y": 34, "button": "left", "clickCount": 1, "type": "mousePressed"}
+    # `move` to sam ruch: cała trasa jednym żądaniem, żeby kursor plynal, a nie skakal
+    inputs = [body for method, path, body in _FakeEngine.calls if path.endswith("/computer/input")]
+    path_events = inputs[1]["events"]
+    assert [e["type"] for e in path_events] == ["mouseMoved"] * 3
+    assert [(e["x"], e["y"]) for e in path_events] == [(5, 6), (7, 8), (9, 10)]
 
 
 async def _exercise_exec_without_harness(params: StdioServerParameters) -> None:
