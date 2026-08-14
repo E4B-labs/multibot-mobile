@@ -21,6 +21,8 @@
 //     --remote-debugging-address, so the image bridges 9222 -> 9223 with socat
 //     and we publish 9223. See Dockerfile.computer.
 import { execFile } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -32,6 +34,32 @@ export const CONTAINER_PORTS = { cdp: 9223, novnc: 6901, api: 8000 } as const;
 export type PortName = keyof typeof CONTAINER_PORTS;
 
 export const IMAGE = process.env.MULTIBOT_COMPUTER_IMAGE ?? "multibot-computer:dev";
+
+/**
+ * Two ways to run the same computer.
+ *
+ * `docker` is the default and the one with isolation. `native` runs the very
+ * same pieces — X server, window manager, Chromium with CDP, websockify+noVNC —
+ * directly on the host, for machines where Docker cannot exist at all. Termux
+ * on an unrooted Android is the case that forced this: Docker needs kernel
+ * privileges the phone will never grant.
+ *
+ * Chosen explicitly, never guessed: silently falling back to an unisolated
+ * desktop because docker happened to be missing would hand an agent a shell on
+ * the user's own machine without anyone deciding that.
+ */
+export type Backend = "docker" | "native";
+export const BACKEND: Backend = process.env.MULTIBOT_COMPUTER_BACKEND === "native" ? "native" : "docker";
+
+/** Native backend serves fixed ports — nothing allocates them dynamically. */
+const NATIVE_PORTS: Record<PortName, number> = {
+  cdp: Number(process.env.MULTIBOT_COMPUTER_CDP_PORT ?? 9223),
+  novnc: Number(process.env.MULTIBOT_COMPUTER_NOVNC_PORT ?? 6901),
+  api: 0, // cua's computer-server is container-only; nothing uses it today
+};
+
+const NATIVE_SCRIPT = process.env.MULTIBOT_COMPUTER_SCRIPT
+  ?? join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "computer-native.sh");
 
 /** Fixed names: there is exactly one, so nothing is derived from a bot id. */
 export const CONTAINER_NAME = "multibot-computer";
@@ -142,6 +170,7 @@ const PORT_CACHE_MS = 5_000;
 const portCache = new Map<PortName, { port: number; at: number }>();
 
 export async function readPort(name: PortName): Promise<number | null> {
+  if (BACKEND === "native") return NATIVE_PORTS[name] || null;
   const hit = portCache.get(name);
   if (hit && Date.now() - hit.at < PORT_CACHE_MS) return hit.port;
   let out: string;
@@ -166,7 +195,12 @@ export async function readPorts(): Promise<Record<PortName, number> | null> {
   const ports = {} as Record<PortName, number>;
   for (const name of Object.keys(CONTAINER_PORTS) as PortName[]) {
     const port = await readPort(name);
-    if (port === null) return null;
+    // `api` is the container image's cua server; the native backend has no
+    // equivalent and nothing calls it, so its absence must not mean "down".
+    if (port === null) {
+      if (name === "api") continue;
+      return null;
+    }
     ports[name] = port;
   }
   return ports;
@@ -225,7 +259,21 @@ export function ensureComputer(limits = DEFAULT_LIMITS): Promise<ComputerStatus>
   }));
 }
 
+async function ensureNative(): Promise<ComputerStatus> {
+  const ports = (await readPorts())!;
+  // Already up? Then starting it again would be pointless work on a phone.
+  if (await probeReady(ports)) return { state: "ready", ports };
+  try {
+    const { stderr } = await run("bash", [NATIVE_SCRIPT], { timeout: 120_000, maxBuffer: 8 << 20 });
+    if (stderr?.trim()) console.warn("[multibot] native computer:", stderr.trim().slice(0, 200));
+  } catch (e) {
+    return { state: "error", detail: e instanceof Error ? e.message : String(e) };
+  }
+  return { state: (await probeReady(ports)) ? "ready" : "provisioning", ports };
+}
+
 async function ensureOnce(limits: ComputerLimits): Promise<ComputerStatus> {
+  if (BACKEND === "native") return ensureNative();
   try {
     const running = await inspectRunning();
     if (running === null) {
@@ -260,6 +308,10 @@ async function ensureOnce(limits: ComputerLimits): Promise<ComputerStatus> {
  * opening the panel.
  */
 export async function resumeComputer(): Promise<boolean> {
+  if (BACKEND === "native") {
+    const ports = await readPorts();
+    return Boolean(ports && (await probeReady(ports)));
+  }
   const running = await inspectRunning();
   if (running === null) return false; // never created — not our job here
   if (running) return true;
@@ -271,6 +323,13 @@ export async function resumeComputer(): Promise<boolean> {
 /** Run a command inside the computer. This is the shared terminal — the same
  *  filesystem the desktop and the browser see. */
 export async function exec(command: string, timeoutMs = 60_000): Promise<string> {
+  if (BACKEND === "native") {
+    // No container to step into: this runs as the harness user, on this
+    // machine. See the security note at the top of scripts/computer-native.sh.
+    if (computersDisabled()) throw new Error("the bot computer is disabled in this process");
+    const { stdout, stderr } = await run("bash", ["-lc", command], { timeout: timeoutMs, maxBuffer: 8 << 20 });
+    return (stdout + (stderr ?? "")).trim();
+  }
   return docker(["exec", CONTAINER_NAME, "bash", "-lc", command], timeoutMs);
 }
 
@@ -290,5 +349,7 @@ export async function removeComputer(): Promise<void> {
 /** Docker reachable at all? Used to tell "no docker installed" apart from
  *  "the computer is broken", which are very different user problems. */
 export async function dockerAvailable(): Promise<boolean> {
+  // The native backend needs no daemon, so "is docker there" cannot fail it.
+  if (BACKEND === "native") return true;
   return dockerOk(["version", "--format", "{{.Server.Version}}"], 30_000);
 }

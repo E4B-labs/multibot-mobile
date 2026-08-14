@@ -82,6 +82,9 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
   nierozwiązane wobec rejestru. Kamera i SecureStore wymagają urządzenia.
 - **Testy providerów (Q):** cztery drivery × screenshot/click/type/terminal
   wymagają realnych kluczy API.
+- **Backend native (np. Termux):** `pkg install tigervnc openbox`,
+  `pip install websockify`, katalog noVNC wskazany przez `MULTIBOT_NOVNC_DIR`,
+  oraz `MULTIBOT_COMPUTER_BACKEND=native` w środowisku usługi.
 
 ### Świadome luki
 
@@ -109,6 +112,13 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
   przeglądarką i mogą się nadpisać — to wymaga kolejki tur nad maszyną, nie
   drugiego lease'a. Agent dostaje w prompcie ostrzeżenie, żeby sprawdzał ekran
   zamiast ufać temu, co widział wcześniej.
+- **Backend `native` NIE MA IZOLACJI.** Przeglądarka i `computer_exec` chodzą
+  jako użytkownik harnessu, na jego maszynie, z jego plikami — łącznie z
+  katalogiem danych MultiBota i kluczami API. Kontener zamyka agenta w
+  jednorazowym systemie plików; ten backend nie. Wybiera się go jawnie zmienną
+  środowiskową, nigdy automatycznie, właśnie po to, żeby nikt nie dostał
+  nieizolowanego pulpitu przez przypadek. Wszędzie, gdzie Docker istnieje,
+  używaj `docker`.
 - **Sterowanie fizycznym pulpitem hosta, Cloud Computer, Windows VM** —
   odłożone zgodnie z planem.
 
@@ -120,8 +130,13 @@ hostującym MultiBota. Bez wyboru źródła: znikają `Shared`, `This Mac`,
 
 ### Rozstrzygnięcia
 
-- Pierwsza wersja komputera: trwały **Linux desktop w Dockerze, JEDEN na instalację**,
+- Pierwsza wersja komputera: trwały **Linux desktop, JEDEN na instalację**,
   wspólny dla wszystkich botów (zmiana z 14.08 wieczorem — było per bot).
+- Dwa backendy tego samego pulpitu: **docker** (domyślny, z izolacją) oraz
+  **native** (`MULTIBOT_COMPUTER_BACKEND=native`) dla hostów, gdzie Dockera
+  uruchomić się nie da — Termux na Androidzie bez roota. Ten sam interfejs:
+  CDP 9223 i noVNC 6901, więc proxy harnessu i `computer.py` działają
+  jednakowo na obu.
 - W środku: pulpit, Chromium, terminal, pliki, workspace.
 - Komputer należy do instalacji, nie do bota: powstaje przy pierwszym użyciu i
   PRZEŻYWA usunięcie bota, bo pozostałe boty z niego korzystają.

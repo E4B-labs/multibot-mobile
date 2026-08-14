@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BACKEND,
   CONTAINER_NAME,
   CONTAINER_PORTS,
   VOLUME_NAME,
@@ -74,5 +75,14 @@ describe("ensureComputer", () => {
 describe("ports", () => {
   it("publishes exactly the three the image serves", () => {
     expect(CONTAINER_PORTS).toEqual({ cdp: 9223, novnc: 6901, api: 8000 });
+  });
+});
+
+describe("backend selection", () => {
+  // Explicit, never inferred: falling back to an unisolated desktop just
+  // because docker was missing would hand an agent a shell on the user's own
+  // machine with nobody having decided that.
+  it("defaults to docker", () => {
+    expect(BACKEND).toBe("docker");
   });
 });
