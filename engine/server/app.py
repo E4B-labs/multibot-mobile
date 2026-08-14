@@ -140,6 +140,7 @@ class ComputerModeIn(BaseModel):
 
 class ComputerExternalIn(BaseModel):
     cdp_url: str | None = None
+    cursor_color: str | None = None  # kolor bota z harnessu — barwa kursora agenta
 
 
 class GroupCreate(BaseModel):
@@ -369,7 +370,8 @@ async def computer_mode(bot_id: str, body: ComputerModeIn) -> dict:
 @app.put("/api/bots/{bot_id}/computer/external")
 async def computer_external(bot_id: str, body: ComputerExternalIn) -> dict:
     _require(bot_id)
-    return await computer.set_external(bot_id, body.cdp_url)  # ValueError (zły host) → 422
+    # ValueError (zły host) → 422
+    return await computer.set_external(bot_id, body.cdp_url, body.cursor_color)
 
 
 @app.post("/api/bots/{bot_id}/computer/screenshot")

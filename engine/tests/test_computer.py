@@ -386,6 +386,37 @@ def test_agent_mouse_draws_a_visible_cursor(client, page):
     assert "innerHTML" not in _computer._CURSOR_JS
 
 
+def test_cursor_takes_the_bot_colour(client, page):
+    """Jeden pulpit dla wszystkich botow, wiec kursor nosi barwe tego, kto klika.
+    Kolor wchodzi z harnessu (`attachExternalBrowser`) do `browser.json`."""
+    from server import computer as _computer
+    from server.bots import profile_dir
+
+    path = profile_dir(_BOT) / "browser.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**state, "cursor_color": "#E5634E"}), encoding="utf-8")
+    client.post(
+        f"/api/bots/{_BOT}/computer/input",
+        json={"events": [{"kind": "mouse", "type": "mouseMoved", "x": 40, "y": 40}]},
+    )
+    assert page.wait_for(
+        "document.getElementById('__multibot_cursor__').style.background === 'rgb(229, 99, 78)'"
+    ) is True
+
+    # Kolor ląduje w CSS strony bota, wiec smiec nie moze przejsc — ani przy
+    # zapisie (`set_external`), ani przy odczycie, gdyby ktos podmienil plik.
+    assert _computer._HEX_RE.match("red; content: url(http://evil)") is None
+    path.write_text(json.dumps({**state, "cursor_color": "red;x:url(http://evil)"}), encoding="utf-8")
+    client.post(
+        f"/api/bots/{_BOT}/computer/input",
+        json={"events": [{"kind": "mouse", "type": "mouseMoved", "x": 41, "y": 41}]},
+    )
+    assert page.wait_for(
+        "document.getElementById('__multibot_cursor__').style.background === 'rgb(255, 255, 255)'"
+    ) is True
+    path.write_text(json.dumps(state), encoding="utf-8")
+
+
 def test_http_navigate_and_read_page(client, page):
     state = client.post(f"/api/bots/{_BOT}/computer/navigate", json={"url": _PAGE2}).json()
     assert state["running"] is True

@@ -628,7 +628,9 @@ async function startTurn(
           // ścieżka CDP (computer.py, computer_mcp.py, teach.py) działa wtedy bez
           // zmian, a agent i użytkownik patrzą na jeden ekran. Port jest inny po
           // każdym restarcie kontenera, więc podajemy go co turę.
-          await attachExternalBrowser(bot.threadId, computer.ports.cdp).catch(() => {});
+          // kolor bota jedzie razem z adresem: kursor na wspólnym pulpicie ma
+          // barwę tego, kto właśnie klika
+          await attachExternalBrowser(bot.threadId, computer.ports.cdp, bot.color).catch(() => {});
           // Bot slafy steruje przeglądarką natywnie (toolset Hermesa), więc
           // montowanie mu tego samego komputera drugi raz dałoby dwa wejścia do
           // jednego pulpitu — dostaje sam adres, powyżej.

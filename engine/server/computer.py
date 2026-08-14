@@ -29,6 +29,7 @@ bota; most wstaje przy pierwszym kliencie i schodzi z ostatnim.
 
 import asyncio
 import json
+import re
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
@@ -63,6 +64,11 @@ _VK = {
 
 _BUTTONS = {"left": 1, "right": 2, "middle": 4}
 
+# Kolor kursora wchodzi z harnessu i ląduje w CSS strony bota — wpuszczamy więc
+# wyłącznie hex, nigdy dowolnego łańcucha.
+_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_CURSOR_DEFAULT = "#ffffff"
+
 
 def _browser_state(bot_id: str) -> dict:
     """`browser.json` profilu bota, świeżo z dysku — zero cache'a między wywołaniami,
@@ -90,7 +96,7 @@ def _validate_external_cdp_url(cdp_url: str) -> str:
     return cdp_url
 
 
-async def set_external(bot_id: str, cdp_url: str | None) -> dict:
+async def set_external(bot_id: str, cdp_url: str | None, cursor_color: str | None = None) -> dict:
     """`PUT /computer/external`: przełącz bota na przeglądarkę kontenera H2.
 
     `cdp_url=None` czyści `browser.json` — wraca silnikowy chromium, który
@@ -113,9 +119,12 @@ async def set_external(bot_id: str, cdp_url: str | None) -> dict:
         from server.browser_plugin.provider import SlafyBrowserProvider
 
         await asyncio.to_thread(SlafyBrowserProvider().close_session, state["session_id"])
-    path.write_text(
-        json.dumps({"cdp_url": _validate_external_cdp_url(cdp_url), "external": True}), encoding="utf-8"
-    )
+    entry = {"cdp_url": _validate_external_cdp_url(cdp_url), "external": True}
+    # Kolor bota z harnessu (`attachExternalBrowser`) — barwa rysowanego kursora.
+    # Bez niego zostaje domyślna biel, więc stary profil nic nie traci.
+    if cursor_color and _HEX_RE.match(cursor_color):
+        entry["cursor_color"] = cursor_color
+    path.write_text(json.dumps(entry), encoding="utf-8")
     return await status(bot_id)
 
 
@@ -231,7 +240,7 @@ def _mouse_params(event: dict) -> dict:
 # tam, gdzie sięga dzisiejsze wejście agenta. Gdy agent dostanie klikanie po
 # pulpicie (terminal, dock), trzeba będzie prawdziwego wskaźnika (xdotool na
 # native, `docker exec` przy kontenerze).
-_CURSOR_JS = """(function(x, y, hit) {
+_CURSOR_JS = """(function(x, y, hit, color) {
   var id = '__multibot_cursor__';
   var el = document.getElementById(id);
   if (!el) {
@@ -240,17 +249,18 @@ _CURSOR_JS = """(function(x, y, hit) {
     // strzałka rysowana `clip-path`, nie SVG-iem: strony z Trusted Types (YouTube)
     // odrzucają wstawianie HTML-a ("This document requires 'TrustedHTML' assignment")
     el.style.cssText = 'position:fixed;left:0;top:0;width:20px;height:26px;' +
-      'background:#fff;filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
+      'filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
       'clip-path:polygon(0 0,0 74%,27% 57%,44% 100%,63% 92%,46% 53%,74% 53%);' +
       'pointer-events:none;z-index:2147483647;transition:transform .25s ease-out;' +
       'will-change:transform';
     (document.body || document.documentElement).appendChild(el);
   }
+  el.style.background = color;
   el.style.transform = 'translate(' + x + 'px,' + y + 'px)';
   if (hit) {
     var ring = document.createElement('div');
     ring.style.cssText = 'position:fixed;left:' + (x - 14) + 'px;top:' + (y - 14) + 'px;' +
-      'width:28px;height:28px;border:2px solid #4c8dff;border-radius:50%;' +
+      'width:28px;height:28px;border:2px solid ' + color + ';border-radius:50%;' +
       'pointer-events:none;z-index:2147483646;opacity:.9;transition:all .4s ease-out';
     (document.body || document.documentElement).appendChild(ring);
     requestAnimationFrame(function() { ring.style.opacity = '0'; ring.style.transform = 'scale(1.8)'; });
@@ -259,7 +269,7 @@ _CURSOR_JS = """(function(x, y, hit) {
 })"""
 
 
-async def _show_cursor(cdp, session, event: dict) -> None:
+async def _show_cursor(cdp, session, event: dict, color: str) -> None:
     """Przesuń rysowany kursor agenta tam, gdzie właśnie idzie zdarzenie myszy.
     Awaria jest bez znaczenia — to podgląd, nie akcja, i nie może wywrócić kliknięcia."""
     try:
@@ -267,7 +277,7 @@ async def _show_cursor(cdp, session, event: dict) -> None:
             "Runtime.evaluate",
             {
                 "expression": f"{_CURSOR_JS}({float(event.get('x') or 0)},{float(event.get('y') or 0)},"
-                f"{'true' if event.get('type') == 'mousePressed' else 'false'})",
+                f"{'true' if event.get('type') == 'mousePressed' else 'false'},{json.dumps(color)})",
                 "returnByValue": True,
             },
             session_id=session,
@@ -565,13 +575,15 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
     `call`, nie `send`: połączenie zamyka się zaraz po żądaniu, więc odpowiedź
     CDP jest jedynym dowodem, że przeglądarka zdążyła zdarzenie przetworzyć.
     """
+    color = _browser_state(bot_id).get("cursor_color")
+    color = color if isinstance(color, str) and _HEX_RE.match(color) else _CURSOR_DEFAULT
     async with _operation(bot_id):
         async with _attached(bot_id) as (cdp, session):
             for event in events:
                 kind = event.get("kind")
                 if kind == "mouse":
                     # kursor PRZED zdarzeniem: klik może zabrać stronę gdzie indziej
-                    await _show_cursor(cdp, session, event)
+                    await _show_cursor(cdp, session, event, color)
                     await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
                 elif kind == "key":
                     await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)

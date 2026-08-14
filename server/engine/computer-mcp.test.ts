@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { startFakeEngine, type FakeEngine } from "../testing/fake-engine.ts";
-import { computerMcpSpawn, configureEngineComputer, engineComputer, harnessBaseUrl } from "./computer-mcp.ts";
+import { CURSOR_COLORS, computerMcpSpawn, configureEngineComputer, engineComputer, harnessBaseUrl } from "./computer-mcp.ts";
 import { engineBaseUrl, engineServerArgs, venvPython } from "./supervisor.ts";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -219,4 +219,20 @@ ${stderr}`);
     }
     expect(engine.createdBots).toContain(`mb-${bot.threadId}`);
   }, 45_000);
+});
+
+// Kursor agenta na komputerze nosi kolor bota, a serwer nie zaimportuje
+// `src/lib/mascot.ts` (ciągnie komponent Reacta), więc paleta jest tu kopią.
+// Ten test jest jedyną rzeczą, która trzyma obie w zgodzie.
+describe("bot colours", () => {
+  it("matches the palette the app paints bots with", () => {
+    const src = readFileSync(join(import.meta.dirname, "..", "..", "src", "lib", "mascot.ts"), "utf8");
+    const block = src.slice(src.indexOf("MAUS_COLORS"));
+    const app = Object.fromEntries(
+      [...block.slice(0, block.indexOf("};")).matchAll(/(\w+):\s*"(#[0-9A-Fa-f]{6})"/g)]
+        .map((m) => [m[1], m[2]]),
+    );
+    expect(Object.keys(app).length).toBeGreaterThan(0);
+    expect(CURSOR_COLORS).toEqual(app);
+  });
 });

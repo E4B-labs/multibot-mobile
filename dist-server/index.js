@@ -5,11 +5,13 @@ import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { homedir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as box from "./box.js";
-import { ensureAccessToken, mountAuth, rotateAccessToken } from "./auth.js";
+import { AttachmentStore, MAX_FILE_BYTES } from "./attachments.js";
+import { ensureAccessToken, mountAuth, rotateAccessToken, tokenMatches } from "./auth.js";
+// multibot (A1): logowanie Google przez Firebase -> lokalna sesja urządzenia.
+import { FirebaseAuthError, authorizeOwner, buildSessionCookie, createDeviceSession, isFirebaseConfigured, isLoopbackRequest, isSecureRequest, sessionIdFromCookieHeader, verifyDeviceSession, verifyFirebaseIdToken, } from "./firebase-auth.js";
 import * as composio from "./composio.js";
 import { BUILT_IN_CLI_IDS, DEFAULT_INSTANCE_CONFIGS, ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR, } from "./config.js";
 import { CLI_TOOLS, installCommandText } from "./cli-tools.js";
@@ -20,7 +22,12 @@ import { engineBotIdFor, threadIdOfEngineBot } from "./drivers/slafy.js";
 import { ensureEngine } from "./engine/supervisor.js";
 import { findExistingEngineProfile, importExistingEngineProfile } from "./engine/bootstrap.js";
 import { watchEngineAttention } from "./engine/attention.js";
-import { configureEngineComputer, engineComputer } from "./engine/computer-mcp.js";
+import { attachExternalBrowser, configureEngineComputer, engineComputer } from "./engine/computer-mcp.js";
+// multibot (H1-H5): jeden komputer bota — kontener na czas życia bota.
+import { dockerAvailable, ensureComputer, resumeComputer, exec as computerExec, } from "./hosted-computer.js";
+import * as computerControl from "./computer-control.js";
+import { claimPairing, pairingPending, startPairing } from "./pairing.js";
+import { matchVncRoute, mountVncUpgrade, proxyVncHttp } from "./computer-vnc-proxy.js";
 import { mountEngineProxy } from "./engine/proxy.js";
 import { EventBus } from "./harness/bus.js";
 // multibot (F7): własne serwery MCP użytkownika obok Composio
@@ -32,7 +39,7 @@ import { jobProgress, SetupJobs } from "./setup-jobs.js";
 import { chainDepth, mentionedBots, Store } from "./store.js";
 import { registerWindowsServerAutostart } from "./windows-autostart.js";
 import { WorkspaceStore } from "./workspace.js";
-import { canUseIntegration, clearTurnPolicy, setTurnPolicy } from "./turn-policy.js";
+import { canUseIntegration, clearTurnPolicy, rememberApprovalRule, setTurnPolicy } from "./turn-policy.js";
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const HOST = process.env.OMB_HOST?.trim() || "127.0.0.1";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -72,6 +79,10 @@ function staticHeaders(file) {
 ensureDirs();
 const cfg = loadConfig();
 const access = ensureAccessToken(cfg);
+// multibot (H3): serwer MCP komputera jest zwykłym klientem HTTP tego harnessu,
+// więc jego terminal potrzebuje tego samego tokena. Env, nie argv — argv widać
+// w liście procesów. Ten sam wzorzec, co COMMS_TOKEN dla agents-proxy.
+process.env.MULTIBOT_HARNESS_TOKEN = access.token;
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 const groupStore = new GroupStore();
@@ -160,6 +171,7 @@ async function defaultSelection(described) {
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
 const workspace = new WorkspaceStore();
+const attachments = new AttachmentStore();
 const bootFleet = await registry.describe();
 bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
@@ -178,6 +190,15 @@ for (const bot of store.bots) {
                     : model;
     if (stable !== model)
         store.patchBot(bot.id, { modelSelection: { instanceId: "claude", model: stable } });
+}
+const codexCatalog = bootFleet.find((provider) => provider.instanceId === "codex")?.models;
+if (codexCatalog) {
+    const valid = new Set(codexCatalog.options.map((option) => option.id));
+    for (const bot of store.bots) {
+        if (bot.modelSelection.instanceId === "codex" && !valid.has(bot.modelSelection.model)) {
+            store.patchBot(bot.id, { modelSelection: { instanceId: "codex", model: codexCatalog.default } });
+        }
+    }
 }
 const existingEngineProfile = findExistingEngineProfile(ROOT);
 const hadHarnessBots = store.bots.length > 0;
@@ -227,6 +248,7 @@ function broadcast(payload) {
 // and every client view are projections of it.
 const toolMessageByItem = new Map(); // itemId -> messageId
 const askMessageByRequest = new Map(); // requestId -> messageId
+const approvalRuleByRequest = new Map();
 bus.subscribe((event) => {
     broadcast({ kind: "runtime", event });
     const bot = store.botByThread(event.threadId);
@@ -282,12 +304,14 @@ bus.subscribe((event) => {
                 card: {
                     title: permission ? "Approval needed" : "Your bot has a question",
                     subtitle: event.summary,
-                    options: event.choices?.length ? event.choices : permission ? ["Allow", "Deny"] : [],
+                    options: permission ? ["Allow", "Deny", "Allow for all"] : event.choices ?? [],
                     requestId: event.requestId,
                 },
             });
             if (event.requestId)
                 askMessageByRequest.set(event.requestId, message.id);
+            if (permission && event.requestId && event.approvalRule)
+                approvalRuleByRequest.set(event.requestId, event.approvalRule);
             break;
         }
         case "request.resolved": {
@@ -296,7 +320,14 @@ bus.subscribe((event) => {
                 const existing = store.messagesFor(event.threadId).find((m) => m.id === messageId);
                 if (existing?.card && !existing.card.answered) {
                     const patched = store.patchMessage(event.threadId, messageId, {
-                        card: { ...existing.card, answered: event.behavior, dismissed: event.source !== "user" },
+                        card: {
+                            ...existing.card,
+                            answered: event.behavior === "always" ? "Allow for all"
+                                : event.behavior === "allow" ? "Allow"
+                                    : event.behavior === "deny" ? "Deny"
+                                        : event.behavior,
+                            dismissed: event.source !== "user",
+                        },
                     });
                     if (patched)
                         broadcast({ kind: "message.patch", threadId: event.threadId, message: patched });
@@ -304,6 +335,8 @@ bus.subscribe((event) => {
                 if (event.requestId)
                     askMessageByRequest.delete(event.requestId);
             }
+            if (event.requestId)
+                approvalRuleByRequest.delete(event.requestId);
             break;
         }
         case "runtime.error":
@@ -365,35 +398,10 @@ function stopScreenPoller(botId) {
     screenPollers.delete(botId);
     return entry.last;
 }
-// multibot: where Electron's app.getPath("userData") lands, per platform —
-// the hardcoded macOS path found nothing anywhere else, and threw the
-// non-ENOENT errors into the same silent catch.
-function userDataRoot() {
-    if (process.platform === "win32")
-        return process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
-    if (process.platform === "darwin")
-        return join(homedir(), "Library", "Application Support");
-    return process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-}
-// Local computer-use contract written by Electron main on startup
-// (<userData>/cua-connection.json). Read fresh each turn — Electron may
-// restart or permissions may change.
-function readCuaConnection() {
-    // new name first; pre-rename desktop builds used the old directory
-    for (const dir of ["OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"]) {
-        try {
-            const p = join(userDataRoot(), dir, "cua-connection.json");
-            const conn = JSON.parse(readFileSync(p, "utf8"));
-            if (!conn || conn.mode === "unavailable" || !conn.mcpCommand)
-                continue;
-            return { command: conn.mcpCommand, args: conn.mcpArgs ?? ["mcp"], env: conn.mcpEnv ?? {} };
-        }
-        catch {
-            /* try the next location */
-        }
-    }
-    return null;
-}
+// multibot (H1): the Electron-hosted local CUA ("this Mac") is gone from the
+// turn path — a bot acts on its own computer, never on the user's desktop.
+// electron/cua.mjs and its connection file stay on disk; driving the host's
+// physical screen is explicitly deferred, not deleted.
 // multibot: Hermes-compatible provider/model switch for chat. `/model` is a
 // harness command, not prose sent to whichever provider happens to be active.
 // Selection persists on bot, matching the model picker and surviving restart.
@@ -484,7 +492,13 @@ async function startTurn(botId, text, opts) {
     if (!instance) {
         throw Object.assign(new Error(`provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`), { status: 409 });
     }
-    const userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text });
+    const turnAttachments = opts?.attachments ?? [];
+    const userMessage = store.appendMessage(bot.threadId, {
+        role: "user",
+        kind: "text",
+        text,
+        ...(turnAttachments.length ? { attachments: turnAttachments.map(({ id, name, mime, size }) => ({ id, name, mime, size })) } : {}),
+    });
     broadcast({ kind: "message", threadId: bot.threadId, message: userMessage });
     // transcript for API-backed drivers: settled text turns only
     const transcript = store
@@ -538,6 +552,7 @@ async function startTurn(botId, text, opts) {
         autonomy: workspace.autonomy(bot.id).autonomy,
         access: workspace.access(bot.id).access,
         permissions: workspace.permissions(bot.id),
+        approvalRules: workspace.approvalRules(bot.id),
     });
     activeCommsDepth.set(bot.id, commsDepth); // multibot (F9): patrz `activeCommsDepth`
     broadcast({ kind: "bot", bot: store.bot(bot.id) });
@@ -547,38 +562,44 @@ async function startTurn(botId, text, opts) {
             if (cfg.composio?.key && canUseIntegration(bot.threadId, "integrations")) {
                 integrations.composio = { key: cfg.composio.key, url: cfg.composio.url };
             }
-            const wants = bot.computer; // 'cloud' | 'local' | 'playwright' | 'shared' | 'off' | undefined(auto)
-            // multibot (F5): "playwright" = przeglądarka bota w silniku. Wybór jawny,
-            // więc wyklucza oba komputery upstreamu — stąd `wants !== "playwright"`
-            // w ich warunkach niżej. Driver slafy dostaje ją natywnie (toolset Hermesa
-            // nad providerem `slafy`), więc jemu nie montujemy NICZEGO.
-            if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind !== "slafy") {
-                const mcp = await engineComputer(bot.threadId, undefined, wants === "shared" ? "shared" : "own");
-                if (mcp)
-                    integrations.localComputer = mcp;
-            }
-            else if (canUseIntegration(bot.threadId, "browser") && (wants === "playwright" || wants === "shared") && instance.driverKind === "slafy") {
-                // Native browser tools still run inside this bot's engine profile.
-                await configureEngineComputer(bot.threadId, wants === "shared" ? "shared" : "own");
-            }
-            if (canUseIntegration(bot.threadId, "browser") && wants !== "off" && wants !== "local" && wants !== "playwright" && wants !== "shared" && box.boxConfigured(cfg)) {
-                let b = await box.findBox(cfg, bot.id).catch(() => null);
-                // the Computer driver runs ON the box — provision it on first use
-                if (!b && instance.driverKind === "boxAgent") {
-                    broadcast({ kind: "computer", botId: bot.id, state: "provisioning" });
-                    await box.provisionBox(cfg, bot.id, bot.name);
-                    b = await box.findBox(cfg, bot.id).catch(() => null);
+            // multibot (H1/H3): jeden komputer bota, ten sam dla każdego drivera.
+            // Nie ma wyboru źródła ani stanu "off" — kontener stoi od utworzenia bota
+            // do jego usunięcia, a tura tylko się do niego podłącza. Awaria zostaje
+            // awarią (`error`), nigdy cichym zejściem do bota bez komputera.
+            // Żaden problem z komputerem nie może wywrócić tury — bez kontenera bot
+            // rozmawia dalej, tylko bez narzędzi komputera (ta sama reguła
+            // graceful-absence, co przy wyłączonym silniku).
+            try {
+                const computer = canUseIntegration(bot.threadId, "browser")
+                    ? await ensureComputer()
+                    : null;
+                if (computer)
+                    broadcast({ kind: "computer", botId: bot.id, state: computer.state });
+                // Tożsamość bota po stronie silnika NIE zależy od kontenera: profil
+                // trzyma pamięć, skille i rutyny, więc musi istnieć także wtedy, gdy
+                // komputer nie wstał. (Wcześniej zakładał go wybór "playwright" —
+                // którego już nie ma.)
+                await configureEngineComputer(bot.threadId, "own").catch(() => { });
+                if (computer?.ports) {
+                    // Silnik dostaje ADRES przeglądarki w kontenerze; cała jego istniejąca
+                    // ścieżka CDP (computer.py, computer_mcp.py, teach.py) działa wtedy bez
+                    // zmian, a agent i użytkownik patrzą na jeden ekran. Port jest inny po
+                    // każdym restarcie kontenera, więc podajemy go co turę.
+                    // kolor bota jedzie razem z adresem: kursor na wspólnym pulpicie ma
+                    // barwę tego, kto właśnie klika
+                    await attachExternalBrowser(bot.threadId, computer.ports.cdp, bot.color).catch(() => { });
+                    // Bot slafy steruje przeglądarką natywnie (toolset Hermesa), więc
+                    // montowanie mu tego samego komputera drugi raz dałoby dwa wejścia do
+                    // jednego pulpitu — dostaje sam adres, powyżej.
+                    if (instance.driverKind !== "slafy") {
+                        const mcp = await engineComputer(bot.threadId);
+                        if (mcp)
+                            integrations.localComputer = mcp;
+                    }
                 }
-                if (b)
-                    integrations.computer = { boxId: b.id, token: cfg.box.token };
             }
-            // local computer (this Mac) via the Electron-hosted cua-driver: the
-            // Electron main process owns the daemon (TCC attribution) and writes
-            // its spawn contract to cua-connection.json; the harness only reads it
-            if (canUseIntegration(bot.threadId, "browser") && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "playwright" && wants !== "shared") {
-                const cua = readCuaConnection();
-                if (cua)
-                    integrations.localComputer = cua;
+            catch (e) {
+                console.warn(`[multibot] computer unavailable for ${bot.id}:`, e instanceof Error ? e.message : e);
             }
             // MultiBot management MCP: same local stdio shape as upstream
             // OpenMausBot. Mount on every user turn, including a one-bot workspace;
@@ -608,21 +629,23 @@ async function startTurn(botId, text, opts) {
             }
             await instance.adapter.sendTurn({
                 threadId: bot.threadId,
-                text,
+                text: [text, turnAttachments.length ? `Attached files:\n${turnAttachments.map((file) => `- ${file.name}: ${file.path}`).join("\n")}` : ""]
+                    .filter(Boolean).join("\n\n"),
+                attachments: turnAttachments,
                 model: bot.modelSelection.model,
                 resumeCursor: bot.resumeCursors[bot.modelSelection.instanceId],
                 transcript,
                 system: persona + "\n\n" + workspaceContext +
-                    (integrations.computer && instance.driverKind !== "boxAgent"
-                        ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
-                        : // multibot (F5): komputer silnika to PRZEGLĄDARKA bota, nie pulpit
-                            // użytkownika — opis pulpitu wysyłałby agenta po narzędzia, których
-                            // ten serwer MCP nie ma (a11y, exec).
-                            (wants === "playwright" || wants === "shared") && integrations.localComputer
-                                ? ` You have ${wants === "shared" ? "the fleet's shared" : "your own"} browser with a persistent profile — screenshot it first, then click/type_text/key/scroll on what you see, navigate opens a URL and read_page returns the page text.`
-                                : integrations.localComputer
-                                    ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
-                                    : "") +
+                    // multibot (H3): jeden opis komputera dla każdego drivera. Desktop,
+                    // przeglądarka i pliki to JEDNO środowisko, więc agent musi wiedzieć,
+                    // że plik pobrany w przeglądarce zobaczy w terminalu — i że
+                    // `computer_exec` chodzi w kontenerze, nie na maszynie użytkownika.
+                    (integrations.localComputer
+                        ? " You share one persistent computer with the user's other bots — a Linux desktop with a browser, a terminal and files, all one environment." +
+                            " Anything you leave there (open tabs, downloads, logins) is visible to them and to the user, and they may change it while you work, so re-check the screen instead of trusting what you saw earlier." +
+                            " Take a screenshot or read the page first, then click/type_text/key/scroll on what you actually see; navigate opens a URL and read_page returns the page text." +
+                            " computer_exec runs commands inside your computer, never on the user's machine. The user sees this same screen and may take control — if input comes back user_has_control, wait and keep watching rather than retrying."
+                        : "") +
                     (integrations.agents
                         ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
                         : "") +
@@ -688,8 +711,14 @@ const harnessRoutines = new HarnessRoutines(join(DATA_DIR, "routines.json"), asy
 function routineView(botId, routine) {
     const bot = store.bot(botId);
     const driverKind = bot ? registry.get(bot.modelSelection.instanceId)?.driverKind ?? null : null;
+    // R1: expose as `next_run_at` — the same JSON key the engine path uses
+    // (`engine/server/routines.py:_to_routine`) so the UI reads one shape
+    // regardless of backend. `nextRunAt` stays the internal TS field name
+    // (server/routines.ts); only the wire shape is renamed here.
+    const { nextRunAt, ...rest } = routine;
     return {
-        ...routine,
+        ...rest,
+        next_run_at: nextRunAt,
         execution: {
             driverKind,
             limitations: driverKind && driverKind !== "slafy"
@@ -746,7 +775,8 @@ async function cliToolsStatus() {
             detected: instance?.snapshot.state === "available",
             reason: instance?.snapshot.reason,
             version: instance?.snapshot.version ?? undefined,
-            installCommand: tool.installStrategy === "claude-native"
+            authenticated: instance?.snapshot.authenticated,
+            installCommand: tool.installStrategy
                 ? "Native installer for this device"
                 : installCommandText(tool.install),
             loginCommand: tool.loginCommand ?? null,
@@ -756,9 +786,10 @@ async function cliToolsStatus() {
     });
 }
 function cliInstallSpec(tool) {
-    if (tool.installStrategy === "claude-native") {
-        const scriptInRepo = join(ROOT, "scripts", "install-claude.mjs");
-        const script = existsSync(scriptInRepo) ? scriptInRepo : join(ROOT, "install-claude.mjs");
+    if (tool.installStrategy) {
+        const filename = tool.installStrategy === "claude-native" ? "install-claude.mjs" : "install-codex.mjs";
+        const scriptInRepo = join(ROOT, "scripts", filename);
+        const script = existsSync(scriptInRepo) ? scriptInRepo : join(ROOT, filename);
         return existsSync(script)
             ? { command: process.execPath, args: [script] }
             : null;
@@ -884,7 +915,7 @@ const server = createServer(async (req, res) => {
                     case "profile.update": {
                         requireFull();
                         const patch = {};
-                        for (const key of ["name", "title", "description", "notifications", "computer", "color", "mascotExpression", "mascotShape", "modelSelection"]) {
+                        for (const key of ["name", "title", "description", "notifications", "color", "mascotExpression", "mascotShape", "modelSelection"]) {
                             if (body[key] !== undefined)
                                 patch[key] = body[key];
                         }
@@ -1136,7 +1167,7 @@ const server = createServer(async (req, res) => {
         // user-facing roster and transcript so groups survive reload/restart.
         if (method === "GET" && path === "/api/groups") {
             const local = groupStore.list();
-            if (local.length)
+            if (local.length || groupStore.hasLocalRoster())
                 return json(res, 200, local);
             try {
                 const remote = await fetch(`${await ensureEngine()}/api/groups`);
@@ -1233,16 +1264,13 @@ const server = createServer(async (req, res) => {
         if (m && method === "PATCH") {
             const body = await readBody(req);
             const patch = {};
-            for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "mascotShape", "pinned", "hidden"]) {
+            for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "color", "mascotExpression", "mascotShape", "pinned", "hidden"]) {
                 if (body[key] !== undefined)
                     patch[key] = body[key];
             }
             const bot = store.patchBot(m[1], patch);
             if (!bot)
                 return json(res, 404, { error: "no such bot" });
-            if (body.computer === "playwright" || body.computer === "shared") {
-                await configureEngineComputer(bot.threadId, body.computer === "shared" ? "shared" : "own").catch(() => { });
-            }
             broadcast({ kind: "bot", bot });
             return json(res, 200, { bot });
         }
@@ -1255,8 +1283,12 @@ const server = createServer(async (req, res) => {
             await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => { });
             stopScreenPoller(bot.id);
             harnessRoutines.deleteBot(bot.id);
+            attachments.deleteBot(bot.id);
             workspace.deleteBot(bot.id);
             store.deleteBot(bot.id);
+            // multibot (H1): the computer SURVIVES bot deletion. It belongs to the
+            // installation and every other bot is still using it — its volume holds
+            // shared logins and files that outlive any single bot.
             for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
                 try {
                     unlinkSync(join(dir, `${bot.threadId}.ndjson`));
@@ -1265,6 +1297,37 @@ const server = createServer(async (req, res) => {
             }
             broadcast({ kind: "bot.deleted", botId: bot.id });
             return json(res, 200, { ok: true });
+        }
+        m = path.match(/^\/api\/bots\/([\w-]+)\/attachments(?:\/([0-9a-f-]+))?$/i);
+        if (m) {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            if (method === "POST" && !m[2]) {
+                const rawName = Array.isArray(req.headers["x-file-name"]) ? req.headers["x-file-name"][0] : req.headers["x-file-name"];
+                let name = "";
+                try {
+                    name = decodeURIComponent(String(rawName ?? ""));
+                }
+                catch {
+                    return json(res, 422, { error: "invalid file name encoding" });
+                }
+                const mime = String(req.headers["content-type"] ?? "application/octet-stream").split(";", 1)[0];
+                const file = attachments.add(m[1], name, mime, await readBytes(req));
+                return json(res, 201, file);
+            }
+            if (method === "GET" && m[2]) {
+                const file = attachments.resolve(m[1], m[2]);
+                const bytes = readFileSync(file.path);
+                res.writeHead(200, {
+                    "content-type": file.mime,
+                    "content-length": String(bytes.length),
+                    "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+                    "x-content-type-options": "nosniff",
+                    "cache-control": "private, max-age=31536000, immutable",
+                });
+                return res.end(bytes);
+            }
+            return json(res, 405, { error: "method not allowed" });
         }
         // onboarding/ask cards persist their answered/dismissed state
         m = path.match(/^\/api\/bots\/([\w-]+)\/cards\/([\w-]+)$/);
@@ -1290,10 +1353,11 @@ const server = createServer(async (req, res) => {
         if (m && method === "POST") {
             const body = await readBody(req);
             const text = String(body.text ?? "").trim();
-            if (!text)
-                return json(res, 400, { error: "text required" });
+            const turnAttachments = attachments.resolveMany(m[1], body.attachmentIds);
+            if (!text && !turnAttachments.length)
+                return json(res, 400, { error: "text or attachment required" });
             const reasoning = isReasoningLevel(body.reasoning) ? body.reasoning : undefined;
-            const modelReply = await handleModelCommand(store.bot(m[1]), text);
+            const modelReply = turnAttachments.length ? null : await handleModelCommand(store.bot(m[1]), text);
             if (modelReply !== null) {
                 const bot = store.bot(m[1]);
                 if (!bot)
@@ -1304,7 +1368,7 @@ const server = createServer(async (req, res) => {
                 broadcast({ kind: "message", threadId: bot.threadId, message: botMessage });
                 return json(res, 200, { ok: true, command: "model" });
             }
-            await startTurn(m[1], text, { reasoning });
+            await startTurn(m[1], text, { reasoning, attachments: turnAttachments });
             return json(res, 202, { ok: true });
         }
         m = path.match(/^\/api\/bots\/([\w-]+)\/respond$/);
@@ -1316,6 +1380,17 @@ const server = createServer(async (req, res) => {
             const instance = registry.get(bot.modelSelection.instanceId);
             if (!instance)
                 return json(res, 409, { error: "provider unavailable" });
+            if (!["allow", "always", "deny", "answer"].includes(body.behavior)) {
+                return json(res, 422, { error: "invalid decision" });
+            }
+            if (body.behavior === "always") {
+                const candidate = approvalRuleByRequest.get(String(body.requestId));
+                if (!candidate)
+                    return json(res, 409, { error: "this request cannot be remembered safely" });
+                workspace.addApprovalRule(bot.id, candidate);
+                rememberApprovalRule(bot.threadId, candidate);
+                broadcast({ kind: "workspace", botId: bot.id, resource: "approval-rules" });
+            }
             await instance.adapter.respondToRequest(bot.threadId, String(body.requestId), {
                 behavior: body.behavior,
                 message: body.message,
@@ -1328,10 +1403,41 @@ const server = createServer(async (req, res) => {
             if (!bot)
                 return json(res, 404, { error: "no such bot" });
             const instance = registry.get(bot.modelSelection.instanceId);
+            store.patchBot(bot.id, { busy: false });
+            clearTurnPolicy(bot.threadId);
+            activeCommsDepth.delete(bot.id);
+            stopScreenPoller(bot.id);
+            broadcast({ kind: "bot", bot: store.bot(bot.id) });
             await instance?.adapter.interruptTurn(bot.threadId);
             return json(res, 200, { ok: true });
         }
         // ── multibot: provider-neutral workspace ───────────────────────────
+        m = path.match(/^\/api\/bots\/([\w-]+)\/approval-rules(?:\/([\w-]+))?$/);
+        if (m) {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            if (method === "GET" && !m[2])
+                return json(res, 200, workspace.approvalRules(m[1]));
+            if (method === "DELETE" && m[2]) {
+                const rule = workspace.approvalRules(m[1]).find((item) => item.id === m[2]);
+                const ok = workspace.removeApprovalRule(m[1], m[2]);
+                if (ok && rule?.provider === "slafy" && rule.key.startsWith("native:")) {
+                    try {
+                        const nativeKey = JSON.parse(rule.key.slice("native:".length));
+                        if (typeof nativeKey === "string") {
+                            const bot = store.bot(m[1]);
+                            const base = await ensureEngine();
+                            await fetch(`${base}/api/bots/${encodeURIComponent(engineBotIdFor(bot.threadId))}/approvals/allowlist/${encodeURIComponent(nativeKey)}`, { method: "DELETE" });
+                        }
+                    }
+                    catch { }
+                }
+                if (ok)
+                    broadcast({ kind: "workspace", botId: m[1], resource: "approval-rules" });
+                return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such rule" });
+            }
+            return json(res, 405, { error: "method not allowed" });
+        }
         m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/facts(?:\/([\w-]+))?$/);
         if (m) {
             if (!store.bot(m[1]))
@@ -1530,6 +1636,69 @@ const server = createServer(async (req, res) => {
         if (method === "GET" && path === "/api/auth/token") {
             res.setHeader("cache-control", "no-store");
             return json(res, 200, { token: cfg.auth.token });
+        }
+        // ── multibot (C1): parowanie telefonu kodem z QR ───────────────────
+        // `start` wymaga tokena (robi to zalogowany pulpit), `claim` NIE MOŻE —
+        // telefon dopiero się przedstawia. Bezpieczeństwo krótkiego kodu stoi na
+        // wygasaniu, jednorazowości i limicie prób (server/pairing.ts).
+        if (method === "POST" && path === "/api/pair/start") {
+            const { code, expiresAt } = startPairing();
+            return json(res, 200, { code, expiresAt, url: `http://${HOST}:${PORT}` });
+        }
+        if (method === "GET" && path === "/api/pair") {
+            return json(res, 200, { pending: pairingPending() });
+        }
+        if (method === "POST" && path === "/api/pair/claim") {
+            const body = await readBody(req).catch(() => ({}));
+            const result = claimPairing(body?.code);
+            // Jeden komunikat na każdą porażkę — rozróżnianie "zły kod" od "kod
+            // wygasł" mówiłoby zgadującemu, czy trafił w okno.
+            if (!result.ok)
+                return json(res, 401, { error: "pairing failed" });
+            const sessionId = createDeviceSession("paired-device", String(body?.deviceName ?? body?.label ?? "phone"));
+            res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+            res.setHeader("cache-control", "no-store");
+            return json(res, 200, { ok: true, token: cfg.auth.token });
+        }
+        // ── multibot (H4): sesja przeglądarki dla ekranu komputera ─────────
+        // Ekran to <iframe> z noVNC, a nawigacja iframe'a NIE MOŻE dołożyć nagłówka
+        // Authorization; websockify też nie zna naszego subprotokołu. Cookie jest
+        // jedynym poświadczeniem, które przejdzie przez oba — więc klient, który ma
+        // token, wymienia go raz na sesję urządzenia. Wymiana wymaga tokena, czyli
+        // nie osłabia bramki; sesje działają bez Firebase, bo tylko samo LOGOWANIE
+        // Google jest od niego zależne.
+        if (method === "POST" && path === "/api/auth/session") {
+            const body = await readBody(req).catch(() => ({}));
+            const sessionId = createDeviceSession("local", String(body?.label ?? "browser"));
+            res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+            res.setHeader("cache-control", "no-store");
+            return json(res, 200, { ok: true });
+        }
+        // ── multibot (A1): Firebase Google login → lokalna sesja urządzenia ──
+        if (method === "POST" && path === "/api/auth/firebase/session") {
+            if (!isFirebaseConfigured(cfg))
+                return json(res, 404, { error: "firebase not configured" });
+            try {
+                const body = await readBody(req);
+                const claims = await verifyFirebaseIdToken(String(body?.idToken ?? ""), cfg.firebase.projectId);
+                const bearer = req.headers.authorization?.startsWith("Bearer ")
+                    ? req.headers.authorization.slice(7)
+                    : req.headers["x-multibot-token"];
+                // Pierwszy właściciel wiąże się TYLKO z loopbacka albo z już znanym
+                // tokenem — nigdy "pierwszy z internetu wygrywa".
+                authorizeOwner(claims.uid, {
+                    loopback: isLoopbackRequest(req),
+                    bearerAuthed: tokenMatches(bearer, cfg.auth?.token ?? ""),
+                });
+                const sessionId = createDeviceSession(claims.uid, String(body?.label ?? "device"));
+                res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+                res.setHeader("cache-control", "no-store");
+                return json(res, 200, { ok: true, uid: claims.uid, email: claims.email ?? null });
+            }
+            catch (e) {
+                const status = e instanceof FirebaseAuthError ? 401 : 400;
+                return json(res, status, { error: e instanceof Error ? e.message : "invalid request" });
+            }
         }
         if (method === "POST" && path === "/api/auth/token/rotate") {
             const token = rotateAccessToken(cfg);
@@ -1805,29 +1974,72 @@ const server = createServer(async (req, res) => {
         m = path.match(/^\/api\/connectors\/([\w-]+)$/);
         if (m && method === "DELETE")
             return json(res, 200, await composio.removeService(cfg, m[1]));
-        // ── the bot's cloud computer (Box) ──
+        // ── multibot (H2/H4/H5): the bot's computer ────────────────────────
+        // Ports are deliberately absent from every response: the client reaches the
+        // screen only through the proxy below, so a container port never leaves the
+        // host. Box's provision/join/sleep are gone — a computer is not something
+        // the user turns on.
         m = path.match(/^\/api\/bots\/([\w-]+)\/computer$/);
-        if (m && method === "GET")
-            return json(res, 200, await box.boxStatus(cfg, m[1]));
-        m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/(provision|join|sleep|exec|screenshot)$/);
-        if (m && method === "POST") {
-            const botId = m[1];
-            const bot = store.bot(botId);
-            if (!bot)
+        if (m && method === "GET") {
+            if (!store.bot(m[1]))
                 return json(res, 404, { error: "no such bot" });
-            switch (m[2]) {
-                case "provision":
-                    return json(res, 200, await box.provisionBox(cfg, botId, bot.name));
-                case "join":
-                    return json(res, 200, await box.joinBox(cfg, botId));
-                case "sleep":
-                    return json(res, 200, await box.sleepBox(cfg, botId));
-                case "exec": {
-                    const body = await readBody(req);
-                    return json(res, 200, await box.execOnBox(cfg, botId, String(body.command ?? "")));
-                }
-                case "screenshot":
-                    return json(res, 200, await box.screenshotBox(cfg, botId));
+            // `ensure`, nie samo `status`: docker's restart policy handles a crashed
+            // process, but a container that was stopped outright needs starting, and
+            // the panel polls this route — so watching the computer is what heals it.
+            // Idempotent, and a no-op when it is already up.
+            const status = await ensureComputer();
+            if (status.state !== "ready" && !(await dockerAvailable())) {
+                return json(res, 200, {
+                    state: "error",
+                    detail: "Docker is not reachable — the bot's computer needs it to run.",
+                });
+            }
+            return json(res, 200, { state: status.state, detail: status.detail });
+        }
+        // The screen. HTTP here, WebSocket via mountVncUpgrade.
+        {
+            const hit = matchVncRoute(path);
+            if (hit && (method === "GET" || method === "HEAD")) {
+                if (!store.bot(hit.botId))
+                    return json(res, 404, { error: "no such bot" });
+                await proxyVncHttp(req, res, hit.rest, url.search);
+                return;
+            }
+        }
+        // Input lease (H5). Screenshots are never gated — only typing and clicking.
+        m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/control$/);
+        if (m && method === "GET")
+            return json(res, 200, computerControl.control());
+        m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/control\/(acquire|renew|release)$/);
+        if (m && method === "POST") {
+            if (!store.bot(m[1]))
+                return json(res, 404, { error: "no such bot" });
+            const next = m[2] === "release" ? computerControl.release() : computerControl.acquire();
+            broadcast({ kind: "computer", botId: m[1], state: next.owner === "user" ? "user-control" : "ready" });
+            return json(res, 200, next);
+        }
+        // The bot's terminal. Same filesystem as its desktop and browser.
+        //
+        // The caller may be the engine's computer MCP, which only knows its own
+        // `mb-<threadId>` id — accept either identity rather than making the MCP
+        // guess the harness's.
+        m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/exec$/);
+        if (m && method === "POST") {
+            const asEngineThread = threadIdOfEngineBot(m[1]);
+            const botId = store.bot(m[1])
+                ? m[1]
+                : (asEngineThread ? store.botByThread(asEngineThread)?.id : undefined);
+            if (!botId)
+                return json(res, 404, { error: "no such bot" });
+            const body = await readBody(req);
+            const command = String(body.command ?? "");
+            if (!command.trim())
+                return json(res, 400, { error: "command required" });
+            try {
+                return json(res, 200, { output: await computerExec(command) });
+            }
+            catch (e) {
+                return json(res, 502, { error: e instanceof Error ? e.message : String(e) });
             }
         }
         // packaged app: the server serves the built UI too (window → :8799 for
@@ -1867,10 +2079,19 @@ const server = createServer(async (req, res) => {
 // obsługuje `server/engine/proxy.ts`; montuje się opakowaniem listenera, więc
 // handler wyżej zostaje nietknięty.
 mountEngineProxy(server);
+// multibot (H4): the bot's screen. Mounted before auth so one gate covers it.
+mountVncUpgrade(server);
 // Auth mounts after the proxy so one wrapper covers harness HTTP, proxied
 // engine HTTP, and both engine WS upgrade paths.
 let revokeAuthSessions = (_except) => { };
-revokeAuthSessions = mountAuth(server, () => cfg.auth.token).revokeSessions;
+revokeAuthSessions = mountAuth(server, () => cfg.auth.token, 
+// Sesja urządzenia jest równorzędna tokenowi. Gdy Firebase nie jest
+// skonfigurowany, `verifyDeviceSession` nie ma czego znaleźć i jedyną
+// drogą zostaje token — dokładnie jak dotąd.
+(req) => {
+    const id = sessionIdFromCookieHeader(req.headers.cookie);
+    return Boolean(id && verifyDeviceSession(id));
+}).revokeSessions;
 // ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
 // Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);
 // harness zamienia to na `needsAttention` w store i rozsyła jak każdą inną
@@ -1886,10 +2107,25 @@ watchEngineAttention({
         broadcast({ kind: "bot", bot: store.bot(bot.id) });
     },
 });
+// multibot (H1): every bot has a computer, so boot makes that true again.
+// Containers survive a harness restart on their own restart policy; this only
+// heals what drifted (a bot created while docker was down, a container removed
+// by hand). Orphans are reported, not reaped, unless they unambiguously belong
+// to a bot that no longer exists.
+async function reconcileComputers() {
+    if (!(await dockerAvailable())) {
+        console.warn("[multibot] docker unreachable — the bot computer will show as error until it is up");
+        return;
+    }
+    // One computer for the whole installation: resume it if it exists, never
+    // create one just because the harness started.
+    await resumeComputer().catch(() => false);
+}
 server.listen(PORT, HOST, () => {
     console.log(`openmausbot server on http://${HOST}:${PORT}`);
     if (access.created)
         console.log(`[multibot] access token (shown once): ${access.token}`);
+    void reconcileComputers().catch((e) => console.warn("[multibot] computer reconcile failed:", e));
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
@@ -1898,5 +2134,32 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
         // CLI children (and kept their profile files locked), so give it one
         // short reap window after all adapters requested disposal.
         void registry.disposeAll().finally(() => setTimeout(() => process.exit(0), process.platform === "win32" ? 500 : 0));
+    });
+}
+function readBytes(req, max = MAX_FILE_BYTES) {
+    return new Promise((resolve, reject) => {
+        const declared = Number(req.headers["content-length"] ?? 0);
+        if (declared > max)
+            return reject(Object.assign(new Error("body too large"), { status: 413 }));
+        const chunks = [];
+        let size = 0;
+        let done = false;
+        req.on("data", (chunk) => {
+            if (done)
+                return;
+            size += chunk.length;
+            if (size > max) {
+                done = true;
+                req.resume();
+                reject(Object.assign(new Error("body too large"), { status: 413 }));
+            }
+            else
+                chunks.push(chunk);
+        });
+        req.on("end", () => {
+            if (!done)
+                resolve(Buffer.concat(chunks));
+        });
+        req.on("error", reject);
     });
 }

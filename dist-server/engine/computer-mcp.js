@@ -54,7 +54,27 @@ export async function configureEngineComputer(threadId, mode) {
  * nowy port hosta po każdym restarcie, więc adres wysyłamy co turę zamiast
  * zapamiętywać.
  */
-export async function attachExternalBrowser(threadId, cdpPort) {
+/**
+ * Kolory botów w hexie — kursor agenta na ekranie komputera ma barwę bota,
+ * który właśnie klika, więc przy wspólnym pulpicie widać, czyja to ręka.
+ *
+ * ponytail: kopia `MAUS_COLORS` z `src/lib/mascot.ts`, bo tamten moduł ciągnie
+ * za sobą komponent Reacta i z serwera się go nie zaimportuje. Przed rozjazdem
+ * pilnuje test, który czyta oryginał z dysku.
+ */
+export const CURSOR_COLORS = {
+    green: "#009957",
+    blue: "#377FE6",
+    red: "#D94B52",
+    orange: "#E78531",
+    purple: "#8057C8",
+    cyan: "#0EA5C6",
+    pink: "#D84F8B",
+    yellow: "#D8A729",
+    teal: "#01A492",
+    coral: "#E5634E",
+};
+export async function attachExternalBrowser(threadId, cdpPort, color) {
     // Zakłada bota po stronie silnika, jeśli go jeszcze nie ma — to samo, co robi
     // ścieżka MCP, więc bot slafy (który MCP nie dostaje) też ma gdzie zapisać
     // adres. `own` jest tu bez znaczenia: wyboru trybu już nie ma, liczy się
@@ -65,7 +85,10 @@ export async function attachExternalBrowser(threadId, cdpPort) {
     const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/computer/external`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cdp_url: `http://127.0.0.1:${cdpPort}` }),
+        body: JSON.stringify({
+            cdp_url: `http://127.0.0.1:${cdpPort}`,
+            ...(color && CURSOR_COLORS[color] ? { cursor_color: CURSOR_COLORS[color] } : {}),
+        }),
         signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok)
