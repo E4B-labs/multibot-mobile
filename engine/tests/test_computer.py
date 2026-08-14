@@ -386,6 +386,27 @@ def test_agent_mouse_draws_a_visible_cursor(client, page):
     assert "innerHTML" not in _computer._CURSOR_JS
 
 
+def test_ring_mode_marks_the_real_pointer_instead_of_drawing_a_second_one(page):
+    """Gdy umiemy ruszyc prawdziwym wskaznikiem, rysujemy tylko obwodke wokol niego —
+    dwie strzalki na ekranie sa gorsze niz zero. Obwodka jest wysrodkowana na ostrzu."""
+    from server import computer as _computer
+
+    page.eval(f"{_computer._CURSOR_JS}(200, 100, false, '#E5634E', true)")
+    style = page.eval(
+        "(function(){var e=document.getElementById('__multibot_cursor__');"
+        "return e.style.transform + '|' + e.style.borderRadius + '|' + e.style.background})()"
+    )
+    assert style == "translate(187px, 87px)|50%|transparent"
+
+    # ten sam element wraca do strzalki, gdy wskaznika ruszyc nie mozemy
+    page.eval(f"{_computer._CURSOR_JS}(200, 100, false, '#E5634E', false)")
+    style = page.eval(
+        "(function(){var e=document.getElementById('__multibot_cursor__');"
+        "return e.style.transform + '|' + e.style.borderRadius})()"
+    )
+    assert style == "translate(200px, 100px)|0px"
+
+
 def test_cursor_takes_the_bot_colour(client, page):
     """Jeden pulpit dla wszystkich botow, wiec kursor nosi barwe tego, kto klika.
     Kolor wchodzi z harnessu (`attachExternalBrowser`) do `browser.json`."""

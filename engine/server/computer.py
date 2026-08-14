@@ -90,10 +90,15 @@ _VIEWPORT_ORIGIN_JS = (
 )
 
 
+def _can_warp() -> bool:
+    """Czy w ogóle ruszymy prawdziwym wskaźnikiem — od tego zależy też, CO rysujemy."""
+    return bool(_XDO) and os.environ.get("MULTIBOT_COMPUTER_BACKEND") == "native"
+
+
 def _warp_pointer(origin: dict, event: dict) -> None:
     """Przesuń prawdziwy wskaźnik X11 tam, gdzie właśnie celuje agent.
     Best-effort: brak `xdotool`, brak `$DISPLAY`, cudzy backend — po prostu nic."""
-    if not _XDO or os.environ.get("MULTIBOT_COMPUTER_BACKEND") != "native" or not origin:
+    if not _can_warp() or not origin:
         return
     dpr = float(origin.get("dpr") or 1)
     x = int(float(origin.get("ox") or 0) + float(event.get("x") or 0) * dpr)
@@ -266,50 +271,69 @@ def _mouse_params(event: dict) -> dict:
     return params
 
 
-# Kursor agenta. `Input.dispatchMouseEvent` NIE rusza prawdziwym wskaźnikiem X11
-# — zdarzenie wchodzi prosto do renderera — więc na ekranie VNC klikało się samo
-# z siebie i nie było widać, gdzie bot celuje. Rysujemy więc jego wskaźnik w
-# stronie: to ta sama droga (CDP), co reszta wejścia, działa jednakowo na
-# backendzie native i w kontenerze, i nie wymaga ani xdotool, ani mapowania
-# współrzędnych strony na współrzędne ekranu.
+# Kursor agenta na ekranie komputera.
+#
+# `Input.dispatchMouseEvent` NIE rusza prawdziwym wskaźnikiem X11 — zdarzenie
+# wchodzi prosto do renderera — więc bez tego klikało się samo z siebie i nie
+# było widać, gdzie bot celuje.
+#
+# DWA TRYBY, bo dwie myszy na ekranie to gorzej niż zero:
+#   * umiemy ruszyć prawdziwym wskaźnikiem (`_can_warp`) — rysujemy sam KOLOROWY
+#     PIERŚCIEŃ wokół niego. Strzałka jest jedna, systemowa, a kolor mówi, który
+#     bot ją prowadzi.
+#   * nie umiemy (kontener) — rysujemy całą STRZAŁKĘ, bo inaczej nie byłoby
+#     czego oglądać: prawdziwy wskaźnik stoi wtedy tam, gdzie zostawił go człowiek.
 #
 # `transition` jest tu funkcją, nie ozdobą: bot skacze od punktu do punktu, a
-# przesuwanie się kursora przez ćwierć sekundy jest tym, co user ma zobaczyć.
+# przesuwanie się przez ćwierć sekundy jest tym, co user ma zobaczyć.
 #
-# ponytail: kursor żyje w karcie, więc widać go tylko wewnątrz strony — dokładnie
-# tam, gdzie sięga dzisiejsze wejście agenta. Gdy agent dostanie klikanie po
-# pulpicie (terminal, dock), trzeba będzie prawdziwego wskaźnika (xdotool na
-# native, `docker exec` przy kontenerze).
-_CURSOR_JS = """(function(x, y, hit, color) {
+# ponytail: znacznik żyje w karcie, więc widać go tylko wewnątrz strony —
+# dokładnie tam, gdzie sięga dzisiejsze wejście agenta. Gdy agent dostanie
+# klikanie po pulpicie (terminal, dock), zostanie sam prawdziwy wskaźnik.
+_CURSOR_JS = """(function(x, y, hit, color, ring) {
   var id = '__multibot_cursor__';
   var el = document.getElementById(id);
   if (!el) {
     el = document.createElement('div');
     el.id = id;
-    // strzałka rysowana `clip-path`, nie SVG-iem: strony z Trusted Types (YouTube)
-    // odrzucają wstawianie HTML-a ("This document requires 'TrustedHTML' assignment")
-    el.style.cssText = 'position:fixed;left:0;top:0;width:20px;height:26px;' +
-      'filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
-      'clip-path:polygon(0 0,0 74%,27% 57%,44% 100%,63% 92%,46% 53%,74% 53%);' +
-      'pointer-events:none;z-index:2147483647;transition:transform .25s ease-out;' +
-      'will-change:transform';
+    el.style.cssText = 'position:fixed;left:0;top:0;pointer-events:none;' +
+      'z-index:2147483647;transition:transform .25s ease-out;will-change:transform';
     (document.body || document.documentElement).appendChild(el);
   }
-  el.style.background = color;
-  el.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+  if (ring) {
+    // pierścień wokół prawdziwej strzałki — jej ostrze jest w (x, y)
+    el.style.width = el.style.height = '26px';
+    el.style.borderRadius = '50%';
+    el.style.border = '2px solid ' + color;
+    el.style.background = 'transparent';
+    el.style.clipPath = 'none';
+    el.style.filter = 'drop-shadow(0 0 2px rgba(0,0,0,.6))';
+    el.style.transform = 'translate(' + (x - 13) + 'px,' + (y - 13) + 'px)';
+  } else {
+    // strzałka rysowana `clip-path`, nie SVG-iem: strony z Trusted Types (YouTube)
+    // odrzucają wstawianie HTML-a ("This document requires 'TrustedHTML' assignment")
+    el.style.width = '20px';
+    el.style.height = '26px';
+    el.style.borderRadius = '0';
+    el.style.border = 'none';
+    el.style.background = color;
+    el.style.clipPath = 'polygon(0 0,0 74%,27% 57%,44% 100%,63% 92%,46% 53%,74% 53%)';
+    el.style.filter = 'drop-shadow(0 0 1.5px #000) drop-shadow(0 1px 2px rgba(0,0,0,.5))';
+    el.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+  }
   if (hit) {
-    var ring = document.createElement('div');
-    ring.style.cssText = 'position:fixed;left:' + (x - 14) + 'px;top:' + (y - 14) + 'px;' +
+    var pulse = document.createElement('div');
+    pulse.style.cssText = 'position:fixed;left:' + (x - 14) + 'px;top:' + (y - 14) + 'px;' +
       'width:28px;height:28px;border:2px solid ' + color + ';border-radius:50%;' +
       'pointer-events:none;z-index:2147483646;opacity:.9;transition:all .4s ease-out';
-    (document.body || document.documentElement).appendChild(ring);
-    requestAnimationFrame(function() { ring.style.opacity = '0'; ring.style.transform = 'scale(1.8)'; });
-    setTimeout(function() { ring.remove(); }, 500);
+    (document.body || document.documentElement).appendChild(pulse);
+    requestAnimationFrame(function() { pulse.style.opacity = '0'; pulse.style.transform = 'scale(1.8)'; });
+    setTimeout(function() { pulse.remove(); }, 500);
   }
 })"""
 
 
-async def _show_cursor(cdp, session, event: dict, color: str) -> None:
+async def _show_cursor(cdp, session, event: dict, color: str, ring: bool) -> None:
     """Przesuń rysowany kursor agenta tam, gdzie właśnie idzie zdarzenie myszy.
     Awaria jest bez znaczenia — to podgląd, nie akcja, i nie może wywrócić kliknięcia."""
     try:
@@ -317,7 +341,8 @@ async def _show_cursor(cdp, session, event: dict, color: str) -> None:
             "Runtime.evaluate",
             {
                 "expression": f"{_CURSOR_JS}({float(event.get('x') or 0)},{float(event.get('y') or 0)},"
-                f"{'true' if event.get('type') == 'mousePressed' else 'false'},{json.dumps(color)})",
+                f"{'true' if event.get('type') == 'mousePressed' else 'false'},{json.dumps(color)},"
+                f"{'true' if ring else 'false'})",
                 "returnByValue": True,
             },
             session_id=session,
@@ -620,7 +645,7 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
     async with _operation(bot_id):
         async with _attached(bot_id) as (cdp, session):
             origin: dict = {}
-            if _XDO and any(e.get("kind") == "mouse" for e in events):
+            if _can_warp() and any(e.get("kind") == "mouse" for e in events):
                 try:
                     got = await cdp.call(
                         "Runtime.evaluate",
@@ -630,11 +655,15 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
                     origin = got["result"].get("value") or {}
                 except Exception:  # noqa: BLE001 — podgląd, nie akcja
                     origin = {}
+            # Pierścień zamiast strzałki tylko wtedy, gdy PRAWDZIWY wskaźnik
+            # naprawdę pojedzie za agentem — inaczej user zostałby z samą obwódką
+            # w jednym miejscu i wskaźnikiem w drugim.
+            warp = bool(origin)
             for event in events:
                 kind = event.get("kind")
                 if kind == "mouse":
                     # kursor PRZED zdarzeniem: klik może zabrać stronę gdzie indziej
-                    await _show_cursor(cdp, session, event, color)
+                    await _show_cursor(cdp, session, event, color, warp)
                     await asyncio.to_thread(_warp_pointer, origin, event)
                     await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
                 elif kind == "key":
