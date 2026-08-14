@@ -417,6 +417,30 @@ def test_cursor_takes_the_bot_colour(client, page):
     path.write_text(json.dumps(state), encoding="utf-8")
 
 
+def test_warp_stays_off_unless_the_desktop_is_ours(monkeypatch):
+    """Prawdziwy wskaznik ruszamy TYLKO przy backendzie native — tam pulpit stoi
+    na tej samej maszynie. Przy dockerze `:1` bywa sesja czlowieka, wiec ani drgnie."""
+    from server import computer as _computer
+
+    calls = []
+    monkeypatch.setattr(_computer, "_XDO", "/usr/bin/xdotool")
+    monkeypatch.setattr(_computer.subprocess, "run", lambda *a, **k: calls.append(a[0]))
+    origin = {"ox": 10, "oy": 80, "dpr": 1}
+
+    monkeypatch.setenv("MULTIBOT_COMPUTER_BACKEND", "docker")
+    _computer._warp_pointer(origin, {"x": 100, "y": 200})
+    assert calls == []
+
+    monkeypatch.setenv("MULTIBOT_COMPUTER_BACKEND", "native")
+    _computer._warp_pointer(origin, {"x": 100, "y": 200})
+    assert calls == [["/usr/bin/xdotool", "mousemove", "110", "280"]]
+
+    # bez znanego polozenia okna trafilibysmy w losowy punkt — lepiej nie ruszac
+    calls.clear()
+    _computer._warp_pointer({}, {"x": 100, "y": 200})
+    assert calls == []
+
+
 def test_http_navigate_and_read_page(client, page):
     state = client.post(f"/api/bots/{_BOT}/computer/navigate", json={"url": _PAGE2}).json()
     assert state["running"] is True

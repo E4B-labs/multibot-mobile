@@ -29,7 +29,10 @@ bota; most wstaje przy pierwszym kliencie i schodzi z ostatnim.
 
 import asyncio
 import json
+import os
 import re
+import shutil
+import subprocess
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
@@ -68,6 +71,43 @@ _BUTTONS = {"left": 1, "right": 2, "middle": 4}
 # wyłącznie hex, nigdy dowolnego łańcucha.
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _CURSOR_DEFAULT = "#ffffff"
+
+# Prawdziwy wskaźnik X11 stoi tam, gdzie zostawił go człowiek, a rysowany kursor
+# agenta chodzi po swojemu — na ekranie widać wtedy DWIE myszy. Przy backendzie
+# native (pulpit stoi na tej samej maszynie, co silnik) przesuwamy więc też ten
+# prawdziwy, w to samo miejsce: strzałki się nakładają i mysz jest jedna.
+#
+# Warunek na `native` jest tu po to, żeby nie ruszyć wskaźnika CZŁOWIEKA: przy
+# backendzie docker pulpit siedzi w kontenerze, a `:1` na hoście bywa prawdziwą
+# sesją użytkownika. Tam zostaje sam kursor rysowany, czyli stan sprzed tej zmiany.
+_XDO = shutil.which("xdotool")
+# Współrzędne CDP są w pikselach CSS viewportu; ekran liczy od lewego górnego rogu
+# OKNA. Różnicę (pasek kart, ramka) bierzemy ze strony, bo tylko ona ją zna.
+_VIEWPORT_ORIGIN_JS = (
+    "({ox: window.screenX + (window.outerWidth - window.innerWidth), "
+    "oy: window.screenY + (window.outerHeight - window.innerHeight), "
+    "dpr: window.devicePixelRatio || 1})"
+)
+
+
+def _warp_pointer(origin: dict, event: dict) -> None:
+    """Przesuń prawdziwy wskaźnik X11 tam, gdzie właśnie celuje agent.
+    Best-effort: brak `xdotool`, brak `$DISPLAY`, cudzy backend — po prostu nic."""
+    if not _XDO or os.environ.get("MULTIBOT_COMPUTER_BACKEND") != "native" or not origin:
+        return
+    dpr = float(origin.get("dpr") or 1)
+    x = int(float(origin.get("ox") or 0) + float(event.get("x") or 0) * dpr)
+    y = int(float(origin.get("oy") or 0) + float(event.get("y") or 0) * dpr)
+    try:
+        subprocess.run(
+            [_XDO, "mousemove", str(x), str(y)],
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY") or ":1"},
+            timeout=2,
+            check=False,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def _browser_state(bot_id: str) -> dict:
@@ -579,11 +619,23 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
     color = color if isinstance(color, str) and _HEX_RE.match(color) else _CURSOR_DEFAULT
     async with _operation(bot_id):
         async with _attached(bot_id) as (cdp, session):
+            origin: dict = {}
+            if _XDO and any(e.get("kind") == "mouse" for e in events):
+                try:
+                    got = await cdp.call(
+                        "Runtime.evaluate",
+                        {"expression": _VIEWPORT_ORIGIN_JS, "returnByValue": True},
+                        session_id=session,
+                    )
+                    origin = got["result"].get("value") or {}
+                except Exception:  # noqa: BLE001 — podgląd, nie akcja
+                    origin = {}
             for event in events:
                 kind = event.get("kind")
                 if kind == "mouse":
                     # kursor PRZED zdarzeniem: klik może zabrać stronę gdzie indziej
                     await _show_cursor(cdp, session, event, color)
+                    await asyncio.to_thread(_warp_pointer, origin, event)
                     await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
                 elif kind == "key":
                     await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)
