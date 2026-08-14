@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProviderInstance, SendTurnInput } from "../contracts.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
-import { CodexDriver, codexMcpConfig, cursorMcpKey, splitCursor } from "./codex.ts";
+import { CodexDriver, codexMcpConfig, cursorMcpKey, cursorPlan, splitCursor } from "./codex.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
 
@@ -344,5 +344,19 @@ describe("cursor carries the mcp set", () => {
 
   it("survives a `#` inside the codex thread id", () => {
     expect(splitCursor("thr#odd#agents")).toEqual({ threadId: "thr#odd", mcpKey: "agents" });
+  });
+
+  it("starts a new thread only when the turn brings a server the thread lacks", () => {
+    expect(cursorPlan("thr_1", "agents,computer")).toEqual({ resume: null, key: "agents,computer" });
+    expect(cursorPlan("thr_1#agents", "agents,computer")).toEqual({ resume: null, key: "agents,computer" });
+    expect(cursorPlan(undefined, "agents")).toEqual({ resume: null, key: "agents" });
+  });
+
+  // Komputer nie wstał na jedną turę — wątek ma go zamontowanego, więc restart
+  // kosztowałby całą pamięć bota za nic. Zapis zostaje przy szerszym zestawie.
+  it("keeps the thread (and the wider set) when the turn has fewer servers", () => {
+    expect(cursorPlan("thr_1#agents,computer", "agents")).toEqual({ resume: "thr_1", key: "agents,computer" });
+    expect(cursorPlan("thr_1#agents,computer", "")).toEqual({ resume: "thr_1", key: "agents,computer" });
+    expect(cursorPlan("thr_1#agents,computer", "agents,computer")).toEqual({ resume: "thr_1", key: "agents,computer" });
   });
 });

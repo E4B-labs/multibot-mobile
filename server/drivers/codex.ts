@@ -91,6 +91,28 @@ export function splitCursor(cursor: string): { threadId: string; mcpKey: string 
   return at < 0 ? { threadId: cursor, mcpKey: "" } : { threadId: cursor.slice(0, at), mcpKey: cursor.slice(at + 1) };
 }
 
+/**
+ * Co zrobić z kursorem przy tym zestawie serwerów: wznowić wątek czy zacząć nowy,
+ * i jaki zestaw zapisać z powrotem.
+ *
+ * Restart TYLKO wtedy, gdy tura wnosi serwer, którego wątek nie zna — bo tylko
+ * takiego `thread/resume` nie dołoży. W drugą stronę (komputer chwilowo nie
+ * wstał, więc tura ma mniej serwerów) wątek zostaje: on ma komputer
+ * zamontowany, a nieudany spawn psuje jedną turę, nie całą pamięć bota. Zapis
+ * zostaje przy szerszym zestawie, żeby kolejna czkawka nie kasowała wątku.
+ */
+export function cursorPlan(
+  storedCursor: unknown,
+  mcpKey: string,
+): { resume: string | null; key: string } {
+  if (typeof storedCursor !== "string" || !storedCursor) return { resume: null, key: mcpKey };
+  const stored = splitCursor(storedCursor);
+  const known = new Set(stored.mcpKey ? stored.mcpKey.split(",") : []);
+  const wanted = mcpKey ? mcpKey.split(",") : [];
+  if (wanted.some((name) => !known.has(name))) return { resume: null, key: mcpKey };
+  return { resume: stored.threadId, key: stored.mcpKey };
+}
+
 export const CodexDriver: ProviderDriver<CodexConfig> = {
   driverKind: DRIVER_KIND,
   metadata: { displayName: "Codex", supportsMultipleInstances: true },
@@ -462,8 +484,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           send({ jsonrpc: "2.0", method: "initialized", params: {} });
           const mcpConfig = codexMcpConfig(turn);
           const mcpKey = cursorMcpKey(mcpConfig);
-          const stored = typeof turn.resumeCursor === "string" ? splitCursor(turn.resumeCursor) : null;
-          const cursor = stored && stored.mcpKey === mcpKey ? stored.threadId : null;
+          const plan = cursorPlan(turn.resumeCursor, mcpKey);
+          const cursor = plan.resume;
           let startedModel: string | null = null;
           if (cursor) {
             try {
@@ -492,7 +514,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             ...base(threadId, turnId),
             type: "session.started",
             // bez serwerów MCP kursor zostaje gołym id — tak wygląda od zawsze
-            sessionId: codexThreadId && mcpKey ? `${codexThreadId}#${mcpKey}` : codexThreadId,
+            sessionId: codexThreadId && plan.key ? `${codexThreadId}#${plan.key}` : codexThreadId,
             model: startedModel ?? turn.model ?? null,
           });
           const turnInput = [
