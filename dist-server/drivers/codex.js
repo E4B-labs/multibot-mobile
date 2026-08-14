@@ -12,19 +12,22 @@
 import { spawn, execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { newEventId, newId } from "../contracts.js";
+import { approvalRule } from "../approval-rules.js";
 import { augmentedPath, resolveCliSpawn } from "../env-path.js";
 import { killTree } from "../kill-tree.js";
-import { autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.js";
+import { approvalRuleAllowed, autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.js";
 import { appendNative } from "./native.js";
 const DRIVER_KIND = "codex";
 // catalog ported from upstream packages/contracts/src/model.ts
 const MODELS = {
-    default: "gpt-5.1-codex-max",
+    default: "gpt-5.6-sol",
     options: [
-        { id: "gpt-5.1-codex-max", label: "GPT-5.1 Codex Max" },
-        { id: "gpt-5.1-codex", label: "GPT-5.1 Codex" },
-        { id: "gpt-5.1-codex-mini", label: "GPT-5.1 Codex Mini" },
-        { id: "gpt-5", label: "GPT-5" },
+        { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+        { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+        { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+        { id: "gpt-5.5", label: "GPT-5.5" },
+        { id: "gpt-5.4", label: "GPT-5.4" },
+        { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
     ],
 };
 function decodeConfig(raw) {
@@ -36,6 +39,36 @@ function decodeConfig(raw) {
 }
 const QUESTION_TIMEOUT_NOTE = "No answer was given — use your best judgment.";
 const DENY_TIMEOUT_NOTE = "MultiBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+// multibot (H3): Codex's mcp_servers carried only `agents`; the bot's computer
+// has to ride along or Codex is the one driver that cannot touch the desktop
+// the user is watching. Same stdio contract as every other server here.
+export function codexMcpConfig(turn) {
+    const mcp_servers = {};
+    if (turn.integrations?.agents)
+        mcp_servers.agents = turn.integrations.agents;
+    if (turn.integrations?.localComputer)
+        mcp_servers.computer = turn.integrations.localComputer;
+    return Object.keys(mcp_servers).length ? { config: { mcp_servers } } : {};
+}
+// multibot (H3): serwery MCP wchodzą do wątku codeksa przy `thread/start` i
+// `thread/resume` ich NIE dokłada — wątek założony, zanim bot dostał komputer,
+// zostaje bez `computer` na zawsze (sprawdzone: świeży wątek woła `navigate`,
+// wznowiony odpowiada "nie mam takiego narzędzia"). Dlatego zestaw serwerów
+// jedzie w kursorze: zmienił się — wątek zaczyna się od nowa.
+//
+// ponytail: kursor jako `<id>#<serwery>` zamiast osobnego magazynu — kontrakt
+// `resumeCursors` (string) zostaje bez zmian. Cena: przy zmianie zestawu bot
+// traci pamięć po stronie codeksa (transkrypt harnessu zostaje). Gdyby to
+// zaczęło boleć, następny krok to dosłanie `turn.transcript` w pierwszej turze.
+export function cursorMcpKey(cfg) {
+    return Object.keys(cfg.config?.mcp_servers ?? {}).sort().join(",");
+}
+/** `<codexThreadId>#<serwery>` → części. Stary kursor (bez `#`) ma pusty zestaw,
+ *  więc pierwsza tura z komputerem świadomie zakłada nowy wątek. */
+export function splitCursor(cursor) {
+    const at = cursor.lastIndexOf("#");
+    return at < 0 ? { threadId: cursor, mcpKey: "" } : { threadId: cursor.slice(0, at), mcpKey: cursor.slice(at + 1) };
+}
 export const CodexDriver = {
     driverKind: DRIVER_KIND,
     metadata: { displayName: "Codex", supportsMultipleInstances: true },
@@ -65,7 +98,7 @@ export const CodexDriver = {
             const fullAuto = policy ? policy.autonomy === "autonomous" && !Object.values(policy.permissions).includes(false) : config.fullAuto;
             const turnId = newId();
             const requestedReasoning = turn.reasoning;
-            const effort = requestedReasoning === "max" ? "xhigh" : requestedReasoning;
+            const effort = requestedReasoning === "max" && !turn.model?.startsWith("gpt-5.6-") ? "xhigh" : requestedReasoning;
             const env = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
             // the CLI owns its own ChatGPT login; a leaked API key silently flips
             // billing to pay-as-you-go (agentcal)
@@ -80,6 +113,9 @@ export const CodexDriver = {
             });
             const state = { settled: false, lastText: "", sawStreamDelta: false };
             const asks = new Map();
+            let codexThreadId = null;
+            let providerTurnId = null;
+            let cancelled = false;
             let nextId = 1;
             const rpcPending = new Map();
             const send = (obj) => {
@@ -94,11 +130,26 @@ export const CodexDriver = {
                 rpcPending.set(id, { resolve, reject });
                 send({ jsonrpc: "2.0", id, method, params });
             });
-            const stop = () => killTree(child); // multibot: process groups are POSIX-only
+            let cancelFallback;
+            const stop = () => {
+                if (state.settled || cancelled)
+                    return;
+                cancelled = true;
+                if (codexThreadId && providerTurnId) {
+                    void request("turn/interrupt", { threadId: codexThreadId, turnId: providerTurnId }).catch(() => { });
+                    cancelFallback = setTimeout(() => settle(true, "cancelled"), 1500);
+                    cancelFallback.unref?.();
+                }
+                else {
+                    settle(true, "cancelled");
+                }
+            };
             const settle = (ok, stopReason) => {
                 if (state.settled)
                     return;
                 state.settled = true;
+                if (cancelFallback)
+                    clearTimeout(cancelFallback);
                 for (const finish of [...asks.values()])
                     finish("deny", "MultiBot: the turn ended");
                 for (const p of rpcPending.values())
@@ -106,12 +157,53 @@ export const CodexDriver = {
                 rpcPending.clear();
                 active.delete(threadId);
                 emit({ ...base(threadId, turnId), type: "turn.completed", ok, stopReason, cost: null });
-                stop(); // the app-server never exits on its own
+                killTree(child); // the per-turn app-server never exits on its own
             };
             // server→client approval request → canonical request.opened
             const handleServerRequest = (msg) => {
+                if (state.settled)
+                    return;
                 const method = msg.method;
                 const params = msg.params ?? {};
+                const isMcpElicitation = method === "mcpServer/elicitation/request";
+                if (isMcpElicitation) {
+                    const serverName = String(params.serverName || "mcp");
+                    const tool = `mcp__${serverName}`;
+                    const remembered = approvalRule(DRIVER_KIND, tool, {});
+                    const reply = (action) => send({
+                        jsonrpc: "2.0",
+                        id: msg.id,
+                        result: { action, content: action === "accept" ? {} : null },
+                    });
+                    if (!toolAllowed(threadId, tool)) {
+                        emit({ ...base(threadId, turnId), type: "runtime.error", message: `${tool} blocked by bot permissions` });
+                        return reply("decline");
+                    }
+                    if (autoApproveAllowed(threadId, tool) || approvalRuleAllowed(threadId, remembered))
+                        return reply("accept");
+                    const requestId = newId();
+                    const finish = (behavior) => {
+                        if (!asks.delete(requestId))
+                            return;
+                        clearTimeout(timer);
+                        const allowed = behavior === "allow" || behavior === "always";
+                        reply(allowed ? "accept" : "decline");
+                        emit({ ...base(threadId, turnId), type: "request.resolved", requestId, behavior, source: "user" });
+                    };
+                    const timer = setTimeout(() => finish("deny"), 15 * 60_000);
+                    timer.unref?.();
+                    asks.set(requestId, finish);
+                    emit({
+                        ...base(threadId, turnId),
+                        type: "request.opened",
+                        requestId,
+                        requestType: "permission",
+                        tool,
+                        summary: String(params.message ?? params._meta?.tool_description ?? tool).slice(0, 200),
+                        approvalRule: remembered,
+                    });
+                    return;
+                }
                 const legacy = method === "execCommandApproval" || method === "applyPatchApproval";
                 const isQuestion = method === "item/tool/requestUserInput";
                 const tool = method === "item/fileChange/requestApproval" || method === "applyPatchApproval"
@@ -119,6 +211,11 @@ export const CodexDriver = {
                     : isQuestion
                         ? "ask_user"
                         : "shell";
+                const nativeRule = params.proposedExecpolicyAmendment ?? params.proposedExecPolicyAmendment ?? params.execpolicyAmendment;
+                const remembered = approvalRule(DRIVER_KIND, tool, { command: params.command }, nativeRule);
+                const persistentDecision = Array.isArray(nativeRule)
+                    ? { acceptWithExecpolicyAmendment: { execpolicy_amendment: nativeRule } }
+                    : "acceptForSession";
                 if (!isQuestion && !toolAllowed(threadId, tool)) {
                     emit({ ...base(threadId, turnId), type: "runtime.error", message: `${tool} blocked by bot permissions` });
                     return send({
@@ -129,6 +226,13 @@ export const CodexDriver = {
                 }
                 if (!isQuestion && (autoApproveAllowed(threadId, tool) || (!policy && config.fullAuto))) {
                     return send({ jsonrpc: "2.0", id: msg.id, result: { decision: legacy ? "approved" : "accept" } });
+                }
+                if (!isQuestion && approvalRuleAllowed(threadId, remembered)) {
+                    return send({
+                        jsonrpc: "2.0",
+                        id: msg.id,
+                        result: { decision: legacy ? "approved" : persistentDecision },
+                    });
                 }
                 const requestId = newId();
                 const summary = typeof params.command === "string"
@@ -153,10 +257,19 @@ export const CodexDriver = {
                         send({ jsonrpc: "2.0", id: msg.id, result: { answers } });
                     }
                     else {
+                        const allowed = behavior === "allow" || behavior === "always";
                         send({
                             jsonrpc: "2.0",
                             id: msg.id,
-                            result: { decision: behavior === "allow" ? (legacy ? "approved" : "accept") : legacy ? "denied" : "decline" },
+                            result: {
+                                decision: allowed
+                                    ? legacy
+                                        ? "approved"
+                                        : behavior === "always"
+                                            ? persistentDecision
+                                            : "accept"
+                                    : legacy ? "denied" : "decline",
+                            },
                         });
                     }
                     emit({ ...base(threadId, turnId), type: "request.resolved", requestId, behavior, source: "user" });
@@ -172,9 +285,12 @@ export const CodexDriver = {
                     tool,
                     summary,
                     choices,
+                    ...(!isQuestion ? { approvalRule: remembered } : {}),
                 });
             };
             const handleNotification = (msg) => {
+                if (state.settled)
+                    return;
                 const p = msg.params ?? {};
                 switch (msg.method) {
                     // token-level chat text; the item/completed frame follows with the
@@ -249,7 +365,10 @@ export const CodexDriver = {
                     }
                     case "turn/completed": {
                         const t = p.turn ?? {};
-                        settle(t.status === "completed", t.status === "completed" ? null : (t.error?.message ?? t.status ?? "failed"));
+                        if (cancelled || t.status === "interrupted")
+                            settle(true, "cancelled");
+                        else
+                            settle(t.status === "completed", t.status === "completed" ? null : (t.error?.message ?? t.status ?? "failed"));
                         break;
                     }
                     case "error":
@@ -302,6 +421,8 @@ export const CodexDriver = {
             });
             child.on("close", (code) => {
                 if (!state.settled) {
+                    if (cancelled)
+                        return settle(true, "cancelled");
                     emit({
                         ...base(threadId, turnId),
                         type: "runtime.error",
@@ -317,14 +438,16 @@ export const CodexDriver = {
                 try {
                     await request("initialize", { clientInfo: { name: "openmausbot", version: "1" } });
                     send({ jsonrpc: "2.0", method: "initialized", params: {} });
-                    const cursor = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
-                    let codexThreadId = null;
+                    const mcpConfig = codexMcpConfig(turn);
+                    const mcpKey = cursorMcpKey(mcpConfig);
+                    const stored = typeof turn.resumeCursor === "string" ? splitCursor(turn.resumeCursor) : null;
+                    const cursor = stored && stored.mcpKey === mcpKey ? stored.threadId : null;
                     let startedModel = null;
                     if (cursor) {
                         try {
                             const resumed = await request("thread/resume", {
                                 threadId: cursor,
-                                ...(turn.integrations?.agents ? { config: { mcp_servers: { agents: turn.integrations.agents } } } : {}),
+                                ...mcpConfig,
                             });
                             codexThreadId = resumed?.thread?.id ?? cursor;
                         }
@@ -339,17 +462,28 @@ export const CodexDriver = {
                             sandbox: fullAuto ? "danger-full-access" : policy?.permissions.file === false ? "read-only" : "workspace-write",
                             approvalPolicy: fullAuto ? "never" : "on-request",
                             ephemeral: false,
-                            ...(turn.integrations?.agents ? { config: { mcp_servers: { agents: turn.integrations.agents } } } : {}),
+                            ...mcpConfig,
                         });
                         codexThreadId = started?.thread?.id ?? null;
                         startedModel = started?.model ?? null;
                     }
-                    emit({ ...base(threadId, turnId), type: "session.started", sessionId: codexThreadId, model: startedModel ?? turn.model ?? null });
-                    await request("turn/start", {
+                    emit({
+                        ...base(threadId, turnId),
+                        type: "session.started",
+                        // bez serwerów MCP kursor zostaje gołym id — tak wygląda od zawsze
+                        sessionId: codexThreadId && mcpKey ? `${codexThreadId}#${mcpKey}` : codexThreadId,
+                        model: startedModel ?? turn.model ?? null,
+                    });
+                    const turnInput = [
+                        { type: "text", text: turn.system ? `${turn.system}\n\n${turn.text}` : turn.text },
+                        ...(turn.attachments ?? []).filter((file) => file.mime.startsWith("image/")).map((file) => ({ type: "localImage", path: file.path })),
+                    ];
+                    const startedTurn = await request("turn/start", {
                         threadId: codexThreadId,
-                        input: [{ type: "text", text: turn.system ? `${turn.system}\n\n${turn.text}` : turn.text }],
+                        input: turnInput,
                         ...(effort ? { effort } : {}),
                     });
+                    providerTurnId = startedTurn?.turn?.id ?? startedTurn?.turnId ?? null;
                 }
                 catch (e) {
                     if (!state.settled) {
@@ -361,17 +495,19 @@ export const CodexDriver = {
             return { turnId };
         };
         const snapshot = async () => {
-            const version = await new Promise((resolve) => {
-                const cli = resolveCliSpawn(config.cli, ["--version"]); // multibot
+            const probe = (args) => new Promise((resolve) => {
+                const cli = resolveCliSpawn(config.cli, args); // multibot
                 execFile(cli.command, cli.args, {
                     timeout: 8000,
                     env: { ...process.env, PATH: augmentedPath() },
                     windowsVerbatimArguments: cli.windowsVerbatimArguments,
-                }, (err, stdout) => resolve(err ? null : stdout.trim()));
+                }, (err, stdout, stderr) => resolve({ ok: !err, output: `${stdout}${stderr}`.trim() }));
             });
-            if (!version)
+            const version = await probe(["--version"]);
+            if (!version.ok || !version.output)
                 return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };
-            return { state: "available", version };
+            const auth = await probe(["login", "status"]);
+            return { state: "available", version: version.output, authenticated: auth.ok };
         };
         return {
             instanceId,

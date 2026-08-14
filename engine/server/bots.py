@@ -37,6 +37,7 @@ _SOUL = """# {name}
 
 _MULTIBOT_MARKER = "MULTIBOT_AGENT_IDENTITY_V1"
 _ROUTINE_MARKER = "MULTIBOT_ROUTINE_TOOL_ROUTING_V1"
+_COMPUTER_MARKER = "MULTIBOT_COMPUTER_IDENTITY_V1"
 _MULTIBOT_IDENTITY = f"""
 
 ## MultiBot Agent
@@ -63,6 +64,35 @@ When the user asks to create or change a routine, call the local MultiBot
 hand-build a raw cron string. Never use ToolSearch, `/schedule`,
 provider-private memory, or cloud scheduling.
 """
+# Bot na driverze slafy NIE dostaje `system` z harnessu: driver go nie wysyła, a
+# gateway świadomie pomija `instructions`, żeby nie przykryć SOUL.md (gateway.py
+# §(e)). SOUL.md jest więc JEDYNYM miejscem, w którym taki bot może się
+# dowiedzieć, że ma komputer — bez tego odpowiada userowi "nie mam takiego
+# narzędzia", mając `browser_*` w ofercie.
+#
+# Celowo mówi tylko o przeglądarce: `browser_*` chodzi po CDP komputera
+# (browser.json → `external: true`), ale toolset `terminal`/`file` Hermesa
+# wykonuje się na hoście SILNIKA — na telefonie to ta sama maszyna, przy backendzie
+# docker już nie. Leasing sterowania (`user_has_control`) też tu nie obowiązuje:
+# egzekwują go trasy komputera w harnessie, a `browser_*` idzie prosto po CDP.
+_COMPUTER_IDENTITY = f"""
+
+## MultiBot computer
+
+<!-- {_COMPUTER_MARKER} -->
+
+You have a computer: one persistent Linux desktop shared by every bot in this
+MultiBot installation. Your browser tools (`browser_navigate`, `browser_snapshot`,
+`browser_click`, `browser_type`, `browser_scroll`, `browser_press`) drive the
+browser running on that desktop, and the user watches that same screen in the
+Computer panel. When you are asked to open a page, look something up, or use a
+website, use these tools — do not answer that you have no browser.
+
+Because the desktop is shared, open tabs, downloads and logins are visible to the
+user and to the other bots, and they may change things while you work: take a
+`browser_snapshot` and act on what you see now instead of trusting what you saw
+earlier.
+"""
 
 
 def data_dir() -> Path:
@@ -81,7 +111,9 @@ def profile_dir(bot_id: str) -> Path:
 
 def _write(bot: dict) -> None:
     d = profile_dir(bot["id"])
-    (d / "SOUL.md").write_text(_SOUL.format(**bot) + _MULTIBOT_IDENTITY + _ROUTINE_IDENTITY, encoding="utf-8")
+    (d / "SOUL.md").write_text(
+        _SOUL.format(**bot) + _MULTIBOT_IDENTITY + _ROUTINE_IDENTITY + _COMPUTER_IDENTITY, encoding="utf-8"
+    )
     (d / "bot.json").write_text(json.dumps(bot, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -96,6 +128,8 @@ def ensure_multibot_identity(bot_id: str) -> None:
         additions += _MULTIBOT_IDENTITY
     if _ROUTINE_MARKER not in content:
         additions += _ROUTINE_IDENTITY
+    if _COMPUTER_MARKER not in content:
+        additions += _COMPUTER_IDENTITY
     if additions:
         path.write_text(content.rstrip() + additions, encoding="utf-8")
 

@@ -70,6 +70,27 @@ export function codexMcpConfig(turn: SendTurnInput): { config?: { mcp_servers: R
   return Object.keys(mcp_servers).length ? { config: { mcp_servers } } : {};
 }
 
+// multibot (H3): serwery MCP wchodzą do wątku codeksa przy `thread/start` i
+// `thread/resume` ich NIE dokłada — wątek założony, zanim bot dostał komputer,
+// zostaje bez `computer` na zawsze (sprawdzone: świeży wątek woła `navigate`,
+// wznowiony odpowiada "nie mam takiego narzędzia"). Dlatego zestaw serwerów
+// jedzie w kursorze: zmienił się — wątek zaczyna się od nowa.
+//
+// ponytail: kursor jako `<id>#<serwery>` zamiast osobnego magazynu — kontrakt
+// `resumeCursors` (string) zostaje bez zmian. Cena: przy zmianie zestawu bot
+// traci pamięć po stronie codeksa (transkrypt harnessu zostaje). Gdyby to
+// zaczęło boleć, następny krok to dosłanie `turn.transcript` w pierwszej turze.
+export function cursorMcpKey(cfg: ReturnType<typeof codexMcpConfig>): string {
+  return Object.keys(cfg.config?.mcp_servers ?? {}).sort().join(",");
+}
+
+/** `<codexThreadId>#<serwery>` → części. Stary kursor (bez `#`) ma pusty zestaw,
+ *  więc pierwsza tura z komputerem świadomie zakłada nowy wątek. */
+export function splitCursor(cursor: string): { threadId: string; mcpKey: string } {
+  const at = cursor.lastIndexOf("#");
+  return at < 0 ? { threadId: cursor, mcpKey: "" } : { threadId: cursor.slice(0, at), mcpKey: cursor.slice(at + 1) };
+}
+
 export const CodexDriver: ProviderDriver<CodexConfig> = {
   driverKind: DRIVER_KIND,
   metadata: { displayName: "Codex", supportsMultipleInstances: true },
@@ -439,13 +460,16 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         try {
           await request("initialize", { clientInfo: { name: "openmausbot", version: "1" } });
           send({ jsonrpc: "2.0", method: "initialized", params: {} });
-          const cursor = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
+          const mcpConfig = codexMcpConfig(turn);
+          const mcpKey = cursorMcpKey(mcpConfig);
+          const stored = typeof turn.resumeCursor === "string" ? splitCursor(turn.resumeCursor) : null;
+          const cursor = stored && stored.mcpKey === mcpKey ? stored.threadId : null;
           let startedModel: string | null = null;
           if (cursor) {
             try {
               const resumed = await request("thread/resume", {
                 threadId: cursor,
-                ...codexMcpConfig(turn),
+                ...mcpConfig,
               });
               codexThreadId = resumed?.thread?.id ?? cursor;
             } catch {
@@ -459,12 +483,18 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               sandbox: fullAuto ? "danger-full-access" : policy?.permissions.file === false ? "read-only" : "workspace-write",
               approvalPolicy: fullAuto ? "never" : "on-request",
               ephemeral: false,
-              ...codexMcpConfig(turn),
+              ...mcpConfig,
             });
             codexThreadId = started?.thread?.id ?? null;
             startedModel = started?.model ?? null;
           }
-          emit({ ...base(threadId, turnId), type: "session.started", sessionId: codexThreadId, model: startedModel ?? turn.model ?? null });
+          emit({
+            ...base(threadId, turnId),
+            type: "session.started",
+            // bez serwerów MCP kursor zostaje gołym id — tak wygląda od zawsze
+            sessionId: codexThreadId && mcpKey ? `${codexThreadId}#${mcpKey}` : codexThreadId,
+            model: startedModel ?? turn.model ?? null,
+          });
           const turnInput = [
             { type: "text", text: turn.system ? `${turn.system}\n\n${turn.text}` : turn.text },
             ...(turn.attachments ?? []).filter((file) => file.mime.startsWith("image/")).map((file) => ({ type: "localImage", path: file.path })),

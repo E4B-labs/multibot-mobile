@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProviderInstance, SendTurnInput } from "../contracts.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
-import { CodexDriver, codexMcpConfig } from "./codex.ts";
+import { CodexDriver, codexMcpConfig, cursorMcpKey, splitCursor } from "./codex.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
 
@@ -320,5 +320,29 @@ describe("codexMcpConfig", () => {
 
   it("sends no config block at all when the bot has neither", () => {
     expect(codexMcpConfig(base)).toEqual({});
+  });
+});
+
+// multibot (H3): `thread/resume` nie dokłada nowych serwerów MCP do istniejącego
+// wątku, więc zestaw serwerów jedzie w kursorze — zmiana zestawu = nowy wątek.
+describe("cursor carries the mcp set", () => {
+  const cfg = (integrations: unknown) =>
+    codexMcpConfig({ threadId: "t1", text: "hi", integrations } as unknown as SendTurnInput);
+
+  it("keys the cursor by server names, order-independent", () => {
+    const a = cursorMcpKey(cfg({ agents: { command: "n", args: [], env: {} }, localComputer: { command: "p", args: [], env: {} } }));
+    const b = cursorMcpKey(cfg({ localComputer: { command: "p", args: [], env: {} }, agents: { command: "n", args: [], env: {} } }));
+    expect(a).toBe("agents,computer");
+    expect(b).toBe(a);
+    expect(cursorMcpKey(cfg(undefined))).toBe("");
+  });
+
+  it("treats a pre-computer cursor as a different set, so the thread restarts", () => {
+    expect(splitCursor("thr_123")).toEqual({ threadId: "thr_123", mcpKey: "" });
+    expect(splitCursor("thr_123#agents,computer")).toEqual({ threadId: "thr_123", mcpKey: "agents,computer" });
+  });
+
+  it("survives a `#` inside the codex thread id", () => {
+    expect(splitCursor("thr#odd#agents")).toEqual({ threadId: "thr#odd", mcpKey: "agents" });
   });
 });

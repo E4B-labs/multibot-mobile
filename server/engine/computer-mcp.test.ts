@@ -39,6 +39,10 @@ describe("computerMcpSpawn", () => {
     // `localComputer` nie ma `cwd` (contracts.ts zostaje bez zmian), więc
     // importowalność pakietu `server.*` musi załatwić PYTHONPATH
     expect(spawnCfg.env.PYTHONPATH).toBe(ENGINE_DIR);
+    // …a user-site (tam siedzi reszta zależności venvu na Termuxie) musi
+    // załatwić HOME: `claude`/`codex` startują ten serwer w kontenerze proot,
+    // gdzie HOME=/root.
+    if (process.env.HOME) expect(spawnCfg.env.HOME).toBe(process.env.HOME);
     delete process.env.ENGINE_URL;
   });
 

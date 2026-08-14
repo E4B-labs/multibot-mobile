@@ -17,6 +17,12 @@ import { engineBotIdFor } from "../drivers/slafy.js";
 import { engineBaseUrl, ensureEngine, venvPython } from "./supervisor.js";
 /** repo root: server/engine/ → server/ → repo */
 const ENGINE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "engine");
+/** Gdzie ten harness słucha — czytane przy każdym spawnie, bo port bierze się
+ *  z env i w testach jest inny niż domyślny. */
+export function harnessBaseUrl() {
+    const port = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
+    return `http://127.0.0.1:${port}`;
+}
 /** Ensure engine-side bot exists and persist which browser profile it uses.
  * Slafy-native bots need this too; their browser tools do not ride this MCP. */
 export async function configureEngineComputer(threadId, mode) {
@@ -39,14 +45,60 @@ export async function configureEngineComputer(threadId, mode) {
     if (!configured.ok)
         throw new Error(`engine computer mode -> HTTP ${configured.status}`);
 }
+/**
+ * multibot (H3): powiedz silnikowi, że przeglądarka tego bota stoi W JEGO
+ * KOMPUTERZE, pod tym adresem CDP.
+ *
+ * Bez tego `ensure_browser` silnika podniósłby drugie, lokalne chromium — agent
+ * klikałby po ekranie, którego użytkownik nie widzi. Docker daje kontenerowi
+ * nowy port hosta po każdym restarcie, więc adres wysyłamy co turę zamiast
+ * zapamiętywać.
+ */
+export async function attachExternalBrowser(threadId, cdpPort) {
+    // Zakłada bota po stronie silnika, jeśli go jeszcze nie ma — to samo, co robi
+    // ścieżka MCP, więc bot slafy (który MCP nie dostaje) też ma gdzie zapisać
+    // adres. `own` jest tu bez znaczenia: wyboru trybu już nie ma, liczy się
+    // tylko istnienie profilu.
+    await configureEngineComputer(threadId, "own");
+    const baseUrl = await ensureEngine();
+    const botId = engineBotIdFor(threadId);
+    const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/computer/external`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cdp_url: `http://127.0.0.1:${cdpPort}` }),
+        signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok)
+        throw new Error(`engine external browser -> HTTP ${res.status}`);
+}
 /** Kontrakt spawnu serwera MCP komputera dla wątku — bez sprawdzania, czy silnik
  * stoi (to robi `engineComputer`). Wydzielone, żeby dało się je sprawdzić bez sieci. */
 export function computerMcpSpawn(threadId, engineDir = ENGINE_DIR) {
     return {
         command: venvPython(engineDir),
-        args: ["-m", "server.computer_mcp", "--bot", engineBotIdFor(threadId), "--engine-url", engineBaseUrl()],
+        args: [
+            "-m", "server.computer_mcp",
+            "--bot", engineBotIdFor(threadId),
+            "--engine-url", engineBaseUrl(),
+            // multibot (H3): terminal komputera. Bez tego adresu `computer_exec`
+            // odmawia — i to jest właściwe zachowanie, bo jedyną alternatywą byłoby
+            // wykonanie polecenia na maszynie użytkownika zamiast w kontenerze.
+            "--harness-url", harnessBaseUrl(),
+        ],
         env: {
             PYTHONPATH: engineDir,
+            // multibot: HOME jawnie, bo serwer MCP nie zawsze startuje w tym samym
+            // środowisku, co harness. Na Termuxie `claude`/`codex` to wrappery na
+            // `proot-distro login debian`, gdzie HOME=/root — a Python liczy z HOME
+            // katalog user-site (`~/.local/lib/pythonX/site-packages`). Bez tego venv
+            // silnika traci połowę zależności (`ModuleNotFoundError: idna`), serwer
+            // pada przy starcie i CLI melduje `mcp_servers: [{computer, failed}]` —
+            // czyli bot cicho zostaje bez komputera.
+            ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+            // Trasa `/api/bots/:id/computer/exec` jest za tą samą bramką auth, co
+            // reszta harnessu, a serwer MCP jest zwykłym klientem HTTP — dostaje więc
+            // token tak samo, jak agents-proxy (env, nie argv: argv widać w `ps`).
+            ...(process.env.MULTIBOT_HARNESS_TOKEN ? { MULTIBOT_HARNESS_TOKEN: process.env.MULTIBOT_HARNESS_TOKEN } : {}),
             // Ten sam katalog danych, co reszta silnika — inaczej MCP założyłby bota
             // gdzie indziej niż stoi profil (scripts/dev-engine.mjs, supervisor.ts).
             ...(process.env.SLAFY_DATA_DIR ? { SLAFY_DATA_DIR: process.env.SLAFY_DATA_DIR } : {}),

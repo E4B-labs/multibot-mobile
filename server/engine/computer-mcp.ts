@@ -98,6 +98,14 @@ export function computerMcpSpawn(threadId: string, engineDir = ENGINE_DIR): McpS
     ],
     env: {
       PYTHONPATH: engineDir,
+      // multibot: HOME jawnie, bo serwer MCP nie zawsze startuje w tym samym
+      // środowisku, co harness. Na Termuxie `claude`/`codex` to wrappery na
+      // `proot-distro login debian`, gdzie HOME=/root — a Python liczy z HOME
+      // katalog user-site (`~/.local/lib/pythonX/site-packages`). Bez tego venv
+      // silnika traci połowę zależności (`ModuleNotFoundError: idna`), serwer
+      // pada przy starcie i CLI melduje `mcp_servers: [{computer, failed}]` —
+      // czyli bot cicho zostaje bez komputera.
+      ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
       // Trasa `/api/bots/:id/computer/exec` jest za tą samą bramką auth, co
       // reszta harnessu, a serwer MCP jest zwykłym klientem HTTP — dostaje więc
       // token tak samo, jak agents-proxy (env, nie argv: argv widać w `ps`).

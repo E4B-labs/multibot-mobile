@@ -69,6 +69,25 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 11. **`localComputer` konsumował tylko `claude.ts`.** Codex montował w
    `mcp_servers` sam `agents`, ACP tak samo — dwa z czterech driverów z
    Definition of Done nie miały czym dotknąć pulpitu. Oba zostały doposażone.
+12. **Zamontowany serwer MCP to jeszcze nie działający komputer.** Trzy rzeczy
+    wychodzą dopiero na żywym botze, bo testy jednostkowe nie startują procesu
+    CLI:
+    - `claude`/`codex` na Termuxie to wrappery na `proot-distro login debian`,
+      gdzie `HOME=/root`. Python liczy z `HOME` katalog user-site, więc venv
+      silnika tracił połowę zależności (`ModuleNotFoundError: idna`), serwer
+      padał przy starcie, a CLI meldowało `mcp_servers: [{computer, failed}]`
+      — po stronie użytkownika po prostu „nie mam takiego narzędzia".
+      `computerMcpSpawn` podaje teraz `HOME` jawnie, a venv ma komplet paczek
+      u siebie (nie w user-site), żeby import nie zależał od tego, kto go woła.
+    - Serwery MCP wchodzą do wątku codeksa przy `thread/start`;
+      `thread/resume` ich **nie dokłada**. Bot założony, zanim komputer
+      istniał, nie dostałby go nigdy. Zestaw serwerów jedzie więc w kursorze
+      (`<id>#agents,computer`) — zmiana zestawu zaczyna wątek od nowa.
+    - Bot na driverze slafy nie widzi `system` z harnessu (driver go nie
+      wysyła, gateway świadomie pomija `instructions`, żeby nie przykryć
+      `SOUL.md`). Opis komputera musi więc siedzieć w `SOUL.md` —
+      `bots.py::_COMPUTER_IDENTITY`, dopisywany markerem tak jak tożsamość
+      MultiBota, więc stare profile łatają się przy najbliższej turze.
 
 ### Co wymaga Ciebie, zanim to ruszy
 
@@ -85,6 +104,15 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 - **Backend native (np. Termux):** `pkg install tigervnc openbox`,
   `pip install websockify`, katalog noVNC wskazany przez `MULTIBOT_NOVNC_DIR`,
   oraz `MULTIBOT_COMPUTER_BACKEND=native` w środowisku usługi.
+- **Serwer MCP komputera w venvie silnika (Termux):** `mcp` nie wchodzi
+  `pip install -r requirements.txt`, bo `rpds-py` (przez `jsonschema`) wymaga
+  Rusta z std w formacie rlib, którego pakiet `rust` Termuksa nie ma. Droga na
+  około: `jsonschema==4.17.3` (jeszcze na `pyrsistent`, czysty Python), potem
+  `mcp==1.28.1 --no-deps` i `--no-deps` na `httpx-sse`, `sse-starlette`,
+  `pydantic-settings`. Do tego komplet w venvie zamiast w user-site
+  (`anyio`, `typing_extensions`, `httpcore`, `idna`, `certifi`, `h11`,
+  `sniffio`), bo CLI startuje ten serwer z innym `HOME`. `starlette` zostaw na
+  `0.36.3` — nowsze zrywa `fastapi==0.110`, na którym stoi silnik.
 
 ### Świadome luki
 
