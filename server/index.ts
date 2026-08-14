@@ -46,8 +46,6 @@ import {
   ensureComputer,
   resumeComputer,
   exec as computerExec,
-  orphanContainers,
-  removeComputer,
 } from "./hosted-computer.ts";
 import * as computerControl from "./computer-control.ts";
 import { claimPairing, pairingPending, startPairing } from "./pairing.ts";
@@ -617,7 +615,7 @@ async function startTurn(
       // graceful-absence, co przy wyłączonym silniku).
       try {
         const computer = canUseIntegration(bot.threadId, "browser")
-          ? await ensureComputer(bot.id)
+          ? await ensureComputer()
           : null;
         if (computer) broadcast({ kind: "computer", botId: bot.id, state: computer.state });
         // Tożsamość bota po stronie silnika NIE zależy od kontenera: profil
@@ -692,7 +690,8 @@ async function startTurn(
           // że plik pobrany w przeglądarce zobaczy w terminalu — i że
           // `computer_exec` chodzi w kontenerze, nie na maszynie użytkownika.
           (integrations.localComputer
-            ? " You have your own persistent computer — a Linux desktop with a browser, a terminal and files, all one environment." +
+            ? " You share one persistent computer with the user's other bots — a Linux desktop with a browser, a terminal and files, all one environment." +
+              " Anything you leave there (open tabs, downloads, logins) is visible to them and to the user, and they may change it while you work, so re-check the screen instead of trusting what you saw earlier." +
               " Take a screenshot or read the page first, then click/type_text/key/scroll on what you actually see; navigate opens a URL and read_page returns the page text." +
               " computer_exec runs commands inside your computer, never on the user's machine. The user sees this same screen and may take control — if input comes back user_has_control, wait and keep watching rather than retrying."
             : "") +
@@ -1279,12 +1278,9 @@ const server = createServer(async (req, res) => {
       attachments.deleteBot(bot.id);
       workspace.deleteBot(bot.id);
       store.deleteBot(bot.id);
-      // multibot (H1): the computer dies with the bot and at no other time —
-      // its volume holds the bot's logins and files, so this is the one place
-      // allowed to destroy it. The bot is already gone from the roster above,
-      // so a slow docker call cannot leave the UI waiting.
-      computerControl.forget(bot.id);
-      void removeComputer(bot.id).catch(() => {});
+      // multibot (H1): the computer SURVIVES bot deletion. It belongs to the
+      // installation and every other bot is still using it — its volume holds
+      // shared logins and files that outlive any single bot.
       for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
         try {
           unlinkSync(join(dir, `${bot.threadId}.ndjson`));
@@ -1930,7 +1926,7 @@ const server = createServer(async (req, res) => {
       // process, but a container that was stopped outright needs starting, and
       // the panel polls this route — so watching the computer is what heals it.
       // Idempotent, and a no-op when it is already up.
-      const status = await ensureComputer(m[1]);
+      const status = await ensureComputer();
       if (status.state !== "ready" && !(await dockerAvailable())) {
         return json(res, 200, {
           state: "error",
@@ -1945,18 +1941,18 @@ const server = createServer(async (req, res) => {
       const hit = matchVncRoute(path);
       if (hit && (method === "GET" || method === "HEAD")) {
         if (!store.bot(hit.botId)) return json(res, 404, { error: "no such bot" });
-        await proxyVncHttp(req, res, hit.botId, hit.rest, url.search);
+        await proxyVncHttp(req, res, hit.rest, url.search);
         return;
       }
     }
 
     // Input lease (H5). Screenshots are never gated — only typing and clicking.
     m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/control$/);
-    if (m && method === "GET") return json(res, 200, computerControl.control(m[1]));
+    if (m && method === "GET") return json(res, 200, computerControl.control());
     m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/control\/(acquire|renew|release)$/);
     if (m && method === "POST") {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
-      const next = m[2] === "release" ? computerControl.release(m[1]) : computerControl.acquire(m[1]);
+      const next = m[2] === "release" ? computerControl.release() : computerControl.acquire();
       broadcast({ kind: "computer", botId: m[1], state: next.owner === "user" ? "user-control" : "ready" });
       return json(res, 200, next);
     }
@@ -1977,7 +1973,7 @@ const server = createServer(async (req, res) => {
       const command = String(body.command ?? "");
       if (!command.trim()) return json(res, 400, { error: "command required" });
       try {
-        return json(res, 200, { output: await computerExec(botId, command) });
+        return json(res, 200, { output: await computerExec(command) });
       } catch (e) {
         return json(res, 502, { error: e instanceof Error ? e.message : String(e) });
       }
@@ -2058,14 +2054,12 @@ watchEngineAttention({
 // to a bot that no longer exists.
 async function reconcileComputers(): Promise<void> {
   if (!(await dockerAvailable())) {
-    console.warn("[multibot] docker unreachable — bot computers will show as error until it is up");
+    console.warn("[multibot] docker unreachable — the bot computer will show as error until it is up");
     return;
   }
-  for (const bot of store.bots) {
-    await resumeComputer(bot.id).catch(() => false);
-  }
-  const orphans = await orphanContainers(store.bots.map((b) => b.id));
-  for (const name of orphans) console.log(`[multibot] orphaned computer container: ${name}`);
+  // One computer for the whole installation: resume it if it exists, never
+  // create one just because the harness started.
+  await resumeComputer().catch(() => false);
 }
 
 server.listen(PORT, HOST, () => {

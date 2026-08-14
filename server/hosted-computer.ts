@@ -1,7 +1,12 @@
-// multibot (H1/H2): the bot's own computer.
+// multibot (H1/H2): the computer.
 //
-// One persistent Linux desktop per bot, in a container, for the bot's whole
-// life. No modes, no source picker, no "off" — see PLAN-COMPUTER.md.
+// ONE persistent Linux desktop per installation, shared by every bot. Not one
+// per bot: a single machine is set up on the host and all agents act on that
+// same desktop, so a login one bot performs is a login every bot already has.
+// No modes, no source picker, no "off" — see PLAN-COMPUTER.md.
+//
+// Because it belongs to the installation rather than to any bot, deleting a bot
+// never destroys it.
 //
 // Three facts learned from the H0 spike drive this file's shape:
 //
@@ -15,7 +20,6 @@
 //  3. Chrome >= 111 pins CDP to the container's own loopback and ignores
 //     --remote-debugging-address, so the image bridges 9222 -> 9223 with socat
 //     and we publish 9223. See Dockerfile.computer.
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -29,6 +33,10 @@ export type PortName = keyof typeof CONTAINER_PORTS;
 
 export const IMAGE = process.env.MULTIBOT_COMPUTER_IMAGE ?? "multibot-computer:dev";
 
+/** Fixed names: there is exactly one, so nothing is derived from a bot id. */
+export const CONTAINER_NAME = "multibot-computer";
+export const VOLUME_NAME = "multibot-computer-data";
+
 export interface ComputerLimits {
   /** container CPU quota, e.g. 2 == two cores */
   cpus: number;
@@ -40,15 +48,6 @@ export const DEFAULT_LIMITS: ComputerLimits = {
   cpus: Number(process.env.MULTIBOT_COMPUTER_CPUS ?? 2),
   memory: process.env.MULTIBOT_COMPUTER_MEMORY ?? "3g",
 };
-
-/** Short, stable, filesystem-safe id derived from the bot id. Bot ids are
- *  user-facing and may hold characters docker rejects in a container name. */
-export function botHash(botId: string): string {
-  return createHash("sha256").update(botId).digest("hex").slice(0, 12);
-}
-
-export const containerName = (botId: string) => `multibot-computer-${botHash(botId)}`;
-export const volumeName = (botId: string) => `multibot-computer-data-${botHash(botId)}`;
 
 /**
  * How to invoke docker. On Windows there is no native daemon — it runs inside
@@ -64,21 +63,21 @@ export function dockerCommand(argv: string[], platform = process.platform): { fi
 }
 
 /**
- * Hard off switch. Bot computers are real containers with real volumes, so a
- * test run — which boots the harness as a subprocess and creates throwaway bots
- * — must never provision them: the first run of this file's integration left 11
- * live containers behind and exhausted the port range other tests bind to.
+ * Hard off switch. The computer is a real container with a real volume, so a
+ * test run — which boots the harness as a subprocess — must never provision it:
+ * the first run of this file's integration left live containers behind and
+ * exhausted the port range other tests bind to.
  *
  * `VITEST` is inherited by the spawned harness, so this holds for both the
  * in-process and the subprocess tests. `MULTIBOT_COMPUTER=off` is the manual
- * escape hatch for a dev machine without docker.
+ * escape hatch for a host without docker — a phone in Termux, for instance.
  */
 export function computersDisabled(): boolean {
   return Boolean(process.env.VITEST) || process.env.MULTIBOT_COMPUTER === "off";
 }
 
 async function docker(argv: string[], timeoutMs = 120_000): Promise<string> {
-  if (computersDisabled()) throw new Error("bot computers are disabled in this process");
+  if (computersDisabled()) throw new Error("the bot computer is disabled in this process");
   const { file, args } = dockerCommand(argv);
   const { stdout } = await run(file, args, { timeout: timeoutMs, maxBuffer: 8 << 20 });
   return stdout.trim();
@@ -96,20 +95,18 @@ async function dockerOk(argv: string[], timeoutMs = 120_000): Promise<boolean> {
 export type ComputerState = "provisioning" | "ready" | "recovering" | "error";
 
 export interface ComputerStatus {
-  botId: string;
   state: ComputerState;
   /** host ports, freshly read — only present once the container is up */
   ports?: Record<PortName, number>;
   detail?: string;
 }
 
-/** `docker inspect` running-state for one container, or null when absent. */
-async function inspectRunning(name: string): Promise<boolean | null> {
+/** `docker inspect` running-state, or null when the container does not exist. */
+async function inspectRunning(): Promise<boolean | null> {
   try {
-    const out = await docker(["inspect", name, "--format", "{{.State.Running}}"], 30_000);
-    return out === "true";
+    return (await docker(["inspect", CONTAINER_NAME, "--format", "{{.State.Running}}"], 30_000)) === "true";
   } catch {
-    return null; // no such container
+    return null;
   }
 }
 
@@ -133,57 +130,44 @@ export function parsePortOutput(out: string): number | null {
 }
 
 /**
- * One port, not all three.
+ * One port, read back from docker.
  *
  * The screen proxy resolves a port on EVERY request — each noVNC asset, each
- * websocket — and one `docker port` through WSL costs a second or two. Reading
- * all three ports per request made the websocket upgrade time out. A short
+ * websocket — and one `docker port` through WSL costs a second or two. A short
  * cache absorbs the burst of asset requests; it is deliberately brief because
  * the port changes whenever the container restarts, and a stale port must heal
  * on its own within seconds.
  */
 const PORT_CACHE_MS = 5_000;
-const portCache = new Map<string, { port: number; at: number }>();
+const portCache = new Map<PortName, { port: number; at: number }>();
 
-export async function readPort(botId: string, name: PortName): Promise<number | null> {
-  const key = `${botId}:${name}`;
-  const hit = portCache.get(key);
+export async function readPort(name: PortName): Promise<number | null> {
+  const hit = portCache.get(name);
   if (hit && Date.now() - hit.at < PORT_CACHE_MS) return hit.port;
   let out: string;
   try {
-    out = await docker(["port", containerName(botId), String(CONTAINER_PORTS[name])], 30_000);
+    out = await docker(["port", CONTAINER_NAME, String(CONTAINER_PORTS[name])], 30_000);
   } catch {
-    portCache.delete(key);
+    portCache.delete(name);
     return null;
   }
   const port = parsePortOutput(out);
-  if (port === null) portCache.delete(key);
-  else portCache.set(key, { port, at: Date.now() });
+  if (port === null) portCache.delete(name);
+  else portCache.set(name, { port, at: Date.now() });
   return port;
 }
 
-/** Drop cached ports for a bot — after a restart they are certainly wrong. */
-export function forgetPorts(botId: string): void {
-  for (const key of portCache.keys()) if (key.startsWith(`${botId}:`)) portCache.delete(key);
+/** Drop cached ports — after a restart they are certainly wrong. */
+export function forgetPorts(): void {
+  portCache.clear();
 }
 
-/**
- * Read back the host-side ports. MUST be called after every start/restart —
- * docker reassigns them (H0: 32770 before a restart, 32773 after).
- */
-export async function readPorts(botId: string): Promise<Record<PortName, number> | null> {
-  const name = containerName(botId);
+export async function readPorts(): Promise<Record<PortName, number> | null> {
   const ports = {} as Record<PortName, number>;
-  for (const [key, containerPort] of Object.entries(CONTAINER_PORTS) as Array<[PortName, number]>) {
-    let out: string;
-    try {
-      out = await docker(["port", name, String(containerPort)], 30_000);
-    } catch {
-      return null;
-    }
-    const port = parsePortOutput(out);
+  for (const name of Object.keys(CONTAINER_PORTS) as PortName[]) {
+    const port = await readPort(name);
     if (port === null) return null;
-    ports[key] = port;
+    ports[name] = port;
   }
   return ports;
 }
@@ -201,15 +185,15 @@ export async function probeReady(ports: Record<PortName, number>, timeoutMs = 5_
   }
 }
 
-function createArgs(botId: string, limits: ComputerLimits): string[] {
+function createArgs(limits: ComputerLimits): string[] {
   return [
     "run", "-d",
-    "--name", containerName(botId),
+    "--name", CONTAINER_NAME,
     // Mandatory: the WSL VM suspends and SIGTERMs everything; only a restart
     // policy brings the computer back when it wakes.
     "--restart", "unless-stopped",
-    "-v", `${volumeName(botId)}:/home/cua`,
-    // Every port is bound to host loopback. Nothing about the bot's computer is
+    "-v", `${VOLUME_NAME}:/home/cua`,
+    // Every port is bound to host loopback. Nothing about the computer is
     // reachable off-box; clients reach it only through the harness proxy.
     ...Object.values(CONTAINER_PORTS).flatMap((p) => ["-p", `127.0.0.1::${p}`]),
     "--shm-size=1g",
@@ -219,108 +203,92 @@ function createArgs(botId: string, limits: ComputerLimits): string[] {
   ];
 }
 
+const inFlight = { current: null as Promise<ComputerStatus> | null };
+
+/** Losing a create race means the container exists — which is the goal. */
+const isNameConflict = (e: unknown) => /already in use/i.test(e instanceof Error ? e.message : String(e));
+
 /**
- * Bring this bot's computer up and return its status. Idempotent: safe to call
- * on every harness boot and before every turn.
+ * Bring the computer up and return its status. Idempotent: safe to call before
+ * every turn and on every panel poll.
  *
  * Never falls back to "no computer" silently — a machine that cannot be
  * provisioned surfaces as `error` with a reason, because a quiet downgrade to
  * browser-only is exactly the failure mode PLAN-COMPUTER.md forbids.
  */
-export function ensureComputer(botId: string, limits = DEFAULT_LIMITS): Promise<ComputerStatus> {
-  // The panel polls and turns fire independently, so two `docker run`s for one
-  // bot used to race — the loser got "name already in use" and the user saw
-  // "Computer error" while the computer was in fact coming up fine.
-  const started = inFlight.get(botId) ?? ensureOnce(botId, limits).finally(() => inFlight.delete(botId));
-  inFlight.set(botId, started);
-  return started;
+export function ensureComputer(limits = DEFAULT_LIMITS): Promise<ComputerStatus> {
+  // The panel polls and turns fire independently — and now every bot shares one
+  // container, so these races are more frequent, not fewer. The loser of a
+  // create race used to surface "name already in use" as a user-visible error.
+  return (inFlight.current ??= ensureOnce(limits).finally(() => {
+    inFlight.current = null;
+  }));
 }
 
-const inFlight = new Map<string, Promise<ComputerStatus>>();
-
-/** Losing a create race means the container exists — which is the goal. */
-const isNameConflict = (e: unknown) => /already in use/i.test(e instanceof Error ? e.message : String(e));
-
-async function ensureOnce(botId: string, limits: ComputerLimits): Promise<ComputerStatus> {
-  const name = containerName(botId);
+async function ensureOnce(limits: ComputerLimits): Promise<ComputerStatus> {
   try {
-    const running = await inspectRunning(name);
+    const running = await inspectRunning();
     if (running === null) {
-      await docker(["volume", "create", volumeName(botId)], 60_000);
+      await docker(["volume", "create", VOLUME_NAME], 60_000);
       try {
-        await docker(createArgs(botId, limits), 180_000);
+        await docker(createArgs(limits), 180_000);
       } catch (e) {
         // Another process (or an earlier boot) got there first. Treat it as
         // created and make sure it is up, rather than reporting a failure.
         if (!isNameConflict(e)) throw e;
-        await docker(["start", name], 120_000).catch(() => {});
+        await docker(["start", CONTAINER_NAME], 120_000).catch(() => {});
       }
     } else if (!running) {
-      await docker(["start", name], 120_000);
+      await docker(["start", CONTAINER_NAME], 120_000);
     }
-    forgetPorts(botId);
+    forgetPorts();
   } catch (e) {
-    return { botId, state: "error", detail: e instanceof Error ? e.message : String(e) };
+    return { state: "error", detail: e instanceof Error ? e.message : String(e) };
   }
 
-  const ports = await readPorts(botId);
-  if (!ports) return { botId, state: "provisioning", detail: "ports not published yet" };
-  const ready = await probeReady(ports);
-  return { botId, state: ready ? "ready" : "provisioning", ports };
-}
-
-/** Run a command inside the bot's computer. This is the bot's terminal — the
- *  same filesystem the desktop and the browser see. */
-export async function exec(botId: string, command: string, timeoutMs = 60_000): Promise<string> {
-  return docker(["exec", containerName(botId), "bash", "-lc", command], timeoutMs);
+  const ports = await readPorts();
+  if (!ports) return { state: "provisioning", detail: "ports not published yet" };
+  return { state: (await probeReady(ports)) ? "ready" : "provisioning", ports };
 }
 
 /**
  * Bring back a computer that already exists, without ever creating one.
  *
- * Boot uses this rather than `ensureComputer`: creating containers as a side
- * effect of starting the harness turned every throwaway test bot into a real
- * container (20 of them accumulated before this was caught). A bot gets its
- * computer when someone actually uses it — a turn, or opening the panel.
+ * Boot uses this rather than `ensureComputer`: creating a container as a side
+ * effect of starting the harness turned every throwaway test run into a real
+ * container. The computer is created when someone actually uses it — a turn, or
+ * opening the panel.
  */
-export async function resumeComputer(botId: string): Promise<boolean> {
-  const name = containerName(botId);
-  const running = await inspectRunning(name);
+export async function resumeComputer(): Promise<boolean> {
+  const running = await inspectRunning();
   if (running === null) return false; // never created — not our job here
   if (running) return true;
-  return dockerOk(["start", name], 120_000);
+  const started = await dockerOk(["start", CONTAINER_NAME], 120_000);
+  forgetPorts();
+  return started;
+}
+
+/** Run a command inside the computer. This is the shared terminal — the same
+ *  filesystem the desktop and the browser see. */
+export async function exec(command: string, timeoutMs = 60_000): Promise<string> {
+  return docker(["exec", CONTAINER_NAME, "bash", "-lc", command], timeoutMs);
 }
 
 /**
- * Destroy the computer. Only ever called on explicit bot deletion — the volume
- * holds the bot's logins and files, so it dies with the bot and at no other
- * time.
+ * Destroy the computer and everything on it — logins, files, browser profile.
+ *
+ * Nothing calls this automatically. It belongs to the installation, not to any
+ * bot, so deleting a bot must NOT take it down: the remaining bots are still
+ * using it, and its volume holds work that outlives any single bot.
  */
-export async function removeComputer(botId: string): Promise<void> {
-  await dockerOk(["rm", "-f", containerName(botId)], 120_000);
-  await dockerOk(["volume", "rm", volumeName(botId)], 60_000);
-}
-
-/**
- * Containers for bots that no longer exist. Deliberately returns names rather
- * than deleting: PLAN-COMPUTER.md only permits removal on an unambiguous match,
- * so the caller passes the authoritative live bot list and nothing else is ever
- * touched — a container whose bot id we cannot account for is left alone.
- */
-export async function orphanContainers(liveBotIds: string[]): Promise<string[]> {
-  let out: string;
-  try {
-    out = await docker(["ps", "-a", "--filter", "name=multibot-computer-", "--format", "{{.Names}}"], 60_000);
-  } catch {
-    return [];
-  }
-  const live = new Set(liveBotIds.map(containerName));
-  return out.split(/\r?\n/).map((l) => l.trim())
-    .filter((n) => n.startsWith("multibot-computer-") && !live.has(n));
+export async function removeComputer(): Promise<void> {
+  await dockerOk(["rm", "-f", CONTAINER_NAME], 120_000);
+  await dockerOk(["volume", "rm", VOLUME_NAME], 60_000);
+  forgetPorts();
 }
 
 /** Docker reachable at all? Used to tell "no docker installed" apart from
- *  "this bot's computer is broken", which are very different user problems. */
+ *  "the computer is broken", which are very different user problems. */
 export async function dockerAvailable(): Promise<boolean> {
   return dockerOk(["version", "--format", "{{.Server.Version}}"], 30_000);
 }

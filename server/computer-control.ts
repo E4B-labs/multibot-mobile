@@ -1,14 +1,19 @@
-// multibot (H5): who may type on the bot's computer.
+// multibot (H5): who may type on the computer.
 //
-// Exactly one input owner at a time. The agent owns input by default; the user
-// can take it and hand it back. Seeing the screen is never gated — the point of
-// the shared desktop is that both sides watch the same thing, so only input is
-// leased.
+// There is one computer for the whole installation, so there is one input
+// owner. Agents own input by default; the user can take it and hand it back.
+// Seeing the screen is never gated — the point of the shared desktop is that
+// everyone watches the same thing, so only input is leased.
 //
 // The lease is short and renewed while the user is active, so a closed laptop
-// lid cannot hold a bot's computer hostage. State is in memory on purpose:
-// after a harness restart the correct owner is the agent, which is exactly what
-// an empty map means.
+// lid cannot hold the computer hostage. State is in memory on purpose: after a
+// harness restart the correct owner is the agent, which is what "no lease"
+// already means.
+//
+// ponytail: this arbitrates user-vs-agent only. Two bots taking a turn at the
+// same time both drive the same desktop and can fight over it; that needs a
+// turn queue over the shared machine, not a second lease, and nobody has asked
+// for one yet.
 
 /** Long enough to survive a slow render or a brief network hiccup, short enough
  *  that an abandoned tab frees the computer quickly. */
@@ -22,29 +27,27 @@ export interface Control {
   expiresAt?: number;
 }
 
-const leases = new Map<string, number>(); // botId -> expiresAt
+let leaseExpiresAt: number | null = null;
 
-export function control(botId: string, now = Date.now()): Control {
-  const expiresAt = leases.get(botId);
-  if (expiresAt === undefined || expiresAt <= now) {
-    leases.delete(botId);
+export function control(now = Date.now()): Control {
+  if (leaseExpiresAt === null || leaseExpiresAt <= now) {
+    leaseExpiresAt = null;
     return { owner: "agent" };
   }
-  return { owner: "user", expiresAt };
+  return { owner: "user", expiresAt: leaseExpiresAt };
 }
 
-/** Take or extend the user's lease. Idempotent — the user re-acquiring their
- *  own live lease is a renewal, not a conflict. */
-export function acquire(botId: string, now = Date.now()): Control {
-  const expiresAt = now + LEASE_MS;
-  leases.set(botId, expiresAt);
-  return { owner: "user", expiresAt };
+/** Take or extend the user's lease. Idempotent — re-acquiring a live lease is a
+ *  renewal, not a conflict. */
+export function acquire(now = Date.now()): Control {
+  leaseExpiresAt = now + LEASE_MS;
+  return { owner: "user", expiresAt: leaseExpiresAt };
 }
 
 export const renew = acquire;
 
-export function release(botId: string): Control {
-  leases.delete(botId);
+export function release(): Control {
+  leaseExpiresAt = null;
   return { owner: "agent" };
 }
 
@@ -56,12 +59,7 @@ export function release(botId: string): Control {
  * state, never a random tool error, so the model can say "waiting for you"
  * instead of inventing a failure.
  */
-export function agentMayAct(botId: string, kind: "read" | "input", now = Date.now()): true | "user_has_control" {
+export function agentMayAct(kind: "read" | "input", now = Date.now()): true | "user_has_control" {
   if (kind === "read") return true;
-  return control(botId, now).owner === "agent" ? true : "user_has_control";
-}
-
-/** Bot deleted — drop any lease so a recycled id never inherits one. */
-export function forget(botId: string): void {
-  leases.delete(botId);
+  return control(now).owner === "agent" ? true : "user_has_control";
 }

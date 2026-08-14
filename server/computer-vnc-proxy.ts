@@ -1,5 +1,7 @@
 // multibot (H4): the bot's screen, proxied.
 //
+// One screen for the whole installation — the route still carries a bot id so
+// the panel URL stays per bot, but every bot lands on the same desktop.
 // The container publishes noVNC on a host loopback port, but the client must
 // never learn it: everything goes through the harness so one auth gate covers
 // the screen too, and so a browser on the phone can reach a desktop it has no
@@ -25,10 +27,10 @@ export function matchVncRoute(pathname: string): { botId: string; rest: string }
   return { botId: m[1], rest: m[2] && m[2] !== "/" ? m[2] : "/vnc.html" };
 }
 
-const novncPort = (botId: string) => readPort(botId, "novnc");
+const novncPort = () => readPort("novnc");
 
-export async function proxyVncHttp(req: IncomingMessage, res: ServerResponse, botId: string, rest: string, search: string) {
-  const port = await novncPort(botId);
+export async function proxyVncHttp(req: IncomingMessage, res: ServerResponse, rest: string, search: string) {
+  const port = await novncPort();
   if (port === null) {
     res.writeHead(503, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "computer not running" }));
@@ -58,8 +60,8 @@ export async function proxyVncHttp(req: IncomingMessage, res: ServerResponse, bo
  * the two sockets to each other after replaying the 101 verbatim, so no VNC
  * framing is ever parsed here.
  */
-export async function pipeVncWs(req: IncomingMessage, socket: Duplex, head: Buffer, botId: string, rest: string, search: string) {
-  const port = await novncPort(botId);
+export async function pipeVncWs(req: IncomingMessage, socket: Duplex, head: Buffer, rest: string, search: string) {
+  const port = await novncPort();
   if (port === null) {
     socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     return;
@@ -97,6 +99,6 @@ export function mountVncUpgrade(server: Server): void {
     const url = new URL(req.url ?? "/", "http://localhost");
     const hit = matchVncRoute(url.pathname);
     if (!hit) return;
-    void pipeVncWs(req, socket, head, hit.botId, hit.rest, url.search);
+    void pipeVncWs(req, socket, head, hit.rest, url.search);
   });
 }

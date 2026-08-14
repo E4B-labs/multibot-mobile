@@ -209,6 +209,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         </div>
 
         <div className="flex flex-1 flex-col px-5 pb-5">
+          {/* Jedna maszyna na całą instalację — bez tego użytkownik zobaczy ten
+              sam pulpit u każdego bota i uzna to za błąd. */}
+          <div className="mt-2 text-[12px] text-ink-secondary">
+            {polish
+              ? "Jeden komputer, wspólny dla wszystkich botów — logowania i pliki widzą wszystkie."
+              : "One computer, shared by all bots — logins and files are visible to every one of them."}
+          </div>
           <div className="mb-1.5 mt-2 flex items-center justify-between text-[13px] text-ink-secondary">
             <span>{polish ? "Ekran bota" : "Bot screen"}</span>
             <button

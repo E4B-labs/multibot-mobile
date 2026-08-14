@@ -1,30 +1,24 @@
-// multibot (H2): the parts of the hosted computer that are decidable without a
-// daemon. The container lifecycle itself is covered by the H0 spike against a
-// real image, not here.
+// multibot (H2): the parts of the computer that are decidable without a daemon.
+// The container lifecycle itself is covered by the H0 spike against a real
+// image, not here.
 import { describe, expect, it } from "vitest";
 
 import {
+  CONTAINER_NAME,
   CONTAINER_PORTS,
-  botHash,
+  VOLUME_NAME,
   computersDisabled,
-  containerName,
   dockerCommand,
   ensureComputer,
-  orphanContainers,
   parsePortOutput,
-  volumeName,
 } from "./hosted-computer.ts";
 
 describe("naming", () => {
-  it("is stable and docker-safe for ids docker would reject verbatim", () => {
-    const messy = "Bot #1 / with spaces";
-    expect(containerName(messy)).toMatch(/^multibot-computer-[0-9a-f]{12}$/);
-    expect(volumeName(messy)).toMatch(/^multibot-computer-data-[0-9a-f]{12}$/);
-    expect(botHash(messy)).toBe(botHash(messy));
-  });
-
-  it("gives different bots different computers", () => {
-    expect(botHash("a")).not.toBe(botHash("b"));
+  // One computer per installation: the names are constants, never derived from
+  // a bot, so every bot resolves to the same container and volume.
+  it("is fixed, not per bot", () => {
+    expect(CONTAINER_NAME).toBe("multibot-computer");
+    expect(VOLUME_NAME).toBe("multibot-computer-data");
   });
 });
 
@@ -66,27 +60,19 @@ describe("parsePortOutput", () => {
   });
 });
 
-describe("orphanContainers", () => {
-  it("yields nothing when computers are disabled, rather than a delete list", async () => {
-    // Under vitest every docker call is refused (see computersDisabled). The
-    // failure path must return "no orphans" — proposing deletions from an
-    // unreadable daemon would be the dangerous answer.
+describe("ensureComputer", () => {
+  it("dedupes concurrent calls so the panel's polling cannot race a turn", async () => {
+    // Every bot now shares one container, so these races are more frequent.
+    // Under vitest docker is refused, so this pins the sharing, not the machine.
     expect(computersDisabled()).toBe(true);
-    await expect(orphanContainers(["bot-1"])).resolves.toEqual([]);
+    const [a, b] = await Promise.all([ensureComputer(), ensureComputer()]);
+    expect(a).toEqual(b);
+    expect(a.state).toBe("error");
   });
 });
 
 describe("ports", () => {
   it("publishes exactly the three the image serves", () => {
     expect(CONTAINER_PORTS).toEqual({ cdp: 9223, novnc: 6901, api: 8000 });
-  });
-});
-
-describe("ensureComputer", () => {
-  it("dedupes concurrent calls so the panel's polling cannot race a turn", async () => {
-    // Both callers must observe the same single attempt. Under vitest docker is
-    // refused, so this pins the sharing, not the container.
-    const [a, b] = await Promise.all([ensureComputer("race-bot"), ensureComputer("race-bot")]);
-    expect(a).toEqual(b);
   });
 });

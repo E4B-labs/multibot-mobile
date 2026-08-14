@@ -15,10 +15,10 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 |---|---|---|
 | H0 | zrobione | Obraz przypięty digestem; trzy niespodzianki niżej |
 | H1 | zrobione | Wybór źródła usunięty, brak stanu `off`, komputer ginie z botem |
-| H2 | zrobione | `server/hosted-computer.ts`; gate zweryfikowany na dwóch realnych kontenerach |
+| H2 | zrobione, zweryfikowane na żywo | Jeden kontener na instalację; bot A pisze plik, bot B go czyta; usunięcie bota nie zabija maszyny |
 | H3 | zrobione | Claude, Codex, ACP i Slafy montują TEN SAM komputer |
 | H4 | zrobione, zweryfikowane na żywo | Ekran przez proxy; handshake `RFB 003.008` przeszedł end-to-end na samym cookie |
-| H5 | zrobione (weryfikacja do poziomu API) | Lease i `user_has_control`; kliknięcia w wyrenderowanym panelu nikt nie sprawdził — brak przeglądarki w sesji |
+| H5 | zrobione (weryfikacja do poziomu API) | Lease GLOBALNY — jeden ekran, jeden właściciel wejścia; kliknięcia w wyrenderowanym panelu nikt nie sprawdził, brak przeglądarki w sesji |
 | H6 | zrobione, z jedną luką | Redakcja sekretów + kasowanie kroków; **capture na poziomie pulpitu odłożone** |
 | R1 | zrobione | Cztery presety, edycja rozpoznaje harmonogram, daty przez `Intl` |
 | A1 | kod gotowy | Działa dopiero po podaniu projektu Firebase |
@@ -104,8 +104,13 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
   dopiero, gdy coś obudzi WSL. Pierwsze żądanie po przerwie potrafi trwać
   kilkadziesiąt sekund i po drodze zwrócić 502. Na Linuksie problem nie
   występuje.
-- **Sterowanie fizycznym pulpitem hosta, Cloud Computer, Shared Computer,
-  Windows VM** — odłożone zgodnie z planem.
+- **Dwa boty mogą sobie przeszkadzać na wspólnym pulpicie.** Lease rozstrzyga
+  tylko spór człowiek kontra agent. Dwie tury naraz sterują tą samą
+  przeglądarką i mogą się nadpisać — to wymaga kolejki tur nad maszyną, nie
+  drugiego lease'a. Agent dostaje w prompcie ostrzeżenie, żeby sprawdzał ekran
+  zamiast ufać temu, co widział wcześniej.
+- **Sterowanie fizycznym pulpitem hosta, Cloud Computer, Windows VM** —
+  odłożone zgodnie z planem.
 
 ## Docelowa decyzja
 
@@ -115,9 +120,11 @@ hostującym MultiBota. Bez wyboru źródła: znikają `Shared`, `This Mac`,
 
 ### Rozstrzygnięcia
 
-- Pierwsza wersja komputera: trwały **Linux desktop w Dockerze per bot**.
+- Pierwsza wersja komputera: trwały **Linux desktop w Dockerze, JEDEN na instalację**,
+  wspólny dla wszystkich botów (zmiana z 14.08 wieczorem — było per bot).
 - W środku: pulpit, Chromium, terminal, pliki, workspace.
-- Komputer istnieje od utworzenia bota do jego usunięcia.
+- Komputer należy do instalacji, nie do bota: powstaje przy pierwszym użyciu i
+  PRZEŻYWA usunięcie bota, bo pozostałe boty z niego korzystają.
 - Zamknięcie panelu nie wpływa na komputer.
 - Panel pokazuje już działający ekran.
 - Kliknięcie ekranu powiększa go i pozwala przejąć sterowanie.
