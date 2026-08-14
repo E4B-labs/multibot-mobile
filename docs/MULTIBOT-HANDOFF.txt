@@ -1,0 +1,670 @@
+MULTIBOT — PEŁNY HANDOFF DLA INNEGO AI
+=======================================
+
+Stan dokumentu: 2026-08-14
+Repo: G:\Projects\multibot
+Origin: https://github.com/clewkord/multibot (prywatne)
+Upstream: https://github.com/milind-soni/OpenMausBot
+Aktualna gałąź: main
+Ostatni commit: 5fc8a1c build: odswiezyc harness po poprawce grup
+Drzewo robocze: czyste po commicie.
+
+WAŻNE: Ten plik nie zawiera tokenów, kluczy API, haseł, plików .env ani
+zawartości config.json. Sekrety żyją tylko w lokalnym profilu użytkownika.
+
+
+1. CZYM JEST MULTIBOT
+======================
+
+MultiBot = prywatny, self-hosted fork OpenMausBot (MIT) z wbudowanym
+Hermes Agent runtime. Produktowa nazwa to MultiBot. Nazwy `openmausbot` i
+`.openmausbot` zostają tylko dla kompatybilności migracji starych profili.
+
+Produkt łączy:
+- flotę nazwanych botów;
+- wybór provider + model per bot;
+- Claude Code, Codex, Grok, Gemini, Kimi Code, Qwen Code;
+- custom/local model przez base URL + model id + klucz;
+- pamięć faktów, graf, markdown i retrieval;
+- Skills i teach-a-task;
+- Routines cron/manual/webhook;
+- bot-to-bot oraz grupy botów;
+- komputer przeglądarkowy per bot oraz Shared browser;
+- MCP, Composio, plugins i approval policy;
+- PWA na telefonie i desktopie;
+- authenticated remote access przez jeden port;
+- instalatory Windows/Linux/Docker/Termux;
+- język polski/angielski.
+
+Hermes/engine jest wspólną warstwą wykonawczą pod providerami, nie osobnym
+vendorem widocznym w pickerze. Wewnętrzny string `driverKind: "slafy"` może
+istnieć w kodzie, ale nie powinien być pokazywany użytkownikowi jako marka.
+
+
+2. RUNTIME — TRZY WARSTWY
+=========================
+
+Procesy developerskie:
+
+1) React/Vite UI
+   pnpm dev
+   http://127.0.0.1:5199
+   Kod: src/
+
+2) Node/TypeScript harness
+   pnpm dev:server
+   http://127.0.0.1:8799
+   Kod: server/
+   Publiczna granica HTTP, auth, provider registry, transcript, grupy,
+   routines, workspace, local agent bridge, proxy do engine.
+
+3) Python FastAPI agent engine
+   pnpm dev:engine
+   http://127.0.0.1:8700
+   Kod: engine/
+   Zawsze loopback. Harness jest jedynym wejściem sieciowym.
+
+Przepływ zwykłej tury:
+
+UI ChatView
+  -> POST /api/bots/:id/messages lub stream/SSE/WS
+  -> server/index.ts: startTurn
+  -> auth + turn-policy + workspace context
+  -> Store transcript/resume cursor
+  -> ProviderRegistry wybiera driver
+  -> Claude/Codex/ACP albo local/slafy adapter
+  -> dla engine: server/engine/proxy.ts
+  -> FastAPI app.py
+  -> gateway.py (Hermes runtime)
+  -> bot profile, identity, memory, skills, tools
+  -> provider backend / custom endpoint
+  -> event stream przez EventBus
+  -> Store + UI transcript.
+
+Ważne: `ENGINE_URL` może wskazywać tylko 127.0.0.1/localhost/::1. Harness
+nie wystawia engine na 0.0.0.0.
+
+
+3. DANE I ŚCIEŻKI
+=================
+
+Repo/source:
+- G:\Projects\multibot\src — React frontend
+- G:\Projects\multibot\server — Node harness
+- G:\Projects\multibot\engine — Python engine
+- G:\Projects\multibot\public — manifest, service worker, ikony
+- G:\Projects\multibot\docs — dokumentacja/mapy
+- G:\Projects\multibot\dist — zbudowany frontend
+- G:\Projects\multibot\dist-server — zbudowany harness
+
+Runtime user data (poza repo):
+- ~/.openmausbot/config.json — auth token, instances, custom models, config
+- ~/.openmausbot/groups.json — harness group shadow/store
+- ~/.openmausbot/routines.json — harness routines (zależnie od konfiguracji)
+- engine-data/profiles/<bot> — SOUL.md, config, memory, skills, sessions
+- engine-data/profiles/<bot>/memory — fakty i graf memory
+- engine-data/profiles/<bot>/skills — skills bota
+
+Nigdy nie commitować tych danych. Nigdy nie kopiować tokenów do logów ani
+odpowiedzi. Tymczasowe pliki Windows tylko D:\tmp.
+
+
+4. GŁÓWNE MODUŁY HARNESSEA
+===========================
+
+server/index.ts
+- wszystkie API harnessa;
+- auth middleware/health/static;
+- startTurn i budowanie kontekstu;
+- grupy, boty, memory, skills, routines;
+- internal agent-action i ask-bot;
+- upgrade WebSocket;
+- montaż engine proxy i statycznego dist w remote mode.
+
+server/config.ts
+- config.json;
+- domyślna flota;
+- overlay `cfg.instances` zamiast podmiany floty;
+- custom model displayName/baseUrl/default;
+- token/auth config.
+
+server/auth.ts
+- Bearer token dla HTTP;
+- token auth dla obu ścieżek WS upgrade;
+- token rotation;
+- publiczne: health i statyczny login shell.
+
+server/store.ts
+- BotRecord;
+- messages/transcript;
+- resume cursors;
+- provider/model selection;
+- computer mode;
+- bot identity/thread mapping.
+
+server/group-store.ts
+- trwały shadow roster grup;
+- nazwa, bot_ids, createdAt, messages;
+- DELETE działa lokalnie także, gdy engine jest chwilowo offline.
+
+server/routines.ts
+- driver-neutral scheduler;
+- cron i interval;
+- enable/disable/delete/runNow;
+- dispatch przez ten sam startTurn co chat;
+- routines mogą działać przy zamkniętej aplikacji, jeśli harness działa 24/7.
+
+server/workspace.ts
+- memory/skills/access/autonomy/permissions shadow;
+- provider-neutral workspace dla botów CLI i engine.
+
+server/turn-policy.ts
+- tryby dostępu: read-only, ask, approve, full;
+- tool rules i policy per turn;
+- browser, delegation, file, integrations, memory, skills, terminal;
+- provider-specific approval guards.
+
+server/harness/registry.ts
+- registry driverów;
+- instance lifecycle/start/stop/resume;
+- EventBus adapterów.
+
+server/drivers/slafy.ts
+- wewnętrzny adapter engine;
+- ensureBot i profile mapping;
+- synchronizacja local `mb-agents` bridge;
+- PUT provider config do engine;
+- mapowanie engine event stream.
+
+server/drivers/claude.ts
+- Claude Code worker;
+- OAuth/login metadata;
+- persistent process/session/resume;
+- MCP bridge i permissions.
+
+server/drivers/codex.ts
+- Codex app-server JSON-RPC;
+- device login metadata;
+- resume/session/reasoning/model mapping;
+- tool policy.
+
+server/drivers/acp/core.ts
+- generyczny Agent Client Protocol runtime.
+
+server/drivers/acp/{gemini,grok,kimi,qwen}.ts
+- metadane i implementacje ACP CLI.
+
+server/drivers/agents-proxy.ts
+- lokalny stdio JSON-RPC bridge dla agentów;
+- narzędzia: list_bots, ask_bot, get_my_profile, update_my_profile,
+  remember, recall, read_memory, create_skill, list_skills, create_routine,
+  list_routines, run_routine, create_agent, update_agent, list_groups,
+  create_group, delete_group, send_group_message, read_file, write_file,
+  run_command, get_device_info;
+- wywołuje `/api/internal/agent-action` i `/api/internal/ask-bot`;
+- MCP tutaj oznacza lokalny transport procesu stdio, nie zewnętrzny cloud MCP.
+
+server/engine/proxy.ts
+- proxy HTTP `/api/engine/*`;
+- WebSocket pipe do engine/computer;
+- nie ujawnia engine bez auth.
+
+server/engine/supervisor.ts
+- wybór interpreter/venv/runtime;
+- health check i spawn engine;
+- engine loopback.
+
+server/device.ts, setup-jobs.ts, cli-tools.ts
+- skan urządzenia;
+- provision engine z SSE progress;
+- wykrywanie, instalacja i login CLI;
+- logi setup jobs.
+
+server/mcp-servers.ts, mcp-connectors.ts, composio.ts
+- integracje opcjonalne;
+- policy-gated per bot.
+
+server/env-path.ts
+- resolveCliSpawn, także Windows `.cmd`.
+
+
+5. GŁÓWNE MODUŁY FRONTENDU
+==========================
+
+src/App.tsx
+- główna powłoka;
+- auth/login;
+- wybór ChatView vs GroupPanel;
+- boczne panele.
+
+src/state/store.tsx
+- reducer/stany botów, grup, paneli, streamów i workspace.
+
+src/components/Sidebar.tsx
+- roster botów;
+- plus: New bot / New group;
+- przełączanie bot/grupa;
+- context menu grupy i usuwanie.
+
+src/components/ChatView.tsx
+- header, composer, stream, model picker;
+- Computer/Memory/Routines/Skills entry points.
+
+src/components/ModelPicker.tsx
+- wybór provider/model;
+- `/model` commands są obsługiwane także w chat.
+
+src/components/GroupPanel.tsx
+- pokój grupowy jako pełny panel rozmowy;
+- lista botów członków i wiadomości.
+
+src/components/MemoryPanel.tsx
+- fakty, graf, markdown, retrieval.
+
+src/components/RoutinesPanel.tsx
+- lista, edit, enable/disable, run/delete, schedule.
+
+src/components/SkillsPanel.tsx
+- lista, enable/edit/delete, teach task.
+
+src/components/ComputerPanel.tsx
+- per-bot browser / Shared browser;
+- live preview, takeover, status/busy.
+
+src/components/AppSettingsPanel.tsx
+- custom models;
+- CLI allow/install/login;
+- profile import;
+- token show/rotate;
+- language.
+
+src/components/Onboarding.tsx
+- device scan;
+- 24/7 server decision/provision progress;
+- nick/e-mail;
+- detect/install CLI;
+- custom model/profile import;
+- Electron permissions.
+
+src/components/LoginScreen.tsx, src/lib/auth.ts
+- token input;
+- localStorage session;
+- Bearer authFetch;
+- global 401 handling.
+
+
+6. PYTHON ENGINE
+================
+
+engine/server/app.py
+- FastAPI routes bot/chat, provider, memory, skills, routines, groups,
+  computer, import, device, approvals, voice.
+
+engine/server/gateway.py
+- Hermes gateway lifecycle;
+- provider/model call;
+- stream eventy;
+- preparation identity/plugins/skills/memory.
+
+engine/server/bots.py
+- per-bot profiles;
+- SOUL.md;
+- MultiBot identity marker;
+- migration of old/orphan profiles.
+
+engine/server/providers.py
+- openrouter / anthropic / openai / custom provider config;
+- base_url, model, API key write-only path.
+
+engine/server/memory.py
+- facts, graph/markdown storage, retrieval.
+
+engine/server/skills.py
+- skill files, enable/edit/delete, teach.
+
+engine/server/routines.py
+- engine-owned routines/webhooks and execution.
+
+engine/server/groups.py
+- engine room membership/turn execution.
+
+engine/server/computer.py
+- browser process/profile;
+- per-bot and shared profile;
+- lock/reject/queue for concurrent shared access.
+
+engine/server/browser_plugin/provider.py
+- browser provider and CDP/Playwright bridge.
+
+engine/server/files.py, permissions.py, plugins.py, usage.py, voice.py,
+interbot.py, importer.py, approvals.py
+- filesystem, policy, plugin catalog, token usage, voice, interbot,
+  profile import and approval execution.
+
+Hermes pin: 17688f994e6c4c681f8dd3d160b210ffe49aa273.
+
+
+7. PROVIDERS / MODEL SEMANTICS
+=============================
+
+Built-in visible fleet (current intended): Claude, Codex, Grok, Gemini, Kimi,
+Qwen, local/custom instances and computer helper. Exact availability depends
+on installed/enabled CLI and login state.
+
+Custom model:
+- saved in cfg.instances under named id;
+- fields: displayName, environment key, model.default, model.baseUrl;
+- picker sees named model after save;
+- key is never returned by API;
+- engine receives provider=custom, base_url and model.
+
+Hermes-style chat command:
+- `/model` lists catalog/current selection;
+- `/model <provider>/<model>` selects pair;
+- `/model <model> --provider <provider>` alternate form.
+
+Reasoning:
+- UI supports reasoning control where provider/model supports it;
+- value is mapped by driver, not exposed as unrelated provider.
+
+Claude/Codex login:
+- login commands execute in provider-specific terminal/modal flow;
+- Claude uses official `claude auth login` path;
+- Codex uses official `codex login --device-auth` metadata;
+- subscription credentials stay with CLI, never in MultiBot config/API.
+
+
+8. AGENT POWERS / POLICY
+========================
+
+Policy modes:
+1. Read Only — read current workspace; edits/internet need approval.
+2. Ask for approval — read/edit workspace and commands; outside workspace or
+   internet need approval.
+3. Approve for me — ask only potentially unsafe actions.
+4. Full Access — broad access subject to OS/container boundaries.
+
+Agent can, when policy allows:
+- read/write files;
+- run terminal commands;
+- inspect device;
+- add/update agents;
+- add/update/delete skills;
+- create/update/run/delete routines;
+- read/write memory;
+- create/delete groups and send group messages;
+- list/ask other bots;
+- use computer/browser;
+- use integrations.
+
+Full Access does not bypass Android proot, OS permissions, provider login,
+browser availability, or network boundaries. Dangerous operations still need
+normal operating-system capability.
+
+Bot-to-bot delegation is intended always-on at product level. MCP-capable
+providers receive live peer tools. Codex/API fallback uses explicit @bot
+delegation and injects peer response. Recursion depth is capped to prevent
+loops.
+
+
+9. GROUPS
+=========
+
+Creation: top `+` -> New group -> select bots -> open room.
+Groups appear in sidebar as conversation-like rooms. Clicking a bot or another
+group switches active conversation. Group context menu supports delete.
+
+Storage:
+- harness durable shadow: `~/.openmausbot/groups.json`;
+- engine room transport for execution;
+- CLI members represented by durable `mb-<threadId>` engine shadow IDs.
+
+Latest fix (commits b5570ef + 5fc8a1c): DELETE no longer fails with 502 when
+engine is offline. Harness removes local group first, then tries engine cleanup
+best-effort and returns `{ok:true, engineSynced:false}` if engine unavailable.
+
+Known group limit: mixed-provider group turns still use shared engine room
+transport/shadows; fully native mixed-provider room execution is future work.
+
+
+10. ROUTINES
+============
+
+Routines are harness-owned and provider-neutral. They use the same startTurn
+pipeline as chat, so they can call provider bots. Engine routines also expose
+engine-specific webhook behavior.
+
+Agent rule: when user asks to create/change a routine, agent must call local
+MultiBot `create_routine` directly. It must not use ToolSearch, `/schedule`,
+provider-private memory or cloud scheduling.
+
+Example schedule:
+- cron `35 1 * * *` = daily at 01:35;
+- prompt: `Napisz do użytkownika: hej kacper!`.
+
+Harness must remain alive for 24/7 execution. UI can be closed.
+
+
+11. COMPUTER / TERMUX
+=====================
+
+Desktop platforms:
+- Playwright browser profile per bot;
+- Shared browser profile for all bots;
+- live preview and takeover over authenticated WS;
+- shared profile has explicit busy/serialization behavior.
+
+Android/Termux:
+- Android cannot run normal desktop Playwright bundled Chromium;
+- installer uses headless Chromium/CDP path where available;
+- PWA can view/control browser remotely;
+- no Android desktop browser window unless Termux:X11 is installed;
+- chat, memory, skills and routines still work.
+
+Do not “fix” secure-context restrictions by weakening checks. PWA install and
+microphone need localhost or HTTPS. Plain LAN HTTP can serve chat but browser
+security disables service worker/microphone.
+
+
+12. AUTH / REMOTE ACCESS
+========================
+
+- Harness HTTP API requires `Authorization: Bearer <token>`.
+- Both WebSocket upgrade paths are authenticated.
+- Engine remains on 127.0.0.1.
+- Remote harness serves built `dist/` from same origin/port.
+- Static login shell and `/api/health` are public.
+- First unauthenticated API request returns 401.
+- Token generated at first start, stored in config.json, shown once/logged
+  carefully; rotation invalidates old token and active sessions.
+- PWA stores token in localStorage and handles global 401.
+
+Recommended remote path:
+  tailscale serve --bg --yes http://127.0.0.1:8799
+
+Never bind engine to 0.0.0.0. Never expose harness without auth.
+
+
+13. ONBOARDING / INSTALLATION
+=============================
+
+Onboarding intended sequence:
+0. device scan: hostname/platform/arch/RAM/Python/Docker/engine state;
+   asks whether to install always-on server;
+1. nick + e-mail;
+2. detect and optionally install CLI;
+3. optional custom model/profile import;
+4. permissions (Electron where applicable).
+
+Provision jobs are idempotent per step and expose live SSE progress. CLI
+install commands are fixed metadata, shell=false, no silent elevation.
+
+Windows:
+  pnpm install:server:windows
+Per-user Task Scheduler startup, no UAC, packaged `--server-only` path.
+
+Linux/VPS:
+  bash scripts/install-linux.sh
+  bash scripts/install-linux.sh --mode docker
+  bash scripts/install-linux.sh --dry-run
+
+Android/Termux:
+  bash scripts/install-termux.sh
+  bash scripts/install-termux.sh --dry-run
+Uses termux-services and Termux:Boot.
+
+Development setup requires Node 24+, pnpm, Python 3.12, engine venv and
+Hermes editable install at pinned SHA. Playwright browser downloads must use
+D:\tmp or another non-C: path on Windows.
+
+
+14. PHONE DEPLOYMENT (CURRENT KNOWN DEVICE)
+===========================================
+
+Device: Samsung S10e scenario, Termux + proot Linux.
+Tailscale address: 100.78.241.9
+SSH port: 8022
+SSH command shape:
+  ssh -p 8022 100.78.241.9
+
+Remote app root:
+  /data/data/com.termux/files/home/multibot
+Remote data:
+  /data/data/com.termux/files/home/.openmausbot/engine-data
+Service:
+  multibot via termux-services
+Restart:
+  export SVDIR=$PREFIX/var/service
+  sv restart multibot
+Health:
+  curl http://127.0.0.1:8799/api/health
+
+Current health after latest deployment was:
+  {"app":"openmausbot","pid":...,"static":true,"service":false}
+
+Latest server artifact `dist-server/index.js` was copied to phone after the
+group-delete fix and service was restarted. Token value intentionally omitted.
+
+Do not print config token. If owner needs it, read locally and paste directly
+into login; do not commit, log or send it in project handoff.
+
+
+15. INSTALL / DEV COMMANDS
+==========================
+
+Windows PowerShell:
+  git clone https://github.com/clewkord/multibot.git
+  Set-Location multibot
+  corepack enable
+  pnpm install --frozen-lockfile
+  pnpm dev:server
+  pnpm dev
+
+Engine development:
+  cd engine
+  .venv\Scripts\python.exe -m pytest -q --basetemp='D:\tmp\pytest-engine'
+
+Harness/frontend:
+  pnpm test
+  pnpm typecheck
+  pnpm build
+  pnpm build:server
+
+Important test rule: `test_browser_provider.py::test_session_lifecycle` can
+flake under full engine suite; rerun solo before calling regression.
+
+No new npm dependencies were added for recent work.
+
+
+16. LAST VERIFIED TESTS
+=======================
+
+After group deletion fix:
+- targeted Vitest: 25 passed;
+- full Vitest: 26 files, 198 passed, 3 skipped;
+- pnpm typecheck: green;
+- pnpm build: green;
+- pnpm build:server: green;
+- prior full engine suite: 277 passed, 2 skipped.
+
+Latest source commits:
+- 5fc8a1c — rebuild dist-server after group deletion fix;
+- b5570ef — group deletion works with offline engine;
+- 7a46060 — readable interactive backend map;
+- 643ecf4 — interactive HTML/D2 architecture map;
+- 194fc18 — agents directed to local MultiBot routines;
+- 07db6af — routine bridge mounted for agents;
+- 8269d52 — switch from group back to bot;
+- 3cc2054 — remove group header X/trash;
+- d53bfa4 — group room UX;
+- 0a84e84 — initial group deletion.
+
+Earlier functionality commits include provider picker/custom models, auth,
+PWA, onboarding, ACP drivers, Claude/Codex login, reasoning selector, warm
+Claude workers, device scan, access profiles, neutral MultiBot identity and
+engine/agent bridge.
+
+
+17. GOAL REQUIREMENTS W1-W13
+============================
+
+W1: no “Slafy Engine” item in top model picker.
+W2: no Local Engine BYOK card in bot settings.
+W3: App Settings enables CLIs and adds custom model via key/base URL/model id;
+    saved model appears in picker.
+W4: no Hermes/Slafy branding in user-facing CLI bot UI.
+W5: onboarding device scan + always-on question + live install progress.
+W6: onboarding nick/e-mail + CLI detection and installation.
+W7: optional Hermes profile import path.
+W8: more ACP CLIs, including Kimi/Qwen where installed.
+W9: local models through custom base URL.
+W10: virtual computer per bot + one shared computer.
+W11: one always-on host device (phone/mini-PC/VPS).
+W12: authenticated remote PWA from phone and desktop.
+W13: easy one-command/installer deployment.
+
+Gates G1-G7 were planned as provider/custom UI, auth/origin, onboarding/CLI,
+shared computer, PWA, installers, final docs/upstream drill. Current repo has
+implemented code across those areas; use GOAL.md for original exact acceptance
+wording and risks.
+
+
+18. KNOWN LIMITS / NEXT WORK
+============================
+
+Known intentional limits:
+- native app-store Android/iOS binaries are not included; PWA is used;
+- arbitrary MCP OAuth is not included;
+- CLI memory/routines/skills are harness/workspace features, not provider
+  private features;
+- mixed-driver group turns use engine shadows, not fully native provider room;
+- Termux has no desktop Playwright browser window;
+- Windows installer unsigned and SmartScreen may warn;
+- automatic Windows updates and upstream publisher metadata are not fixed;
+- native persistent group transcript semantics remain limited;
+- engine/Hermes may fail with exit 78 if profile/runtime/config is wrong;
+- secure context is browser policy, not bypassed by MultiBot.
+
+Recommended next checks for new AI:
+1. Read GOAL.md, MULTIBOT.md, docs/FEATURES.md, README.md.
+2. Run `git status`, `git log --oneline -20`.
+3. Run `pnpm typecheck`, targeted tests, then full test/build before changes.
+4. Test group delete while engine is stopped and started.
+5. Check phone health and service status via SSH port 8022.
+6. Never put token/API keys in repo, logs, issue text or this file.
+7. Use branches/PRs for teammate work; keep main releasable.
+
+
+19. AUTHORITATIVE FILES
+=======================
+
+GOAL.md — original owner requirements, phases, gates and safety rules.
+README.md — user quick start and product overview.
+MULTIBOT.md — developer handbook, runtime/install/test semantics.
+docs/FEATURES.md — feature map and platform matrix.
+docs/COMPARISON.md — comparison against Hermes/OpenClaw/Grok.
+docs/TEAM-WORKFLOW.md — branch/PR/ownership rules.
+docs/multibot-architecture.html — interactive clickable architecture map.
+docs/multibot-architecture.d2 — D2 source for diagram tooling/Obsidian.
+
+End of handoff.
