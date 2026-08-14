@@ -9,6 +9,7 @@ import {
   computersDisabled,
   containerName,
   dockerCommand,
+  ensureComputer,
   orphanContainers,
   parsePortOutput,
   volumeName,
@@ -78,5 +79,14 @@ describe("orphanContainers", () => {
 describe("ports", () => {
   it("publishes exactly the three the image serves", () => {
     expect(CONTAINER_PORTS).toEqual({ cdp: 9223, novnc: 6901, api: 8000 });
+  });
+});
+
+describe("ensureComputer", () => {
+  it("dedupes concurrent calls so the panel's polling cannot race a turn", async () => {
+    // Both callers must observe the same single attempt. Under vitest docker is
+    // refused, so this pins the sharing, not the container.
+    const [a, b] = await Promise.all([ensureComputer("race-bot"), ensureComputer("race-bot")]);
+    expect(a).toEqual(b);
   });
 });

@@ -6,11 +6,11 @@
 // route to. Shaped after server/engine/proxy.ts — same pipe-don't-buffer rule,
 // same 101 rewrite — but the upstream port is resolved per bot on every request
 // because docker reassigns it on each container restart.
-import { createConnection, type Socket } from "node:net";
+import type { Socket } from "node:net";
 import { request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { readPorts } from "./hosted-computer.ts";
+import { readPort } from "./hosted-computer.ts";
 
 /** `/api/bots/<id>/computer/vnc/<rest>` — the one route this proxy owns. */
 export const VNC_ROUTE = /^\/api\/bots\/([\w-]+)\/computer\/vnc(\/.*)?$/;
@@ -25,10 +25,7 @@ export function matchVncRoute(pathname: string): { botId: string; rest: string }
   return { botId: m[1], rest: m[2] && m[2] !== "/" ? m[2] : "/vnc.html" };
 }
 
-async function novncPort(botId: string): Promise<number | null> {
-  const ports = await readPorts(botId);
-  return ports?.novnc ?? null;
-}
+const novncPort = (botId: string) => readPort(botId, "novnc");
 
 export async function proxyVncHttp(req: IncomingMessage, res: ServerResponse, botId: string, rest: string, search: string) {
   const port = await novncPort(botId);
@@ -91,14 +88,6 @@ export async function pipeVncWs(req: IncomingMessage, socket: Duplex, head: Buff
   upstream.on("response", () => socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n"));
   upstream.on("error", () => socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n"));
   upstream.end();
-}
-
-/**
- * Raw TCP to the container's CDP port, for callers that need to speak the
- * DevTools protocol through the harness. Exported for the engine bridge.
- */
-export function connectCdp(port: number): Socket {
-  return createConnection({ host: "127.0.0.1", port });
 }
 
 /** Mount the screen proxy's WebSocket half. The HTTP half is dispatched from

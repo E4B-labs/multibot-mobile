@@ -97,6 +97,7 @@ beforeAll(async () => {
 
   child = spawn(process.execPath, [PROXY], {
     env: {
+      MULTIBOT_COMPUTER: "off",
       ...process.env,
       OMB_HARNESS_URL: `http://127.0.0.1:${stubPort}`,
       OMB_BOT_ID: "bot-asker",

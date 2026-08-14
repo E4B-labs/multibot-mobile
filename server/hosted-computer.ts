@@ -133,6 +133,41 @@ export function parsePortOutput(out: string): number | null {
 }
 
 /**
+ * One port, not all three.
+ *
+ * The screen proxy resolves a port on EVERY request — each noVNC asset, each
+ * websocket — and one `docker port` through WSL costs a second or two. Reading
+ * all three ports per request made the websocket upgrade time out. A short
+ * cache absorbs the burst of asset requests; it is deliberately brief because
+ * the port changes whenever the container restarts, and a stale port must heal
+ * on its own within seconds.
+ */
+const PORT_CACHE_MS = 5_000;
+const portCache = new Map<string, { port: number; at: number }>();
+
+export async function readPort(botId: string, name: PortName): Promise<number | null> {
+  const key = `${botId}:${name}`;
+  const hit = portCache.get(key);
+  if (hit && Date.now() - hit.at < PORT_CACHE_MS) return hit.port;
+  let out: string;
+  try {
+    out = await docker(["port", containerName(botId), String(CONTAINER_PORTS[name])], 30_000);
+  } catch {
+    portCache.delete(key);
+    return null;
+  }
+  const port = parsePortOutput(out);
+  if (port === null) portCache.delete(key);
+  else portCache.set(key, { port, at: Date.now() });
+  return port;
+}
+
+/** Drop cached ports for a bot — after a restart they are certainly wrong. */
+export function forgetPorts(botId: string): void {
+  for (const key of portCache.keys()) if (key.startsWith(`${botId}:`)) portCache.delete(key);
+}
+
+/**
  * Read back the host-side ports. MUST be called after every start/restart —
  * docker reassigns them (H0: 32770 before a restart, 32773 after).
  */
@@ -192,16 +227,38 @@ function createArgs(botId: string, limits: ComputerLimits): string[] {
  * provisioned surfaces as `error` with a reason, because a quiet downgrade to
  * browser-only is exactly the failure mode PLAN-COMPUTER.md forbids.
  */
-export async function ensureComputer(botId: string, limits = DEFAULT_LIMITS): Promise<ComputerStatus> {
+export function ensureComputer(botId: string, limits = DEFAULT_LIMITS): Promise<ComputerStatus> {
+  // The panel polls and turns fire independently, so two `docker run`s for one
+  // bot used to race — the loser got "name already in use" and the user saw
+  // "Computer error" while the computer was in fact coming up fine.
+  const started = inFlight.get(botId) ?? ensureOnce(botId, limits).finally(() => inFlight.delete(botId));
+  inFlight.set(botId, started);
+  return started;
+}
+
+const inFlight = new Map<string, Promise<ComputerStatus>>();
+
+/** Losing a create race means the container exists — which is the goal. */
+const isNameConflict = (e: unknown) => /already in use/i.test(e instanceof Error ? e.message : String(e));
+
+async function ensureOnce(botId: string, limits: ComputerLimits): Promise<ComputerStatus> {
   const name = containerName(botId);
   try {
     const running = await inspectRunning(name);
     if (running === null) {
       await docker(["volume", "create", volumeName(botId)], 60_000);
-      await docker(createArgs(botId, limits), 180_000);
+      try {
+        await docker(createArgs(botId, limits), 180_000);
+      } catch (e) {
+        // Another process (or an earlier boot) got there first. Treat it as
+        // created and make sure it is up, rather than reporting a failure.
+        if (!isNameConflict(e)) throw e;
+        await docker(["start", name], 120_000).catch(() => {});
+      }
     } else if (!running) {
       await docker(["start", name], 120_000);
     }
+    forgetPorts(botId);
   } catch (e) {
     return { botId, state: "error", detail: e instanceof Error ? e.message : String(e) };
   }
@@ -216,6 +273,22 @@ export async function ensureComputer(botId: string, limits = DEFAULT_LIMITS): Pr
  *  same filesystem the desktop and the browser see. */
 export async function exec(botId: string, command: string, timeoutMs = 60_000): Promise<string> {
   return docker(["exec", containerName(botId), "bash", "-lc", command], timeoutMs);
+}
+
+/**
+ * Bring back a computer that already exists, without ever creating one.
+ *
+ * Boot uses this rather than `ensureComputer`: creating containers as a side
+ * effect of starting the harness turned every throwaway test bot into a real
+ * container (20 of them accumulated before this was caught). A bot gets its
+ * computer when someone actually uses it — a turn, or opening the panel.
+ */
+export async function resumeComputer(botId: string): Promise<boolean> {
+  const name = containerName(botId);
+  const running = await inspectRunning(name);
+  if (running === null) return false; // never created — not our job here
+  if (running) return true;
+  return dockerOk(["start", name], 120_000);
 }
 
 /**

@@ -6,7 +6,7 @@
 
 ## Stan wykonania (14 sierpnia 2026)
 
-Plan wykonany w jednej sesji. Testy: **vitest 268 passed / 3 skipped**,
+Plan wykonany w jednej sesji. Testy: **vitest 270 passed / 3 skipped**,
 **pytest 291 passed / 2 skipped**, `tsc -b` i `tsc -p tsconfig.server.json`
 czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 `node scripts/selfhost-check.mjs` OK.
@@ -17,7 +17,7 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 | H1 | zrobione | Wybór źródła usunięty, brak stanu `off`, komputer ginie z botem |
 | H2 | zrobione | `server/hosted-computer.ts`; gate zweryfikowany na dwóch realnych kontenerach |
 | H3 | zrobione | Claude, Codex, ACP i Slafy montują TEN SAM komputer |
-| H4 | zrobione | Ekran przez proxy harnessu; port kontenera nie trafia do klienta |
+| H4 | zrobione, zweryfikowane na żywo | Ekran przez proxy; handshake `RFB 003.008` przeszedł end-to-end na samym cookie |
 | H5 | zrobione | Lease sterowania, `user_has_control` zamiast błędu narzędzia |
 | H6 | zrobione, z jedną luką | Redakcja sekretów + kasowanie kroków; **capture na poziomie pulpitu odłożone** |
 | R1 | zrobione | Cztery presety, edycja rozpoznaje harmonogram, daty przez `Intl` |
@@ -51,7 +51,22 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
    401 i funkcja nie działała wcale. Klient wymienia raz token na sesję cookie
    (`POST /api/auth/session`); wymiana wymaga tokena, więc bramka nie jest
    szersza.
-7. **`localComputer` konsumował tylko `claude.ts`.** Codex montował w
+7. **Ekran ginął w drodze przez inny handler.** `server/engine/proxy.ts`
+   niszczył gniazdo KAŻDEGO upgrade'u, który nie był jego — z czasów, gdy był
+   jedynym takim handlerem. Websockify zwracał `101`, a klient nie dostawał nic.
+   Żaden test jednostkowy nie mógł tego złapać, bo w izolacji oba handlery są
+   poprawne; regresję pilnuje teraz test montujący oba naraz.
+8. **Równoległe `ensureComputer` ścigały się.** Panel odpytuje, tura też —
+   przegrany dostawał `name already in use` i użytkownik widział
+   `Computer error` przy działającym komputerze. Wywołania są teraz
+   deduplikowane, a konflikt nazwy traktowany jako sukces.
+9. **Rozwiązywanie portu było wołane przy każdym żądaniu** — a `readPorts`
+   robiło trzy przejścia przez WSL. Upgrade WebSocketa nie mieścił się w
+   limicie czasu. Teraz czytany jest jeden port, z krótkim cache.
+10. **Boot harnessu tworzył komputery**, więc każdy testowy spawn serwera
+    mnożył kontenery (narosło ich 20). Start tylko **wznawia** istniejące;
+    komputer powstaje, gdy ktoś go realnie użyje.
+11. **`localComputer` konsumował tylko `claude.ts`.** Codex montował w
    `mcp_servers` sam `agents`, ACP tak samo — dwa z czterech driverów z
    Definition of Done nie miały czym dotknąć pulpitu. Oba zostały doposażone.
 
@@ -75,6 +90,20 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
   drzewo dostępności) wymaga osobnego kanału, którego w tym repo nie ma. Zamiast
   udawać go współrzędnymi, nagrywanie działa dobrze na poziomie przeglądarki, a
   reszta jest zapisana jako luka.
+- **Parowanie QR nie ma jeszcze ekranu w aplikacji hosta.** Serwer
+  (`POST /api/pair/start` i `/api/pair/claim`) oraz telefon są gotowe, ale nic
+  nie renderuje kodu, a pole `url` w odpowiedzi to `127.0.0.1` — zanim QR
+  zostanie pokazany, musi tam trafić adres LAN albo Tailscale. Dziś działa
+  ręczne wklejenie tokena i tak też robi aplikacja mobilna.
+- **Sparowany telefon dostaje token główny**, więc `revokeDeviceSession` go nie
+  odetnie — obietnica z fazy Q („unieważnione urządzenie traci HTTP/SSE/WS")
+  nie jest dla niego spełniona. Właściwe rozwiązanie to tokeny per urządzenie
+  z `PLAN-CLIENTS.md` C1; świadomie odłożone.
+- **Komputer bota zasypia razem z WSL.** Na Windows demon Dockera stoi w WSL,
+  a ta usypia, gdy nic jej nie trzyma — kontenery dostają SIGTERM i wracają
+  dopiero, gdy coś obudzi WSL. Pierwsze żądanie po przerwie potrafi trwać
+  kilkadziesiąt sekund i po drodze zwrócić 502. Na Linuksie problem nie
+  występuje.
 - **Sterowanie fizycznym pulpitem hosta, Cloud Computer, Shared Computer,
   Windows VM** — odłożone zgodnie z planem.
 

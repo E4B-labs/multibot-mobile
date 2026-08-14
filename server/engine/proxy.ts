@@ -12,6 +12,7 @@ import { request as httpRequest, type IncomingMessage, type Server, type ServerR
 import type { Duplex } from "node:stream";
 
 import { ensureEngine } from "./supervisor.ts";
+import { matchVncRoute } from "../computer-vnc-proxy.ts";
 
 const PREFIX = "/api/engine";
 
@@ -144,6 +145,11 @@ export function mountEngineProxy(server: Server) {
   });
   server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    // multibot (H4): ten handler nie jest już jedyny — ekran komputera bota ma
+    // własny (server/computer-vnc-proxy.ts). Zabicie tu KAŻDEGO obcego gniazda
+    // ubijało jego upgrade, zanim zdążył odpowiedzieć: websockify zwracał 101,
+    // a klient nie dostawał nic.
+    if (matchVncRoute(url.pathname)) return;
     if (!url.pathname.startsWith(`${PREFIX}/`)) return socket.destroy();
     // multibot (F5): WS silnika jest więcej niż jeden. `/api/engine/ws` →
     // `/api/ws` (kanał eventów) wychodzi z tego samego `rewrite()` co HTTP, a

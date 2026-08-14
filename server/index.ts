@@ -44,6 +44,7 @@ import { attachExternalBrowser, configureEngineComputer, engineComputer } from "
 import {
   dockerAvailable,
   ensureComputer,
+  resumeComputer,
   exec as computerExec,
   orphanContainers,
   removeComputer,
@@ -2061,10 +2062,7 @@ async function reconcileComputers(): Promise<void> {
     return;
   }
   for (const bot of store.bots) {
-    const status = await ensureComputer(bot.id).catch(() => null);
-    if (status && status.state === "error") {
-      console.warn(`[multibot] computer for ${bot.id}: ${status.detail ?? "failed"}`);
-    }
+    await resumeComputer(bot.id).catch(() => false);
   }
   const orphans = await orphanContainers(store.bots.map((b) => b.id));
   for (const name of orphans) console.log(`[multibot] orphaned computer container: ${name}`);
