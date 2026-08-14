@@ -52,15 +52,23 @@ if ! running "Xvnc :$DISPLAY_NUM"; then
   sleep 4
 fi
 
-# A window manager is not decoration: without one, Chromium's window has no
-# frame, cannot be raised, and dialogs land off-screen.
-if ! running "openbox"; then
-  if have openbox; then
+# A full desktop, not a bare window manager. XFCE first because that is what the
+# container image ships and what "a computer" is supposed to mean here: a panel,
+# a menu, a file manager and a terminal you can actually open. A bare WM leaves
+# the browser filling the screen with nothing behind it, which reads as "there
+# is only a browser". openbox stays as the fallback for hosts too small for it.
+if ! running "xfce4-session|openbox"; then
+  if have xfce4-session; then
+    # Termux has no D-Bus session by default; xfce4-session needs one.
+    if have dbus-launch; then
+      setsid dbus-launch --exit-with-session xfce4-session >"$LOG/wm.log" 2>&1 </dev/null &
+    else
+      setsid xfce4-session >"$LOG/wm.log" 2>&1 </dev/null &
+    fi
+  elif have openbox; then
     setsid openbox >"$LOG/openbox.log" 2>&1 </dev/null &
-  elif have xfce4-session; then
-    setsid xfce4-session >"$LOG/wm.log" 2>&1 </dev/null &
   fi
-  sleep 2
+  sleep 5
 fi
 
 # Headful on purpose — the user watches this exact window and can take control.
@@ -73,8 +81,8 @@ if ! running "$ROOT/chrome"; then
     --no-default-browser-check \
     --remote-debugging-port="$CDP_PORT" \
     --user-data-dir="$ROOT/chrome" \
-    --window-position=0,0 \
-    --window-size="${GEOMETRY/x/,}" \
+    --window-position=40,40 \
+    --window-size=900,620 \
     about:blank >"$LOG/chrome.log" 2>&1 </dev/null &
 fi
 
