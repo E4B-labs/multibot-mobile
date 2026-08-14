@@ -20,6 +20,13 @@ import { engineBaseUrl, ensureEngine, venvPython } from "./supervisor.ts";
 /** repo root: server/engine/ → server/ → repo */
 const ENGINE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "engine");
 
+/** Gdzie ten harness słucha — czytane przy każdym spawnie, bo port bierze się
+ *  z env i w testach jest inny niż domyślny. */
+export function harnessBaseUrl(): string {
+  const port = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
+  return `http://127.0.0.1:${port}`;
+}
+
 export interface McpSpawn {
   command: string;
   args: string[];
@@ -80,9 +87,21 @@ export async function attachExternalBrowser(threadId: string, cdpPort: number): 
 export function computerMcpSpawn(threadId: string, engineDir = ENGINE_DIR): McpSpawn {
   return {
     command: venvPython(engineDir),
-    args: ["-m", "server.computer_mcp", "--bot", engineBotIdFor(threadId), "--engine-url", engineBaseUrl()],
+    args: [
+      "-m", "server.computer_mcp",
+      "--bot", engineBotIdFor(threadId),
+      "--engine-url", engineBaseUrl(),
+      // multibot (H3): terminal komputera. Bez tego adresu `computer_exec`
+      // odmawia — i to jest właściwe zachowanie, bo jedyną alternatywą byłoby
+      // wykonanie polecenia na maszynie użytkownika zamiast w kontenerze.
+      "--harness-url", harnessBaseUrl(),
+    ],
     env: {
       PYTHONPATH: engineDir,
+      // Trasa `/api/bots/:id/computer/exec` jest za tą samą bramką auth, co
+      // reszta harnessu, a serwer MCP jest zwykłym klientem HTTP — dostaje więc
+      // token tak samo, jak agents-proxy (env, nie argv: argv widać w `ps`).
+      ...(process.env.MULTIBOT_HARNESS_TOKEN ? { MULTIBOT_HARNESS_TOKEN: process.env.MULTIBOT_HARNESS_TOKEN } : {}),
       // Ten sam katalog danych, co reszta silnika — inaczej MCP założyłby bota
       // gdzie indziej niż stoi profil (scripts/dev-engine.mjs, supervisor.ts).
       ...(process.env.SLAFY_DATA_DIR ? { SLAFY_DATA_DIR: process.env.SLAFY_DATA_DIR } : {}),

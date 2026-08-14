@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { startFakeEngine, type FakeEngine } from "../testing/fake-engine.ts";
-import { computerMcpSpawn, configureEngineComputer, engineComputer } from "./computer-mcp.ts";
+import { computerMcpSpawn, configureEngineComputer, engineComputer, harnessBaseUrl } from "./computer-mcp.ts";
 import { engineBaseUrl, engineServerArgs, venvPython } from "./supervisor.ts";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,6 +31,10 @@ describe("computerMcpSpawn", () => {
       "mb-t-42", // ten sam mapping wątek→bot silnika co driver slafy
       "--engine-url",
       "http://127.0.0.1:9999", // bez końcowego ukośnika
+      // H3: terminal kontenera. Bez tego adresu `computer_exec` odmawia — i to
+      // jest właściwe, bo alternatywą byłoby wykonanie polecenia na hoście.
+      "--harness-url",
+      harnessBaseUrl(),
     ]);
     // `localComputer` nie ma `cwd` (contracts.ts zostaje bez zmian), więc
     // importowalność pakietu `server.*` musi załatwić PYTHONPATH

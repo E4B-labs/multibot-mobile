@@ -10,7 +10,13 @@ import { fileURLToPath } from "node:url";
 
 import * as box from "./box.ts";
 import { AttachmentStore, MAX_FILE_BYTES } from "./attachments.ts";
-import { ensureAccessToken, mountAuth, rotateAccessToken } from "./auth.ts";
+import { ensureAccessToken, mountAuth, rotateAccessToken, tokenMatches } from "./auth.ts";
+// multibot (A1): logowanie Google przez Firebase -> lokalna sesja urządzenia.
+import {
+  FirebaseAuthError, authorizeOwner, buildSessionCookie, createDeviceSession,
+  isFirebaseConfigured, isLoopbackRequest, isSecureRequest,
+  sessionIdFromCookieHeader, verifyDeviceSession, verifyFirebaseIdToken,
+} from "./firebase-auth.ts";
 import * as composio from "./composio.ts";
 import {
   BUILT_IN_CLI_IDS,
@@ -99,6 +105,10 @@ function staticHeaders(file: string): Record<string, string> {
 ensureDirs();
 const cfg = loadConfig();
 const access = ensureAccessToken(cfg);
+// multibot (H3): serwer MCP komputera jest zwykłym klientem HTTP tego harnessu,
+// więc jego terminal potrzebuje tego samego tokena. Env, nie argv — argv widać
+// w liście procesów. Ten sam wzorzec, co COMMS_TOKEN dla agents-proxy.
+process.env.MULTIBOT_HARNESS_TOKEN = access.token;
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 const groupStore = new GroupStore();
@@ -1591,6 +1601,30 @@ const server = createServer(async (req, res) => {
       res.setHeader("cache-control", "no-store");
       return json(res, 200, { token: cfg.auth!.token });
     }
+    // ── multibot (A1): Firebase Google login → lokalna sesja urządzenia ──
+    if (method === "POST" && path === "/api/auth/firebase/session") {
+      if (!isFirebaseConfigured(cfg)) return json(res, 404, { error: "firebase not configured" });
+      try {
+        const body = await readBody(req);
+        const claims = await verifyFirebaseIdToken(String(body?.idToken ?? ""), cfg.firebase!.projectId!);
+        const bearer = req.headers.authorization?.startsWith("Bearer ")
+          ? req.headers.authorization.slice(7)
+          : req.headers["x-multibot-token"];
+        // Pierwszy właściciel wiąże się TYLKO z loopbacka albo z już znanym
+        // tokenem — nigdy "pierwszy z internetu wygrywa".
+        authorizeOwner(claims.uid, {
+          loopback: isLoopbackRequest(req),
+          bearerAuthed: tokenMatches(bearer, cfg.auth?.token ?? ""),
+        });
+        const sessionId = createDeviceSession(claims.uid, String(body?.label ?? "device"));
+        res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+        res.setHeader("cache-control", "no-store");
+        return json(res, 200, { ok: true, uid: claims.uid, email: claims.email ?? null });
+      } catch (e) {
+        const status = e instanceof FirebaseAuthError ? 401 : 400;
+        return json(res, status, { error: e instanceof Error ? e.message : "invalid request" });
+      }
+    }
     if (method === "POST" && path === "/api/auth/token/rotate") {
       const token = rotateAccessToken(cfg);
       revokeAuthSessions(req.socket);
@@ -1885,10 +1919,17 @@ const server = createServer(async (req, res) => {
     }
 
     // The bot's terminal. Same filesystem as its desktop and browser.
+    //
+    // The caller may be the engine's computer MCP, which only knows its own
+    // `mb-<threadId>` id — accept either identity rather than making the MCP
+    // guess the harness's.
     m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/exec$/);
     if (m && method === "POST") {
-      const botId = m[1];
-      if (!store.bot(botId)) return json(res, 404, { error: "no such bot" });
+      const asEngineThread = threadIdOfEngineBot(m[1]);
+      const botId = store.bot(m[1])
+        ? m[1]
+        : (asEngineThread ? store.botByThread(asEngineThread)?.id : undefined);
+      if (!botId) return json(res, 404, { error: "no such bot" });
       const body = await readBody(req);
       const command = String(body.command ?? "");
       if (!command.trim()) return json(res, 400, { error: "command required" });
@@ -1940,7 +1981,17 @@ mountVncUpgrade(server);
 // Auth mounts after the proxy so one wrapper covers harness HTTP, proxied
 // engine HTTP, and both engine WS upgrade paths.
 let revokeAuthSessions = (_except?: import("node:stream").Duplex) => {};
-revokeAuthSessions = mountAuth(server, () => cfg.auth!.token!).revokeSessions;
+revokeAuthSessions = mountAuth(
+  server,
+  () => cfg.auth!.token!,
+  // Sesja urządzenia jest równorzędna tokenowi. Gdy Firebase nie jest
+  // skonfigurowany, `verifyDeviceSession` nie ma czego znaleźć i jedyną
+  // drogą zostaje token — dokładnie jak dotąd.
+  (req) => {
+    const id = sessionIdFromCookieHeader(req.headers.cookie);
+    return Boolean(id && verifyDeviceSession(id));
+  },
+).revokeSessions;
 
 // ── multibot: uwaga bota silnika (D7) ─────────────────────────────────
 // Silnik ogłasza `attention` po WS (bot czeka na login/captcha/odpowiedź);

@@ -59,7 +59,12 @@ function rejectUpgrade(socket: Duplex) {
 
 /** Mount last: wraps both the app request handler and every upgrade handler,
  * including the engine event and per-bot computer sockets. */
-export function mountAuth(server: Server, getToken: () => string) {
+/** multibot (A1): a second, equal way to be authenticated — a device session
+ *  cookie issued after Google login. Absent (no Firebase configured) it is
+ *  simply never satisfied, and the bearer token remains the only way in. */
+export type SessionCheck = (req: IncomingMessage) => boolean;
+
+export function mountAuth(server: Server, getToken: () => string, hasSession: SessionCheck = () => false) {
   const sessions = new Set<Duplex>();
   const tracked = new WeakSet<Duplex>();
   const track = (socket: Duplex) => {
@@ -82,10 +87,15 @@ export function mountAuth(server: Server, getToken: () => string) {
     // again by the route itself. Requiring the user token would leak it into
     // spawned agent environments.
     const internallyAuthenticated = url.pathname.startsWith("/api/internal/");
-    if (!publicRoute && !internallyAuthenticated && !tokenMatches(requestToken(req), getToken())) {
+    // A client logging in with Google has no token yet — that is the point of
+    // logging in — so the exchange endpoint has to be reachable without one. It
+    // does its own verification of the Firebase ID token.
+    const loggingIn = req.method === "POST" && url.pathname === "/api/auth/firebase/session";
+    const authed = tokenMatches(requestToken(req), getToken()) || hasSession(req);
+    if (!publicRoute && !loggingIn && !internallyAuthenticated && !authed) {
       return unauthorized(res);
     }
-    if (!publicRoute && !internallyAuthenticated) track(req.socket);
+    if (!publicRoute && !loggingIn && !internallyAuthenticated) track(req.socket);
     for (const handler of requests) handler(req, res);
   });
 
@@ -94,7 +104,9 @@ export function mountAuth(server: Server, getToken: () => string) {
   >;
   server.removeAllListeners("upgrade");
   server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
-    if (!tokenMatches(requestToken(req), getToken())) return rejectUpgrade(socket);
+    // The screen socket rides the cookie too: a browser WebSocket cannot set an
+    // Authorization header, and a phone logging in with Google has no token.
+    if (!tokenMatches(requestToken(req), getToken()) && !hasSession(req)) return rejectUpgrade(socket);
     track(socket);
     const protocols = String(req.headers["sec-websocket-protocol"] ?? "")
       .split(",")

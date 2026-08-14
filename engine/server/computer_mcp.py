@@ -144,7 +144,11 @@ async def computer_exec(command: str) -> str:
             "terminal niedostępny: brak MULTIBOT_HARNESS_URL / --harness-url — "
             "silnik nie zna adresu harnessu, więc nie ma jak dosięgnąć kontenera"
         )
-    async with httpx.AsyncClient(base_url=_harness, timeout=_TIMEOUT) as client:
+    # Harness trzyma tę trasę za tą samą bramką auth, co resztę API. Token
+    # przychodzi środowiskiem (nie argv — argv widać w liście procesów).
+    token = os.environ.get("MULTIBOT_HARNESS_TOKEN") or ""
+    headers = {"authorization": f"Bearer {token}"} if token else {}
+    async with httpx.AsyncClient(base_url=_harness, timeout=_TIMEOUT, headers=headers) as client:
         res = await client.post(f"/api/bots/{_bot}/computer/exec", json={"command": command})
     if res.status_code >= 400:
         raise RuntimeError(f"harness POST /computer/exec → HTTP {res.status_code}: {res.text[:200]}")
