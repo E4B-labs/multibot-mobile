@@ -7,7 +7,7 @@
 //     — screenshot/exec/open_url, the CUA-on-the-box bridge
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -18,7 +18,8 @@ import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
 // multibot (F7): wspólny montaż mcpServers (Composio + własne konektory).
 import { mcpServers as buildMcpServers } from "../mcp-servers.ts";
 import { killTree } from "../kill-tree.ts";
-import { autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../turn-policy.ts";
+import { approvalRule } from "../approval-rules.ts";
+import { approvalRuleAllowed, autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../turn-policy.ts";
 
 import type {
   DriverCreateInput,
@@ -88,6 +89,7 @@ interface Ask {
   kind: "permission" | "question";
   tool: string;
   input: Record<string, unknown>;
+  suggestions?: unknown[];
   at: number;
 }
 
@@ -144,7 +146,14 @@ function createPermissionBroker(opts: {
         if (msg.t !== "ask") continue;
         const askId = String(msg.id ?? newId());
         const kind = msg.kind === "question" ? ("question" as const) : ("permission" as const);
-        const ask: Ask = { id: askId, kind, tool: msg.tool ?? "tool", input: msg.input ?? {}, at: Date.now() };
+        const ask: Ask = {
+          id: askId,
+          kind,
+          tool: msg.tool ?? "tool",
+          input: msg.input ?? {},
+          suggestions: Array.isArray(msg.suggestions) ? msg.suggestions : undefined,
+          at: Date.now(),
+        };
         const finish = (behavior: string, message: string | undefined, source: string) => {
           if (!pending.delete(askId)) return;
           clearTimeout(timer);
@@ -176,7 +185,7 @@ function createPermissionBroker(opts: {
     answer(askId: string, behavior: string, message?: string): boolean {
       const p = pending.get(askId);
       if (!p) return false;
-      const valid = p.ask.kind === "question" ? ["answer"] : ["allow", "deny"];
+      const valid = p.ask.kind === "question" ? ["answer"] : ["allow", "always", "deny"];
       if (!valid.includes(behavior)) return false;
       p.finish(behavior, message, "user");
       return true;
@@ -272,6 +281,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const args = [
         "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
         "--include-partial-messages", "--permission-mode", permissionMode,
+        // multibot: bot MultiBota dostaje WYŁĄCZNIE serwery, które montujemy
+        // niżej. Bez tego CLI dokłada globalną konfigurację MCP właściciela
+        // maszyny — na telefonie bot widział prywatne konektory claude.ai
+        // (Gmail, Supabase…), o które nikt go nie prosił i których nie
+        // sprawdza żadna bramka uprawnień tego harnessu.
+        "--strict-mcp-config",
       ];
       // Haiku has no adaptive-effort control in Claude Code.
       if (selectedModel !== "claude-haiku-4-5") args.push("--effort", requestedReasoning || "low");
@@ -363,6 +378,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const broker = worker.broker ?? (brokerNeeded ? createPermissionBroker({
         socketPath,
         onAsk: (ask) => {
+          const remembered = approvalRule(DRIVER_KIND, ask.tool, ask.input, ask.suggestions);
           if (ask.kind === "permission" && !toolAllowed(threadId, ask.tool)) {
             queueMicrotask(() => worker?.broker?.answer(ask.id, "deny", `${ask.tool} blocked by bot permissions`));
             return;
@@ -371,11 +387,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             queueMicrotask(() => worker?.broker?.answer(ask.id, "allow"));
             return;
           }
+          if (ask.kind === "permission" && approvalRuleAllowed(threadId, remembered)) {
+            queueMicrotask(() => worker?.broker?.answer(ask.id, "always"));
+            return;
+          }
           const activeTurn = worker?.current;
           if (!activeTurn) return;
           emit({ ...base(threadId, activeTurn.turnId), type: "request.opened", requestId: ask.id,
             requestType: ask.kind, tool: ask.tool, summary: askSummary(ask),
-            choices: Array.isArray(ask.input?.choices) ? (ask.input.choices as string[]).slice(0, 5) : undefined });
+            choices: Array.isArray(ask.input?.choices) ? (ask.input.choices as string[]).slice(0, 5) : undefined,
+            ...(ask.kind === "permission" ? { approvalRule: remembered } : {}) });
         },
         onResolve: (resolved) => {
           const activeTurn = worker?.current;
@@ -394,6 +415,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           return;
         }
         appendNative(threadId, { dir: "in", source: "claude.sdk.message", msg: o });
+        if (!worker?.current) return;
         switch (o.type) {
           case "system":
             if (o.subtype === "init") {
@@ -494,12 +516,25 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         });
       }
 
-      const stop = () => killTree(worker!.child);
+      const stop = () => {
+        settle(true, "cancelled");
+        killTree(worker!.child);
+      };
       active.set(threadId, { stop, turnId, broker });
       emit({ ...base(threadId, turnId), type: "turn.started" });
 
       // Keep stdin open: Claude Code accepts multiple stream-json user frames.
-      const promptMsg = { type: "user", message: { role: "user", content: turn.text } };
+      const nativeImages = (turn.attachments ?? []).filter((file) => /^image\/(?:png|jpeg|gif|webp)$/i.test(file.mime));
+      const content = nativeImages.length
+        ? [
+            { type: "text", text: turn.text },
+            ...nativeImages.map((file) => ({
+              type: "image",
+              source: { type: "base64", media_type: file.mime, data: readFileSync(file.path).toString("base64") },
+            })),
+          ]
+        : turn.text;
+      const promptMsg = { type: "user", message: { role: "user", content } };
       try {
         worker.child.stdin!.write(JSON.stringify(promptMsg) + "\n");
       } catch (error) {

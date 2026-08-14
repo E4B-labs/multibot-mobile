@@ -7,7 +7,7 @@
 // script Windows cannot exec, and the broker is a unix socket. Both now
 // go through resolveCliSpawn / permissionSocketPath, so they run
 // everywhere.
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -191,6 +191,9 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     });
     const allowed = seen.argv[seen.argv.indexOf("--allowedTools") + 1];
     expect(allowed).toContain("mcp__agents");
+    // multibot: bot dostaje tylko nasze serwery — nigdy globalnej konfiguracji
+    // MCP właściciela maszyny (prywatne konektory claude.ai).
+    expect(seen.argv).toContain("--strict-mcp-config");
   });
 
   // multibot (F7): własne serwery MCP użytkownika jadą tą samą drogą co
@@ -255,6 +258,24 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     await recorder.until((e) => e.type === "turn.completed");
   });
 
+  it("sends attached images as native Claude image blocks", async () => {
+    await create("happy");
+    const dump = join(scratch, "image.json");
+    const image = join(scratch, "photo.png");
+    writeFileSync(image, "png");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+    await instance.adapter.sendTurn({
+      threadId: "t-image",
+      text: "inspect",
+      attachments: [{ id: "a", name: "photo.png", mime: "image/png", size: 3, path: image }],
+    });
+    await recorder.until((event) => event.type === "turn.completed");
+    expect(JSON.parse(readFileSync(dump, "utf8")).prompt.message.content).toEqual([
+      { type: "text", text: "inspect" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "cG5n" } },
+    ]);
+  });
+
   it("keeps one Claude worker alive for the next turn", async () => {
     await create("persistent");
     await instance.adapter.sendTurn({ threadId: "t-persistent", text: "one" });
@@ -269,14 +290,15 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(recorder.events.filter((e) => e.type === "session.started")).toHaveLength(1);
   });
 
-  it("interrupt kills the turn and settles it as failed, not hung", async () => {
+  it("interrupt cancels the turn without a runtime error", async () => {
     await create("hang");
     await instance.adapter.sendTurn({ threadId: "t-int", text: "go" });
     await recorder.until((e) => e.type === "session.started");
 
     await instance.adapter.interruptTurn("t-int");
     const done = await recorder.until((e) => e.type === "turn.completed");
-    expect(done).toMatchObject({ ok: false, stopReason: "exit_before_result" });
+    expect(done).toMatchObject({ ok: true, stopReason: "cancelled" });
+    expect(recorder.events.some((event) => event.type === "runtime.error")).toBe(false);
   });
 
   it("an exit before result becomes runtime.error + failed turn", async () => {
