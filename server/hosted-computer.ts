@@ -230,6 +230,8 @@ function createArgs(limits: ComputerLimits): string[] {
     // Every port is bound to host loopback. Nothing about the computer is
     // reachable off-box; clients reach it only through the harness proxy.
     ...Object.values(CONTAINER_PORTS).flatMap((p) => ["-p", `127.0.0.1::${p}`]),
+    // Ten sam ekran 16:9, co backend native — obraz ma w ENV 1024x768.
+    "-e", `VNC_RESOLUTION=${process.env.MULTIBOT_COMPUTER_GEOMETRY ?? "1920x1080"}`,
     "--shm-size=1g",
     `--cpus=${limits.cpus}`,
     `--memory=${limits.memory}`,

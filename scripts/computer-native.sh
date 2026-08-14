@@ -21,7 +21,10 @@ DISPLAY_NUM="${MULTIBOT_COMPUTER_DISPLAY:-1}"
 CDP_PORT="${MULTIBOT_COMPUTER_CDP_PORT:-9223}"
 NOVNC_PORT="${MULTIBOT_COMPUTER_NOVNC_PORT:-6901}"
 VNC_PORT="${MULTIBOT_COMPUTER_VNC_PORT:-5901}"
-GEOMETRY="${MULTIBOT_COMPUTER_GEOMETRY:-1024x768}"
+# 16:9 na starcie: panel w przegladarce jest szeroki, a VNC i tak wysyla tylko
+# zmienione fragmenty, wiec wieksza plocha kosztuje glownie przy pelnym
+# przerysowaniu. Zmienisz przez MULTIBOT_COMPUTER_GEOMETRY.
+GEOMETRY="${MULTIBOT_COMPUTER_GEOMETRY:-1920x1080}"
 
 ROOT="${MULTIBOT_COMPUTER_HOME:-$HOME/.multibot-computer}"
 LOG="$ROOT/logs"
@@ -81,8 +84,7 @@ if ! running "$ROOT/chrome"; then
     --no-default-browser-check \
     --remote-debugging-port="$CDP_PORT" \
     --user-data-dir="$ROOT/chrome" \
-    --window-position=40,40 \
-    --window-size=900,620 \
+    --start-maximized \
     about:blank >"$LOG/chrome.log" 2>&1 </dev/null &
 fi
 
