@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Brain, CalendarClock, Check, Loader2, Monitor, Square, Wand2, X } from "lucide-react";
+import { ArrowDown, Brain, CalendarClock, Check, File, Loader2, Monitor, Square, Wand2, X } from "lucide-react";
 import { useStore, formatTime, type Bot, type Message } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
@@ -11,13 +11,54 @@ import { SpeakButton } from "./SpeakButton";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
+import { authFetch } from "@/lib/auth";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
  * bury the conversation; bots get full markdown. */
 const USER_COLLAPSE_CHARS = 600;
 const USER_COLLAPSE_LINES = 8;
 
-function Bubble({ message }: { message: Message }) {
+function MessageAttachment({ botId, file }: { botId: string; file: NonNullable<Message["attachments"]>[number] }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    authFetch(`/api/bots/${botId}/attachments/${file.id}`)
+      .then((response) => response.ok ? response.blob() : Promise.reject())
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [botId, file.id]);
+
+  if (file.mime.startsWith("image/")) {
+    return url ? (
+      <a href={url} download={file.name} className="block">
+        <img src={url} alt={file.name} className="max-h-64 w-auto max-w-full rounded-xl object-contain" />
+      </a>
+    ) : <div className="h-24 w-40 animate-pulse rounded-xl bg-raised" />;
+  }
+  return (
+    <a
+      href={url ?? undefined}
+      download={file.name}
+      aria-disabled={!url}
+      className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2 text-sm text-ink hover:bg-raised-hover"
+    >
+      <File size={16} className="shrink-0 text-ink-secondary" />
+      <span className="min-w-0 flex-1 truncate">{file.name}</span>
+      <span className="shrink-0 text-xs text-ink-secondary">{file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`}</span>
+    </a>
+  );
+}
+
+function Bubble({ botId, message }: { botId: string; message: Message }) {
   const polish = useLanguage() === "pl";
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
@@ -33,6 +74,11 @@ function Bubble({ message }: { message: Message }) {
           user ? "whitespace-pre-wrap bg-bubble-user text-ink" : "bg-card text-ink",
         )}
       >
+        {!!message.attachments?.length && (
+          <div className={cn("flex flex-col gap-2", text && "mb-2")}>
+            {message.attachments.map((file) => <MessageAttachment key={file.id} botId={botId} file={file} />)}
+          </div>
+        )}
         {user ? (
           <>
             <div
@@ -278,7 +324,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               case "screen":
                 return m.png ? <ScreenFrame key={m.id} png={m.png} mime={m.mime} /> : null;
               default:
-                return <Bubble key={m.id} message={m} />;
+                return <Bubble key={m.id} botId={bot.id} message={m} />;
             }
           })}
           {provisioning && (

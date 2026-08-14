@@ -77,7 +77,7 @@ def _emit(event: dict) -> None:
         pass
 
 
-def open(bot_id: str, tool: str, args_preview: str) -> tuple[str, dict]:  # noqa: A001
+def open(bot_id: str, tool: str, args_preview: str, pattern_key: str = "") -> tuple[str, dict]:  # noqa: A001
     """Zarejestruj prośbę i rozgłoś ją. Zwraca `(request_id, event)`."""
     request_id = uuid.uuid4().hex
     event = {
@@ -86,12 +86,14 @@ def open(bot_id: str, tool: str, args_preview: str) -> tuple[str, dict]:  # noqa
         "request_id": request_id,
         "tool": tool,
         "args_preview": args_preview,
+        "pattern_key": pattern_key,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     with _lock:
         _pending[request_id] = {
             "bot_id": bot_id,
             "tool": tool,
+            "pattern_key": pattern_key,
             "signal": threading.Event(),
             "decision": None,
         }
@@ -138,10 +140,21 @@ def resolve(request_id: str, decision: str) -> dict:
     return {"request_id": request_id, "bot_id": entry["bot_id"], "decision": decision}
 
 
+def resolve_bot(bot_id: str, decision: str = "deny") -> int:
+    """Odblokuj wszystkie zgody bota podczas anulowania tury."""
+    with _lock:
+        entries = [entry for entry in _pending.values() if entry["bot_id"] == bot_id]
+        for entry in entries:
+            entry["decision"] = decision
+    for entry in entries:
+        entry["signal"].set()
+    return len(entries)
+
+
 def pending() -> list[dict]:
     """Wiszące prośby — do diagnostyki i testów."""
     with _lock:
         return [
-            {"request_id": rid, "bot_id": e["bot_id"], "tool": e["tool"]}
+            {"request_id": rid, "bot_id": e["bot_id"], "tool": e["tool"], "pattern_key": e.get("pattern_key", "")}
             for rid, e in _pending.items()
         ]

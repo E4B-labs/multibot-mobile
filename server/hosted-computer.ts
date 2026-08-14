@@ -212,16 +212,6 @@ export async function ensureComputer(botId: string, limits = DEFAULT_LIMITS): Pr
   return { botId, state: ready ? "ready" : "provisioning", ports };
 }
 
-/** Current state without trying to start anything — for the panel and watchdog. */
-export async function computerStatus(botId: string): Promise<ComputerStatus> {
-  const running = await inspectRunning(containerName(botId));
-  if (running === null) return { botId, state: "provisioning", detail: "not created yet" };
-  if (!running) return { botId, state: "recovering", detail: "container down" };
-  const ports = await readPorts(botId);
-  if (!ports) return { botId, state: "recovering", detail: "ports unavailable" };
-  return { botId, state: (await probeReady(ports)) ? "ready" : "recovering", ports };
-}
-
 /** Run a command inside the bot's computer. This is the bot's terminal — the
  *  same filesystem the desktop and the browser see. */
 export async function exec(botId: string, command: string, timeoutMs = 60_000): Promise<string> {

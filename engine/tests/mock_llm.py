@@ -44,6 +44,7 @@ app = FastAPI()
 requests_seen: list[dict] = []
 # Decyzje zgód: `{"run_id": ..., "choice": ...}`.
 approvals_seen: list[dict] = []
+stops_seen: list[str] = []
 # Historia per `session_id` — tak jak `hermes_state.db` prawdziwego gatewaya.
 history: dict[str, list[dict]] = {}
 
@@ -57,6 +58,7 @@ def reset() -> None:
     """Wyzeruj stan między testami."""
     requests_seen.clear()
     approvals_seen.clear()
+    stops_seen.clear()
     history.clear()
     _runs.clear()
     scenario("plain")
@@ -134,6 +136,13 @@ async def run_approval(run_id: str, request: Request, profile: str = ""):
     run["choice"] = body.get("choice")
     run["decision"].set()
     return {"object": "hermes.run.approval_response", "run_id": run_id, "resolved": 1}
+
+
+@app.post("/v1/runs/{run_id}/stop")
+@app.post("/p/{profile}/v1/runs/{run_id}/stop")
+async def run_stop(run_id: str, profile: str = ""):
+    stops_seen.append(run_id)
+    return {"run_id": run_id, "status": "stopping"}
 
 
 @app.get("/v1/runs/{run_id}/events")

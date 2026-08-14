@@ -159,6 +159,30 @@ def update(name: str, /, **fields) -> dict | None:
     return view(new_name)
 
 
+def attach_metadata(name: str, key: str, value: dict) -> dict | None:
+    """Merge `value` into frontmatter `metadata.<key>`, body untouched.
+
+    Reuses the frontmatter shape agentskills.io already defines (`metadata:` is
+    documented as "Optional, arbitrary key-value") and that Hermes itself uses
+    for `metadata.hermes.{tags,related_skills}` — a sibling namespace here, not
+    a new mechanism. Used by `teach.synthesize` to stamp which bot's computer a
+    skill was recorded on and when.
+    """
+    skill = view(name)
+    if skill is None:
+        return None
+    md = Path(skill["path"]) / "SKILL.md"
+    fm, body = parse_frontmatter(md.read_text(encoding="utf-8"))
+    metadata = fm.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata[key] = value
+    fm["metadata"] = metadata
+    front = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
+    md.write_text(f"---\n{front}---\n\n{body.strip()}\n", encoding="utf-8")
+    return view(name)
+
+
 def delete(name: str) -> bool:
     skill = view(name)
     if skill is None:

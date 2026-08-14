@@ -1,9 +1,11 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences, utilityProcess } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, session, shell, systemPreferences, utilityProcess } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startCua, stopCua, registerCuaIpc } from "./cua.mjs";
+import { addRemoteHost, getActiveId, listRemoteHosts, removeHost, resolveLoadTarget, setActiveHost } from "./hosts.mjs";
+import { isLocalSender } from "./local-origin.mjs";
 import { startSpeech, stopSpeech } from "./speech.mjs";
 import { startUpdater, registerUpdaterIpc } from "./updater.mjs";
 
@@ -25,6 +27,11 @@ const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 // our API shape, not just a 200).
 let serverProc = null;
 let serverReady = true;
+// multibot (C2): the main window, kept so the host picker and IPC handlers
+// can retarget it without tearing it down. The picker is a separate small
+// window, opened on demand — it never replaces the harness UI window.
+let mainWindow = null;
+let pickerWindow = null;
 // multibot: runtime silnika (Python + Hermes + przeglądarka Playwrighta) NIE
 // jedzie w instalatorze — dociąga go scripts/provision-engine.mjs do userData
 // przy pierwszym starcie. Ten sam układ katalogów zna server/engine/supervisor.ts.
@@ -138,6 +145,33 @@ const ERROR_PAGE =
     `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#070707;color:#fcfcfc;font:15px -apple-system,system-ui"><div style="text-align:center;max-width:360px"><div style="font-size:40px">◈</div><h2 style="font-weight:600;margin:12px 0 6px">Couldn't start the bot server</h2><p style="color:#fcfcfc99;line-height:1.5">Something else is using its ports. Quit and reopen MultiBot — if it keeps happening, restart your device.</p></div></body>`,
   );
 
+// multibot (C2): fragment credential hand-off, same trick as
+// localAccessTokenFragment() below but for a remote host's token instead of
+// the local ~/.openmausbot one. Never reaches HTTP — src/lib/auth.ts's
+// bootstrapLocalAuthToken() reads window.location.hash client-side, stores
+// it, and erases it before first paint.
+function remoteFragment(token) {
+  return token ? `#access_token=${encodeURIComponent(token)}` : "";
+}
+
+/** Decides what `win` should load: a saved remote host, or the existing
+ * local flow (packaged server / dev vite), completely unchanged when no
+ * remote host is active. */
+function loadActiveTarget(win) {
+  const target = resolveLoadTarget();
+  if (target.mode === "remote") {
+    win.loadURL(`${target.url}/${remoteFragment(target.token)}`);
+    return;
+  }
+  if (app.isPackaged) {
+    // Fragment never reaches HTTP. Renderer stores it, then erases URL before
+    // first paint, so fresh packaged installs do not deadlock on login.
+    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}/${localAccessTokenFragment()}` : ERROR_PAGE);
+  } else {
+    win.loadURL(DEV_URL);
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -159,19 +193,69 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  if (app.isPackaged) {
-    // Fragment never reaches HTTP. Renderer stores it, then erases URL before
-    // first paint, so fresh packaged installs do not deadlock on login.
-    win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}/${localAccessTokenFragment()}` : ERROR_PAGE);
-  } else {
-    win.loadURL(DEV_URL);
-  }
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+  loadActiveTarget(win);
   return win;
 }
 
+// multibot (C2): small native window for switching between the local
+// harness and a saved remote host. Separate from the harness UI itself
+// (that's src/components/ territory) — this window only ever shows
+// electron/host-picker.html, never a remote origin.
+function openHostPicker() {
+  if (pickerWindow) {
+    pickerWindow.focus();
+    return;
+  }
+  pickerWindow = new BrowserWindow({
+    width: 480,
+    height: 640,
+    parent: mainWindow ?? undefined,
+    icon: APP_ICON,
+    backgroundColor: "#070707",
+    title: "MultiBot — Host",
+    webPreferences: {
+      contextIsolation: true,
+      preload: path.join(__dirname, "host-picker-preload.cjs"),
+    },
+  });
+  pickerWindow.setMenuBarVisibility(false);
+  void pickerWindow.loadFile(path.join(__dirname, "host-picker.html"));
+  pickerWindow.on("closed", () => {
+    pickerWindow = null;
+  });
+}
+
+// Role-based template: `appMenu`/`editMenu`/`windowMenu` are Electron's
+// built-in menus and already carry the standard items (Copy/Paste/Quit/…) —
+// building a custom menu without them silently breaks clipboard shortcuts,
+// which is why this reuses the roles instead of listing items by hand.
+function buildAppMenu() {
+  const isMac = process.platform === "darwin";
+  const template = [
+    ...(isMac ? [{ role: "appMenu" }] : []),
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    {
+      label: "Host",
+      submenu: [{ label: "Switch Host…", accelerator: "CmdOrCtrl+Shift+H", click: () => openHostPicker() }],
+    },
+    { role: "windowMenu" },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 // "This Mac" screen preview — served from the main process so the Screen
-// Recording permission prompt attributes to the app, never the server
-ipcMain.handle("screen:frame", async () => {
+// Recording permission prompt attributes to the app, never the server.
+// C2 remote mode: the window can show an arbitrary host's page, so this
+// (and speech:start, perm:request-mic below) must refuse anything not from
+// our own local origin — see electron/local-origin.mjs.
+ipcMain.handle("screen:frame", async (event) => {
+  if (!isLocalSender(event)) return null;
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
     thumbnailSize: { width: 1280, height: 800 },
@@ -196,7 +280,8 @@ ipcMain.handle("screen:frame", async () => {
 ipcMain.handle("perm:status", () => ({
   mic: systemPreferences.getMediaAccessStatus?.("microphone") ?? "unknown",
 }));
-ipcMain.handle("perm:request-mic", async () => {
+ipcMain.handle("perm:request-mic", async (event) => {
+  if (!isLocalSender(event)) return false;
   try {
     return await systemPreferences.askForMediaAccess("microphone");
   } catch {
@@ -218,10 +303,30 @@ ipcMain.handle("perm:open-settings", (_event, pane) => {
 });
 
 ipcMain.handle("speech:start", (event) => {
+  if (!isLocalSender(event)) return;
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) startSpeech(win);
 });
 ipcMain.handle("speech:stop", () => stopSpeech());
+
+// multibot (C2): host switching for the picker window (electron/hosts.mjs
+// owns persistence + safeStorage encryption).
+ipcMain.handle("hosts:list", () => ({ activeId: getActiveId(), hosts: listRemoteHosts() }));
+ipcMain.handle("hosts:add-remote", (_event, host) => addRemoteHost(host ?? {}));
+ipcMain.handle("hosts:remove", (_event, id) => removeHost(id));
+ipcMain.handle("hosts:use-local", () => {
+  setActiveHost("local");
+  if (mainWindow) loadActiveTarget(mainWindow);
+});
+ipcMain.handle("hosts:use-host", (_event, id) => {
+  setActiveHost(id);
+  if (mainWindow) loadActiveTarget(mainWindow);
+});
+// Seam: server/firebase-auth.ts has no loopback-capable HTTP route yet (see
+// electron/oauth-loopback.mjs for the reusable receiver, unused until then).
+ipcMain.handle("hosts:begin-browser-login", () => {
+  throw new Error("Browser sign-in isn't available yet — no Firebase project is configured. Paste the access token instead.");
+});
 
 app.whenReady().then(async () => {
   if (SERVER_ONLY) {
@@ -255,6 +360,7 @@ app.whenReady().then(async () => {
     },
     { useSystemPicker: false },
   );
+  buildAppMenu();
   registerCuaIpc();
   registerUpdaterIpc();
   // Start the CUA daemon before the window so the harness can pick up the

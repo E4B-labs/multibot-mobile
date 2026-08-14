@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "MultiBot",
+    "slug": "multibot-mobile",
+    "scheme": "multibot",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#070707",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.openmausbot.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan a QR code to pair with your MultiBot host.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.openmausbot.mobile"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to scan a MultiBot pairing QR code."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-notifications"
+    ]
+  }
+}

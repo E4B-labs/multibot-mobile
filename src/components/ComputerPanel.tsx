@@ -15,6 +15,7 @@ import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { TeachCard } from "./SkillsPanel";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -225,6 +226,16 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           </div>
 
           {controlButton && <div className="mt-3 flex justify-end">{controlButton}</div>}
+
+          <TeachCard
+            engineBotId={`mb-${bot.threadId}`}
+            onSkillCreated={() => {}}
+            polish={polish}
+            computerReady={computerState === "ready"}
+            notReadyLabel={computerStateLabel(computerState, polish)}
+            onStartControl={acquireControl}
+            onStopControl={releaseControl}
+          />
         </div>
       </aside>
 

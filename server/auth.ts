@@ -90,7 +90,13 @@ export function mountAuth(server: Server, getToken: () => string, hasSession: Se
     // A client logging in with Google has no token yet — that is the point of
     // logging in — so the exchange endpoint has to be reachable without one. It
     // does its own verification of the Firebase ID token.
-    const loggingIn = req.method === "POST" && url.pathname === "/api/auth/firebase/session";
+    const loggingIn =
+      req.method === "POST" &&
+      (url.pathname === "/api/auth/firebase/session" ||
+        // C1: a phone claiming a pairing code has no credential yet either —
+        // that is what it is trading the code for. The route rate-limits and
+        // single-uses the code itself.
+        url.pathname === "/api/pair/claim");
     const authed = tokenMatches(requestToken(req), getToken()) || hasSession(req);
     if (!publicRoute && !loggingIn && !internallyAuthenticated && !authed) {
       return unauthorized(res);

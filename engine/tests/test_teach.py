@@ -15,6 +15,8 @@ ZAKAZ C: dane w `tmp_path`, `SLAFY_DATA_DIR`/`HERMES_HOME` przestawione per test
 import asyncio
 import json
 import os
+from datetime import datetime
+from pathlib import Path
 
 os.environ.setdefault("SLAFY_DATA_DIR", r"D:\tmp\slafy-test-data")
 
@@ -224,6 +226,45 @@ def test_synthesize_passes_requested_name(bot, recording, adopted, monkeypatch):
     assert out == {"skill_name": "moj-skill"} and adopted["name"] == "moj-skill"
 
 
+def test_synthesize_uses_edited_steps_over_recording_when_given(bot, recording, adopted, monkeypatch):
+    """H6.4 — użytkownik usuwa krok w UI przed syntezą; wysłana lista wygrywa
+    z tym, co dałoby przeliczenie z pliku nagrania."""
+    seen: dict = {}
+
+    def fake_chat(bot_id, message):
+        seen["message"] = message
+        _put_skill("edited-skill")
+        return {"reply": "ok", "session_id": "s"}
+
+    monkeypatch.setattr(teach.gateway, "chat", fake_chat)
+
+    edited = ['clicked "Login"', 'typed "hello" into search box']  # bez "go"/"again"/navigate
+
+    teach.synthesize(bot, recording, steps=edited)
+
+    assert 'clicked "Login"' in seen["message"]
+    assert 'clicked "go"' not in seen["message"]
+    assert "again" not in seen["message"]
+    assert "navigated" not in seen["message"]
+
+
+def test_synthesize_stamps_source_and_date_metadata(bot, recording, adopted, monkeypatch):
+    """H6.9 — źródło (bot) i data nagrania w `metadata.teach` frontmatteru."""
+    monkeypatch.setattr(
+        teach.gateway,
+        "chat",
+        lambda bot_id, message: (_put_skill("stamped-skill"), {"reply": "ok", "session_id": "s"})[1],
+    )
+
+    teach.synthesize(bot, recording)
+
+    skill = skills.view("stamped-skill")
+    fm, _ = skills.parse_frontmatter(Path(skill["path"], "SKILL.md").read_text(encoding="utf-8"))
+    meta = fm["metadata"]["teach"]
+    assert meta["bot_id"] == bot
+    datetime.fromisoformat(meta["recorded_at"])  # nie rzuca — poprawny ISO 8601
+
+
 def test_synthesize_raises_when_adopt_refuses(bot, recording, monkeypatch):
     """`adopt_skill` odmawia BEZ wyjątku — cicha odmowa zabiłaby #20 po cichu."""
     monkeypatch.setattr(
@@ -275,7 +316,7 @@ def test_rest_teach_flow_broadcasts_states(client, monkeypatch):
     monkeypatch.setattr(app_module.teach, "start", fake_start)
     monkeypatch.setattr(app_module.teach, "stop", fake_stop)
     monkeypatch.setattr(
-        app_module.teach, "synthesize", lambda b, r, n=None: {"skill_name": "book-a-flight"}
+        app_module.teach, "synthesize", lambda b, r, n=None, s=None: {"skill_name": "book-a-flight"}
     )
 
     started = c.post("/api/bots/ala/teach/start")

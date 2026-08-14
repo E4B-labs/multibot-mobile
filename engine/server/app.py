@@ -213,6 +213,9 @@ class TeachStop(BaseModel):
 class TeachSynthesize(BaseModel):
     recording_id: str
     name: str | None = None
+    # H6.4 — transkrypt po edycji w UI (użytkownik usunął krok); gdy brak,
+    # `teach.synthesize` przelicza go z pliku nagrania jak dotąd.
+    steps: list[str] | None = None
 
 
 class PermissionIn(BaseModel):
@@ -1050,7 +1053,7 @@ async def teach_synthesize(bot_id: str, body: TeachSynthesize) -> dict:
     _require(bot_id)
     # `to_thread` jak w czacie: synteza to pełna tura agenta (minuty), a tu jedzie
     # ten sam loop, co WS-y live view.
-    created = await asyncio.to_thread(teach.synthesize, bot_id, body.recording_id, body.name)
+    created = await asyncio.to_thread(teach.synthesize, bot_id, body.recording_id, body.name, body.steps)
     await _broadcast(
         {
             "type": "teach",

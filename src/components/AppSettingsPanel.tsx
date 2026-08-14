@@ -546,7 +546,7 @@ function CustomModels() {
 }
 
 function CommandLineTools() {
-  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean; loginMode?: "stdin" | "device" };
+  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; authenticated?: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean; loginMode?: "stdin" | "device" };
   type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; mode: "stdin" | "device"; error?: string };
   type InstallSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
   const [cli, setCli] = useState<CliRow[]>([]);
@@ -554,6 +554,14 @@ function CommandLineTools() {
   const [installing, setInstalling] = useState<string | null>(null);
   const [installJob, setInstallJob] = useState<InstallSession | null>(null);
   const [login, setLogin] = useState<LoginSession | null>(null);
+  const deviceLogin = (() => {
+    if (login?.mode !== "device") return null;
+    const output = login.output.join("\n").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+    return {
+      url: output.match(/https?:\/\/[^\s<>"']+/)?.[0],
+      code: output.match(/\b[A-Z0-9]{4,}(?:-[A-Z0-9]{4,})+\b/)?.[0],
+    };
+  })();
 
   useEffect(() => {
     void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {});
@@ -599,6 +607,8 @@ function CommandLineTools() {
       const session: LoginSession = { toolId: tool.id, jobId: response.id, output: response.job?.output ?? [], done: false, mode: tool.loginMode ?? "stdin" };
       setLogin(session);
       await followLogin(response.id, tool.id);
+      const refreshed = await api("/api/cli-tools").catch(() => ({ tools: [] }));
+      setCli(refreshed.tools ?? []);
     } catch (error) {
       setLogin((current) => current ? { ...current, done: true, error: error instanceof Error ? error.message : String(error) } : null);
     }
@@ -625,6 +635,7 @@ function CommandLineTools() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let failure: string | undefined;
     for (;;) {
       const part = await reader.read();
       buffer += decoder.decode(part.value ?? new Uint8Array(), { stream: !part.done });
@@ -634,12 +645,14 @@ function CommandLineTools() {
         const line = frame.split("\n").find((item) => item.startsWith("data: "));
         if (!line) continue;
         const event = JSON.parse(line.slice(6)) as { output?: string[]; done: boolean; error?: string };
+        failure = event.error ?? failure;
         setInstallJob((current) => current?.jobId === jobId
           ? { ...current, toolId, output: event.output ?? current.output, done: event.done || Boolean(event.error), error: event.error }
           : current);
       }
       if (part.done) break;
     }
+    return failure;
   };
 
   const install = async (tool: (typeof cli)[number]) => {
@@ -654,7 +667,15 @@ function CommandLineTools() {
         done: response.job?.status !== "running",
         error: response.job?.error,
       });
-      await followInstall(response.id, tool.id);
+      const failure = await followInstall(response.id, tool.id);
+      if (!failure) {
+        const refreshed = await api("/api/cli-tools").catch(() => ({ tools: [] }));
+        setCli(refreshed.tools ?? []);
+        const installedTool = (refreshed.tools ?? []).find((item: CliRow) => item.id === tool.id);
+        if (installedTool?.detected && installedTool.loginAvailable && !installedTool.authenticated) {
+          void startLogin(installedTool);
+        }
+      }
     } catch (error) {
       setInstallJob((current) => current?.toolId === tool.id
         ? { ...current, done: true, error: error instanceof Error ? error.message : String(error) }
@@ -680,7 +701,7 @@ function CommandLineTools() {
               <div className="min-w-0">
                 <div className="truncate text-[13px] text-ink">{item.displayName}</div>
                 <div className="truncate text-[11px] text-ink-secondary">
-                  {item.detected ? `${item.version ?? "Detected"}${item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
+                  {item.detected ? `${item.version ?? "Detected"}${item.authenticated ? " · signed in" : item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -689,7 +710,7 @@ function CommandLineTools() {
                   disabled={installing !== null}
                   className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
                 >{installing === item.id ? "Installing…" : installJob?.toolId === item.id && installJob.error ? "Retry install" : "Install"}</button>}
-                {item.loginAvailable && <button
+                {item.loginAvailable && !item.authenticated && <button
                   onClick={() => void startLogin(item)}
                   disabled={login !== null || !item.detected}
                   className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
@@ -708,8 +729,11 @@ function CommandLineTools() {
                 <div className="mb-1 text-[11px] text-ink-secondary">
                   {installJob.done ? (installJob.error ? "Installation failed." : "Installation finished. Refreshing detection…") : "Installation running; keep this panel open or return later."}
                 </div>
-                <pre className="max-h-36 overflow-auto whitespace-pre-wrap text-[11px] text-ink">{installJob.output.join("\n")}</pre>
                 {installJob.error && <div className="mt-1 text-[11px] text-danger">{installJob.error}</div>}
+                <details className="mt-1 text-[11px] text-ink-secondary">
+                  <summary className="cursor-pointer">Technical details</summary>
+                  <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap text-ink">{installJob.output.join("\n")}</pre>
+                </details>
               </div>
             )}
           </div>
@@ -735,7 +759,29 @@ function CommandLineTools() {
             </div>
             {login.done && <button onClick={closeLogin} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised">Close</button>}
           </div>
-          <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-inset p-3 text-[12px] leading-5 text-ink">{login.output.join("\n") || "Starting sign-in…"}</pre>
+          {login.mode === "device" ? (
+            <div className="mt-4 rounded-xl bg-inset p-4">
+              {deviceLogin?.url ? (
+                <a href={deviceLogin.url} target="_blank" rel="noreferrer" className="block break-all text-[13px] text-accent underline">
+                  {deviceLogin.url}
+                </a>
+              ) : <div className="text-[12px] text-ink-secondary">Preparing secure sign-in link…</div>}
+              {deviceLogin?.code && (
+                <div className="mt-4">
+                  <div className="text-[11px] uppercase tracking-wide text-ink-secondary">One-time code</div>
+                  <div className="mt-1 select-all font-mono text-[24px] font-semibold tracking-wider text-ink">{deviceLogin.code}</div>
+                </div>
+              )}
+              {login.error && (
+                <details className="mt-3 text-[11px] text-ink-secondary">
+                  <summary className="cursor-pointer">Technical details</summary>
+                  <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap text-ink">{login.output.join("\n")}</pre>
+                </details>
+              )}
+            </div>
+          ) : (
+            <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-inset p-3 text-[12px] leading-5 text-ink">{login.output.join("\n") || "Starting sign-in…"}</pre>
+          )}
           {!login.done && (
             <div className="mt-3 flex gap-2">
               {login.mode !== "device" && <input

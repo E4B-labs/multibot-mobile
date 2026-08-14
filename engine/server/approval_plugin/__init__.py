@@ -96,7 +96,8 @@ def pre_tool_call(tool_name: str = "", args=None, **_):
     home = _home()
     if str(_read(home / "bot.json").get("autonomy") or "approval") == "autonomous":
         return None
-    if tool_name in (_read(home / "approvals.json").get("allow") or []):
+    allowed = _read(home / "approvals.json").get("allow") or []
+    if tool_name in allowed or f"plugin_rule:{tool_name}" in allowed:
         return None
     # `rule_key` = nazwa narzędzia: klucz bramki to wtedy `plugin_rule:<tool>`,
     # z czego silnik odczytuje nazwę narzędzia do eventu `approval`.

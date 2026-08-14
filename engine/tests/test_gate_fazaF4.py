@@ -148,13 +148,23 @@ def test_always_writes_the_allowlist_and_stops_the_next_ask(live):
 
     # RESTART SILNIKA = ten sam odczyt z dysku, bez żadnego stanu w pamięci.
     saved = json.loads((profile_dir(BOT) / "approvals.json").read_text(encoding="utf-8"))
-    assert saved == {"allow": [TOOL]}
-    assert permissions.allowlist(BOT) == [TOOL]
+    assert saved == {"allow": [f"plugin_rule:{TOOL}"]}
+    assert permissions.allowlist(BOT) == [f"plugin_rule:{TOOL}"]
 
     # I to naprawdę zamyka pętlę: plugin w gatewayu nie eskaluje już tego
     # narzędzia, więc kolejna tura nie ma o co zapytać.
     os.environ["HERMES_HOME"] = str(profile_dir(BOT))
     assert approval_plugin.pre_tool_call(tool_name=TOOL, args={"command": "ls"}) is None
+
+
+def test_interrupt_stops_active_run_and_unblocks_pending_approval(live):
+    stream = _turn()
+    ask = _drain_until_approval(stream)
+    assert approvals.pending()[0]["request_id"] == ask["request_id"]
+    assert gateway.interrupt(BOT) is True
+    list(stream)
+    assert mock_llm.stops_seen == ["run_mock_0"]
+    assert approvals.pending() == []
 
 
 # --------------------------------------------------------------------------- #
@@ -294,7 +304,7 @@ def test_approval_endpoint_resolves_validates_and_404s(bot):
         request_id, _ = approvals.open(bot, TOOL, "terminal {}")
 
         assert c.get(f"/api/bots/{bot}/approvals").json() == [
-            {"request_id": request_id, "bot_id": bot, "tool": TOOL}
+            {"request_id": request_id, "bot_id": bot, "tool": TOOL, "pattern_key": ""}
         ]
 
         bad = c.post(f"/api/bots/{bot}/approvals/{request_id}", json={"decision": "moze"})

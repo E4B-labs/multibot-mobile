@@ -142,6 +142,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -153,6 +154,8 @@ from server import approvals, bots, computer, permissions, plugins, skills, usag
 from server.bots import data_dir, profile_dir
 
 GATEWAY_URL = os.environ.get("SLAFY_GATEWAY_URL", "http://127.0.0.1:8642")
+_active_runs: dict[str, str] = {}
+_active_runs_lock = threading.Lock()
 
 # Config gatewaya. Nadpisujemy w całości: to plik profilu DOMYŚLNEGO
 # ($SLAFY_DATA_DIR/config.yaml), a configi botów siedzą w profiles/<id>/config.yaml.
@@ -565,21 +568,44 @@ def _run_events(bot_id: str, run_id: str) -> Iterator[dict]:
     koniec), które po prostu pomijamy — one też trzymają połączenie żywe, więc
     read-timeout wystarczy krótszy niż najdłuższa możliwa pauza na zgodę.
     """
-    with httpx.stream(
-        "GET",
-        f"{runs_url(bot_id)}/{run_id}/events",
+    with _active_runs_lock:
+        _active_runs[bot_id] = run_id
+    try:
+        with httpx.stream(
+            "GET",
+            f"{runs_url(bot_id)}/{run_id}/events",
+            headers=_auth(),
+            timeout=httpx.Timeout(30.0, read=120.0),
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                line = line.rstrip("\r")
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    yield json.loads(line[5:].strip())
+                except ValueError:  # ramka nie-JSON = nic, czego umiemy użyć
+                    continue
+    finally:
+        with _active_runs_lock:
+            if _active_runs.get(bot_id) == run_id:
+                _active_runs.pop(bot_id, None)
+
+
+def interrupt(bot_id: str) -> bool:
+    """Zatrzymaj aktywny run Hermesa i odblokuj wiszącą zgodę."""
+    approvals.resolve_bot(bot_id)
+    with _active_runs_lock:
+        run_id = _active_runs.get(bot_id)
+    if not run_id:
+        return False
+    response = httpx.post(
+        f"{runs_url(bot_id)}/{run_id}/stop",
         headers=_auth(),
-        timeout=httpx.Timeout(30.0, read=120.0),
-    ) as response:
-        response.raise_for_status()
-        for line in response.iter_lines():
-            line = line.rstrip("\r")
-            if not line.startswith("data:"):
-                continue
-            try:
-                yield json.loads(line[5:].strip())
-            except ValueError:  # ramka nie-JSON = nic, czego umiemy użyć
-                continue
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return True
 
 
 def _approval(bot_id: str, run_id: str, event: dict) -> Iterator[dict]:
@@ -595,14 +621,25 @@ def _approval(bot_id: str, run_id: str, event: dict) -> Iterator[dict]:
     tool = key[len("plugin_rule:"):] if key.startswith("plugin_rule:") else "terminal"
     preview = str(event.get("description") or event.get("command") or tool)
 
-    request_id, frame = approvals.open(bot_id, tool, preview)
+    remembered_key = key or tool
+    allowed = permissions.allowlist(bot_id)
+    if remembered_key in allowed or tool in allowed:
+        httpx.post(
+            f"{runs_url(bot_id)}/{run_id}/approval",
+            json={"choice": "once"},
+            headers=_auth(),
+            timeout=30.0,
+        ).raise_for_status()
+        return
+
+    request_id, frame = approvals.open(bot_id, tool, preview, key)
     yield frame
     decision = approvals.wait(request_id)
     if decision == "always":
         # Źródłem prawdy jest NASZA allowlista, nie permanentna allowlista
         # Hermesa: plugin sprawdza ją przed eskalacją, więc następnym razem
         # bramka w ogóle się nie odpali. Do Hermesa idzie zwykłe `once`.
-        permissions.always_allow(bot_id, tool)
+        permissions.always_allow(bot_id, remembered_key)
     httpx.post(
         f"{runs_url(bot_id)}/{run_id}/approval",
         json={"choice": "once" if decision in ("allow", "always") else "deny"},

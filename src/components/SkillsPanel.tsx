@@ -117,32 +117,48 @@ function SkillForm({
   );
 }
 
-// Stany nagrywania: idle → recording → stopped (transkrypt czeka) →
-// synthesizing → done. `noBrowser` to podpowiedź po 404 z teach/start.
+// Stany nagrywania: idle → recording → stopped (kroki czekają, usuwalne) →
+// synthesizing → done. `noBrowser` to podpowiedź po 404 z teach/start — komputer
+// jest gotowy, ale jego przeglądarka nie ma jeszcze otwartej karty.
 type TeachState =
   | { phase: "idle"; noBrowser?: boolean }
   | { phase: "starting" }
   | { phase: "recording"; recordingId: string }
   | { phase: "stopping"; recordingId: string }
-  | { phase: "stopped"; recordingId: string; transcript: string }
+  | { phase: "stopped"; recordingId: string; steps: string[] }
   | { phase: "synthesizing" }
   | { phase: "done"; skillName: string };
 
+// H6: mieszka tu (blisko reszty zarządzania skillami), ale renderuje ją panel
+// Computer — nagrywanie dzieje się na ekranie bota, nie na liście skilli.
+// Dlatego bierze gotowość komputera i przejęcie/oddanie leasa (H5) jako propsy
+// zamiast duplikować tamtą logikę.
 export function TeachCard({
   engineBotId,
   onSkillCreated,
+  polish,
+  computerReady,
+  notReadyLabel,
+  onStartControl,
+  onStopControl,
 }: {
   engineBotId: string;
   onSkillCreated: () => void;
+  polish: boolean;
+  computerReady: boolean;
+  notReadyLabel: string;
+  /** H5 lease z ComputerPanel — przejęte automatycznie przy starcie, oddane po stopie. */
+  onStartControl: () => void;
+  onStopControl: () => void;
 }) {
   const [teach, setTeach] = useState<TeachState>({ phase: "idle" });
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  // multibot: deep-link do live view po F5-FE
 
   const start = () => {
     setTeach({ phase: "starting" });
     setError(null);
+    onStartControl(); // H6.3 — użytkownik zaraz zacznie klikać, potrzebuje sterowania
     api(`/api/engine/bots/${engineBotId}/teach/start`, { method: "POST" })
       .then(({ recording_id }: { recording_id: string }) =>
         setTeach({ phase: "recording", recordingId: recording_id }),
@@ -160,25 +176,31 @@ export function TeachCard({
   const stop = (recordingId: string) => {
     setTeach({ phase: "stopping", recordingId });
     setError(null);
+    onStopControl(); // demonstracja skończona — oddaj sterowanie z powrotem
     api(`/api/engine/bots/${engineBotId}/teach/stop`, {
       method: "POST",
       body: JSON.stringify({ recording_id: recordingId }),
     })
-      .then(({ transcript }: { transcript: string }) =>
-        setTeach({ phase: "stopped", recordingId, transcript }),
-      )
+      .then(({ steps }: { steps: string[] }) => setTeach({ phase: "stopped", recordingId, steps }))
       .catch((e: unknown) => {
         setTeach({ phase: "idle" });
         setError(e instanceof Error ? e.message : String(e));
       });
   };
 
-  const synthesize = (recordingId: string) => {
+  const removeStep = (index: number) =>
+    setTeach((t) => (t.phase === "stopped" ? { ...t, steps: t.steps.filter((_, i) => i !== index) } : t));
+
+  const synthesize = (recordingId: string, steps: string[]) => {
     setTeach({ phase: "synthesizing" });
     setError(null);
     api(`/api/engine/bots/${engineBotId}/teach/synthesize`, {
       method: "POST",
-      body: JSON.stringify({ recording_id: recordingId, ...(name.trim() ? { name: name.trim() } : {}) }),
+      body: JSON.stringify({
+        recording_id: recordingId,
+        steps,
+        ...(name.trim() ? { name: name.trim() } : {}),
+      }),
     })
       .then(({ skill_name }: { skill_name: string }) => {
         setTeach({ phase: "done", skillName: skill_name });
@@ -195,33 +217,42 @@ export function TeachCard({
     <div className="mt-3 rounded-xl bg-card p-4">
       <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
         <GraduationCap size={16} className="text-ink-secondary" />
-        Teach a task
+        {polish ? "Nagraj skill" : "Record a skill"}
       </div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Show the bot a task in its browser — it watches your clicks and writes itself a skill.
+        {polish
+          ? "Pokaż botowi zadanie na jego komputerze — obejrzy Twoje kliknięcia i sam napisze sobie skill."
+          : "Show the bot a task on its computer — it watches your clicks and writes itself a skill."}
       </div>
 
-      {teach.phase === "idle" && (
-        <>
-          {teach.noBrowser && (
-            <div className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-              This bot's browser isn't running — teaching records inside it. Ask the bot to open a
-              page first, then start again.
-            </div>
-          )}
-          <button
-            onClick={start}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-          >
-            <Circle size={13} className="text-danger" />
-            Start recording
-          </button>
-        </>
-      )}
+      {teach.phase === "idle" &&
+        (!computerReady ? (
+          <div className="mt-2 rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+            {notReadyLabel}
+          </div>
+        ) : (
+          <>
+            {teach.noBrowser && (
+              <div className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+                {polish
+                  ? "Przeglądarka na komputerze bota nie ma jeszcze otwartej karty — otwórz stronę i spróbuj ponownie."
+                  : "The browser on the bot's computer has no open tab yet — open a page there, then start again."}
+              </div>
+            )}
+            <button
+              onClick={start}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
+            >
+              <Circle size={13} className="text-danger" />
+              {polish ? "Rozpocznij nagrywanie" : "Start recording"}
+            </button>
+          </>
+        ))}
 
       {teach.phase === "starting" && (
         <div className="mt-3 flex items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary">
-          <Loader2 size={14} className="animate-spin" /> Connecting to the browser…
+          <Loader2 size={14} className="animate-spin" />
+          {polish ? "Łączenie z komputerem…" : "Connecting to the computer…"}
         </div>
       )}
 
@@ -229,7 +260,9 @@ export function TeachCard({
         <>
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink">
             <span className="size-2 animate-pulse rounded-full bg-danger" />
-            Recording — demonstrate the task in the bot's browser
+            {polish
+              ? "Nagrywanie — pokaż zadanie na komputerze bota"
+              : "Recording — demonstrate the task on the bot's computer"}
           </div>
           <button
             onClick={() => stop(teach.recordingId)}
@@ -241,37 +274,61 @@ export function TeachCard({
             ) : (
               <Square size={12} className="fill-current" />
             )}
-            Stop recording
+            {polish ? "Zatrzymaj nagrywanie" : "Stop recording"}
           </button>
         </>
       )}
 
       {teach.phase === "stopped" && (
         <>
-          <div className="mb-1.5 mt-3 text-[13px] text-ink-secondary">What the bot saw</div>
-          <pre className="max-h-[140px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-inset p-3 text-[12px] leading-relaxed text-ink">
-            {teach.transcript || "No steps recorded"}
-          </pre>
+          <div className="mb-1.5 mt-3 text-[13px] text-ink-secondary">
+            {polish ? "Co zobaczył bot" : "What the bot saw"}
+          </div>
+          {teach.steps.length === 0 ? (
+            <div className="rounded-lg bg-inset p-3 text-[12px] text-ink-secondary">
+              {polish ? "Brak zarejestrowanych kroków" : "No steps recorded"}
+            </div>
+          ) : (
+            <ul className="max-h-[160px] overflow-y-auto rounded-lg bg-inset p-1">
+              {teach.steps.map((step, i) => (
+                <li
+                  key={i}
+                  className="flex items-start justify-between gap-2 rounded-md px-2 py-1.5 text-[12px] leading-relaxed text-ink hover:bg-raised"
+                >
+                  <span className="min-w-0 flex-1 break-words">{step}</span>
+                  <button
+                    onClick={() => removeStep(i)}
+                    className="shrink-0 rounded p-0.5 text-ink-secondary hover:text-danger"
+                    title={polish ? "Usuń krok" : "Delete step"}
+                  >
+                    <X size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <input
             className={cn(inputCls, "mt-2")}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Skill name (optional — the bot picks one)"
+            placeholder={
+              polish ? "Nazwa skilla (opcjonalnie — bot sam wybierze)" : "Skill name (optional — the bot picks one)"
+            }
           />
           <div className="mt-2 flex gap-2">
             <button
-              onClick={() => synthesize(teach.recordingId)}
-              disabled={!teach.transcript}
+              onClick={() => synthesize(teach.recordingId, teach.steps)}
+              disabled={teach.steps.length === 0}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Wand2 size={13} />
-              Create skill
+              {polish ? "Utwórz skill" : "Create skill"}
             </button>
             <button
               onClick={() => setTeach({ phase: "idle" })}
               className="rounded-lg bg-raised px-4 py-2 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
             >
-              Discard
+              {polish ? "Odrzuć" : "Discard"}
             </button>
           </div>
         </>
@@ -279,21 +336,24 @@ export function TeachCard({
 
       {teach.phase === "synthesizing" && (
         <div className="mt-3 flex items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary">
-          <Loader2 size={14} className="animate-spin" /> The bot is writing the skill — this can
-          take a few minutes…
+          <Loader2 size={14} className="animate-spin" />
+          {polish
+            ? "Bot pisze skill — to może potrwać kilka minut…"
+            : "The bot is writing the skill — this can take a few minutes…"}
         </div>
       )}
 
       {teach.phase === "done" && (
         <>
           <div className="mt-3 text-[13px] text-success">
-            Skill created: <span className="font-medium">{teach.skillName}</span>
+            {polish ? "Utworzono skill: " : "Skill created: "}
+            <span className="font-medium">{teach.skillName}</span>
           </div>
           <button
             onClick={() => setTeach({ phase: "idle" })}
             className="mt-2 w-full rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
           >
-            Teach another
+            {polish ? "Nagraj kolejny" : "Record another"}
           </button>
         </>
       )}

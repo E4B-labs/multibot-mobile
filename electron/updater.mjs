@@ -10,6 +10,8 @@
 import { app, ipcMain } from "electron";
 import { createRequire } from "node:module";
 
+import { isLocalSender } from "./local-origin.mjs";
+
 const require = createRequire(import.meta.url);
 
 let autoUpdater = null;
@@ -38,14 +40,19 @@ function check() {
 export function registerUpdaterIpc() {
   ipcMain.handle("update:get-state", () => state);
   ipcMain.handle("update:check", () => check());
-  ipcMain.handle("update:download", () => {
+  // C2 remote mode: the window can show an arbitrary host's page — it must
+  // not be able to trigger a download or install of a binary update just by
+  // being loaded (see electron/local-origin.mjs).
+  ipcMain.handle("update:download", (event) => {
+    if (!isLocalSender(event)) return;
     try {
       autoUpdater?.downloadUpdate();
     } catch (e) {
       setState({ status: "error", message: String(e?.message ?? e) });
     }
   });
-  ipcMain.handle("update:install", () => {
+  ipcMain.handle("update:install", (event) => {
+    if (!isLocalSender(event)) return;
     // isSilent, isForceRunAfter — relaunch straight into the new version
     try {
       autoUpdater?.quitAndInstall(true, true);

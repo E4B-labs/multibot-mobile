@@ -4,6 +4,80 @@
 > `PLAN-CLIENTS.md` (runda C). Odwołania `plik:linia` zweryfikowane wobec
 > stanu repo z 14 sierpnia 2026 — nie wobec pamięci autora planu.
 
+## Stan wykonania (14 sierpnia 2026)
+
+Plan wykonany w jednej sesji. Testy: **vitest 268 passed / 3 skipped**,
+**pytest 291 passed / 2 skipped**, `tsc -b` i `tsc -p tsconfig.server.json`
+czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
+`node scripts/selfhost-check.mjs` OK.
+
+| Faza | Stan | Uwagi |
+|---|---|---|
+| H0 | zrobione | Obraz przypięty digestem; trzy niespodzianki niżej |
+| H1 | zrobione | Wybór źródła usunięty, brak stanu `off`, komputer ginie z botem |
+| H2 | zrobione | `server/hosted-computer.ts`; gate zweryfikowany na dwóch realnych kontenerach |
+| H3 | zrobione | Claude, Codex, ACP i Slafy montują TEN SAM komputer |
+| H4 | zrobione | Ekran przez proxy harnessu; port kontenera nie trafia do klienta |
+| H5 | zrobione | Lease sterowania, `user_has_control` zamiast błędu narzędzia |
+| H6 | zrobione, z jedną luką | Redakcja sekretów + kasowanie kroków; **capture na poziomie pulpitu odłożone** |
+| R1 | zrobione | Cztery presety, edycja rozpoznaje harmonogram, daty przez `Intl` |
+| A1 | kod gotowy | Działa dopiero po podaniu projektu Firebase |
+| C1 | kod gotowy, niezbudowany | Expo — brak konta i urządzenia; parowanie QR działa po stronie serwera |
+| C2 | kod gotowy, niezbudowany | Electron rozszerzony o zdalny host |
+| Q | częściowo | Testy automatyczne zielone; testy z realnymi modelami wymagają kluczy |
+
+### Czego H0 nie przewidział, a co zmieniło projekt
+
+1. **Obraz `trycua/cua-xfce` ma firefoxa, nie chromium.** Cały stos przeglądarki
+   silnika (`computer.py`, `computer_mcp.py`, `teach.py`) stoi na CDP, którego
+   firefox nie mówi — przejście na niego oznaczałoby przepisanie trzech
+   modułów. Zamiast tego `Dockerfile.computer` dokłada Chrome cienką warstwą
+   nad przypiętym digestem, więc cały istniejący kod działa bez zmian.
+2. **Chrome ≥ 111 ignoruje `--remote-debugging-address`** i pinuje CDP do
+   loopbacka kontenera, gdzie forwarder Dockera go nie widzi. `socat` mostkuje
+   9222 na 9223 wewnątrz kontenera; host publikuje tylko 127.0.0.1.
+3. **Port hosta zmienia się po każdym restarcie kontenera** (zmierzone:
+   32770 → 32773 → 32830). Manager odczytuje go przez `docker port` przy każdym
+   użyciu i nigdy nie zapamiętuje.
+4. **WSL usypia i SIGTERMuje wszystkie kontenery**, gdy żadna sesja go nie
+   trzyma. Wracają wyłącznie te z polityką restartu, więc
+   `--restart unless-stopped` jest wymagane, nie kosmetyczne.
+5. **Testy tworzyły PRAWDZIWE kontenery.** Suite startuje harness jako
+   podproces, więc pierwszy przebieg zostawił 11 żywych kontenerów i wyczerpał
+   zakres portów, na których wiążą się inne testy. Testy deklarują teraz
+   `MULTIBOT_COMPUTER=off`.
+6. **Ekran nie przechodził bramki auth.** `<iframe>` nie doda nagłówka
+   `Authorization`, a websockify nie zna naszego subprotokołu — panel dostawał
+   401 i funkcja nie działała wcale. Klient wymienia raz token na sesję cookie
+   (`POST /api/auth/session`); wymiana wymaga tokena, więc bramka nie jest
+   szersza.
+7. **`localComputer` konsumował tylko `claude.ts`.** Codex montował w
+   `mcp_servers` sam `agents`, ACP tak samo — dwa z czterech driverów z
+   Definition of Done nie miały czym dotknąć pulpitu. Oba zostały doposażone.
+
+### Co wymaga Ciebie, zanim to ruszy
+
+- **Zbudować obraz komputera:** `docker build -f Dockerfile.computer -t multibot-computer:dev .`
+  (na Windows przez WSL). Bez niego panel pokaże `Computer error`.
+- **Firebase (A1):** własny projekt, `projectId` w configu, OAuth clients dla
+  web/Expo/Electron. Do tego czasu logowanie Google jest bezczynne, a działa
+  token dostępowy.
+- **Expo (C1):** `npm install` **wewnątrz `clients/mobile/`** (nigdy w korzeniu),
+  potem `npx expo install --fix` — wersje zależności są ustawione ręcznie i
+  nierozwiązane wobec rejestru. Kamera i SecureStore wymagają urządzenia.
+- **Testy providerów (Q):** cztery drivery × screenshot/click/type/terminal
+  wymagają realnych kluczy API.
+
+### Świadome luki
+
+- **Capture na poziomie pulpitu w Record a skill.** Recorder jedzie przez CDP,
+  który widzi wyłącznie wnętrze strony. Nagrywanie zdarzeń XFCE (okna, aplikacje,
+  drzewo dostępności) wymaga osobnego kanału, którego w tym repo nie ma. Zamiast
+  udawać go współrzędnymi, nagrywanie działa dobrze na poziomie przeglądarki, a
+  reszta jest zapisana jako luka.
+- **Sterowanie fizycznym pulpitem hosta, Cloud Computer, Shared Computer,
+  Windows VM** — odłożone zgodnie z planem.
+
 ## Docelowa decyzja
 
 Jeden pełny **Komputer bota**, uruchamiany automatycznie na urządzeniu
@@ -649,8 +723,8 @@ pnpm test
 pnpm typecheck
 pnpm build
 pnpm build:server
-pnpm check:electron
-engine\.venv\Scripts\python.exe -m pytest
+node scripts/selfhost-check.mjs
+cd engine && .venv\Scripts\python.exe -m pytest tests
 ```
 
 ---

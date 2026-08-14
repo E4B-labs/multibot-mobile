@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -224,12 +225,17 @@ async def start(bot_id: str) -> dict:
 
 
 async def stop(bot_id: str, recording_id: str) -> dict:
-    """Odepnij rekorder i oddaj zdarzenia + transkrypt NL."""
+    """Odepnij rekorder i oddaj zdarzenia + transkrypt NL (całość i po krokach).
+
+    `steps` to ta sama treść co `transcript`, ale jako lista — UI H6 pozwala
+    użytkownikowi usunąć pojedynczy krok przed syntezą (prywatność: źle wpisany
+    sekret w niejawnym polu przechodzi redakcję JS tylko heurystycznie).
+    """
     recorder = _recorders.pop(bot_id, None)
     if recorder is not None:
         await recorder.close()
     events = _load(recording_id)
-    return {"events": events, "transcript": transcript(events)}
+    return {"events": events, "transcript": transcript(events), "steps": steps(events)}
 
 
 def _label(event: dict) -> str:
@@ -259,11 +265,11 @@ def _line(event: dict) -> str:
     return f'clicked "{_label(event)}"'
 
 
-def transcript(events: list[dict]) -> str:
-    """Jedna linia na zdarzenie, w kolejności nagrania.
+def _merge(events: list[dict]) -> list[dict]:
+    """Scal kolejne `input` w to samo pole w jedno zdarzenie (ostatnia wartość).
 
-    Pisanie w pole daje `input` na KAŻDY znak — kolejne wpisy w to samo pole
-    scalamy w jedno (ostatnia wartość), inaczej „hello" byłoby pięcioma krokami.
+    Pisanie w pole daje `input` na KAŻDY znak — bez scalania „hello" byłoby
+    pięcioma krokami.
     """
     merged: list[dict] = []
     for event in events:
@@ -277,19 +283,34 @@ def transcript(events: list[dict]) -> str:
             merged[-1] = event
         else:
             merged.append(event)
-    return "\n".join(_line(event) for event in merged)
+    return merged
 
 
-def synthesize(bot_id: str, recording_id: str, name: str | None = None) -> dict:
+def steps(events: list[dict]) -> list[str]:
+    """Jedna linia na krok, w kolejności nagrania — to, co UI pokazuje jako
+    usuwalną listę przed syntezą."""
+    return [_line(event) for event in _merge(events)]
+
+
+def transcript(events: list[dict]) -> str:
+    """`steps()` sklejone w jeden blok — to, co dziś ląduje w prompcie syntezy."""
+    return "\n".join(steps(events))
+
+
+def synthesize(bot_id: str, recording_id: str, name: str | None = None, steps: list[str] | None = None) -> dict:
     """Transkrypt → prompt → skill napisany przez bota. Zwraca nazwę skilla.
+
+    `steps`, gdy podane, to transkrypt PO edycji w UI (użytkownik usunął krok
+    przed syntezą) — bierze pierwszeństwo nad przeliczeniem z pliku nagrania.
 
     Nazwę bierzemy ze STANU KATALOGU, nie z odpowiedzi modelu: bot potrafi napisać
     „gotowe!" i tyle. Nowy skill = różnica listingu sprzed i po turze; brak nowego
     (i brak żądanej nazwy) = KeyError, czyli 404 z tekstem w body.
     """
     before = {skill["name"] for skill in skills.list()}
+    text = "\n".join(steps) if steps is not None else transcript(_load(recording_id))
     prompt = _PROMPT.format(
-        transcript=transcript(_load(recording_id)),
+        transcript=text,
         name=f" i nazwij go `{name}`" if name else "",
     )
     gateway.chat(bot_id, prompt)
@@ -307,4 +328,10 @@ def synthesize(bot_id: str, recording_id: str, name: str | None = None) -> dict:
         # ostrzega pułapka 1: skill by istniał, a #20 byłoby martwe i nikt by nie
         # wiedział. Krzyczymy.
         raise RuntimeError(f"skill {found} powstał, ale adopt odmówił: {why}")
+    # H6.9 — źródło (który bot/komputer) i data nagrania w metadanych skilla, w
+    # kształcie, który agentskills.io już zna (`metadata:` — dowolny klucz;
+    # Hermes tak samo trzyma tam `metadata.hermes.{tags,related_skills}`).
+    skills.attach_metadata(
+        found, "teach", {"bot_id": bot_id, "recorded_at": datetime.now(timezone.utc).isoformat()}
+    )
     return {"skill_name": found}

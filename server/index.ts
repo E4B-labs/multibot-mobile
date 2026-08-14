@@ -49,6 +49,7 @@ import {
   removeComputer,
 } from "./hosted-computer.ts";
 import * as computerControl from "./computer-control.ts";
+import { claimPairing, pairingPending, startPairing } from "./pairing.ts";
 import { matchVncRoute, mountVncUpgrade, proxyVncHttp } from "./computer-vnc-proxy.ts";
 import { mountEngineProxy } from "./engine/proxy.ts";
 import { EventBus } from "./harness/bus.ts";
@@ -1600,6 +1601,29 @@ const server = createServer(async (req, res) => {
       res.setHeader("cache-control", "no-store");
       return json(res, 200, { token: cfg.auth!.token });
     }
+    // ── multibot (C1): parowanie telefonu kodem z QR ───────────────────
+    // `start` wymaga tokena (robi to zalogowany pulpit), `claim` NIE MOŻE —
+    // telefon dopiero się przedstawia. Bezpieczeństwo krótkiego kodu stoi na
+    // wygasaniu, jednorazowości i limicie prób (server/pairing.ts).
+    if (method === "POST" && path === "/api/pair/start") {
+      const { code, expiresAt } = startPairing();
+      return json(res, 200, { code, expiresAt, url: `http://${HOST}:${PORT}` });
+    }
+    if (method === "GET" && path === "/api/pair") {
+      return json(res, 200, { pending: pairingPending() });
+    }
+    if (method === "POST" && path === "/api/pair/claim") {
+      const body = await readBody(req).catch(() => ({}));
+      const result = claimPairing(body?.code);
+      // Jeden komunikat na każdą porażkę — rozróżnianie "zły kod" od "kod
+      // wygasł" mówiłoby zgadującemu, czy trafił w okno.
+      if (!result.ok) return json(res, 401, { error: "pairing failed" });
+      const sessionId = createDeviceSession("paired-device", String(body?.deviceName ?? body?.label ?? "phone"));
+      res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+      res.setHeader("cache-control", "no-store");
+      return json(res, 200, { ok: true, token: cfg.auth!.token! });
+    }
+
     // ── multibot (H4): sesja przeglądarki dla ekranu komputera ─────────
     // Ekran to <iframe> z noVNC, a nawigacja iframe'a NIE MOŻE dołożyć nagłówka
     // Authorization; websockify też nie zna naszego subprotokołu. Cookie jest

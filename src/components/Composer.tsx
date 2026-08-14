@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, Plus, Mic, Square, Wand2 } from "lucide-react";
+import { Brain, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Square, Wand2, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -37,6 +37,17 @@ interface SlashSkill {
   description: string;
 }
 
+interface PendingAttachment {
+  id: string;
+  file: File;
+  preview?: string;
+  status: "ready" | "uploading" | "error";
+}
+
+const fileSize = (size: number) => size >= 1024 * 1024
+  ? `${(size / 1024 / 1024).toFixed(1)} MB`
+  : `${Math.max(1, Math.round(size / 1024))} KB`;
+
 type ReasoningLevel = "default" | "low" | "medium" | "high" | "xhigh" | "max";
 const REASONING_LEVELS: Array<{ id: ReasoningLevel; label: string }> = [
   { id: "low", label: "Low" },
@@ -49,9 +60,8 @@ const REASONING_LEVELS: Array<{ id: ReasoningLevel; label: string }> = [
 function reasoningLevels(model: string) {
   // Claude Code does not expose adaptive effort for Haiku; leave provider
   // default intact instead of sending an unsupported value.
-  return model.toLowerCase().includes("haiku")
-    ? [{ id: "default" as const, label: "Default" }]
-    : REASONING_LEVELS;
+  if (model.toLowerCase().includes("haiku")) return [{ id: "default" as const, label: "Default" }];
+  return model.startsWith("gpt-5.6-") ? REASONING_LEVELS : REASONING_LEVELS.filter((level) => level.id !== "max");
 }
 
 export function Composer({ bot }: { bot: Bot }) {
@@ -59,12 +69,20 @@ export function Composer({ bot }: { bot: Bot }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [reasoning, setReasoning] = useState<ReasoningLevel>("low");
   const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc'd this @
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
+  const previewUrls = useRef(new Set<string>());
   // what was typed before the mic went on — partials append after it
   const baseText = useRef("");
 
@@ -210,16 +228,84 @@ export function Composer({ bot }: { bot: Bot }) {
     setReasoningOpen(false);
   }, [bot.modelSelection.model]);
 
-  const send = () => {
-    if (!text.trim() || bot.busy) return;
-    dispatch({
-      type: "send",
-      botId: bot.id,
-      text: text.trim(),
-      ...(reasoning !== "default" ? { reasoning } : {}),
-    });
-    track("message_sent", { driver: bot.modelSelection?.instanceId });
-    setText("");
+  useEffect(() => {
+    if (!attachOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAttachOpen(false);
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [attachOpen]);
+
+  useEffect(() => () => {
+    for (const url of previewUrls.current) URL.revokeObjectURL(url);
+  }, []);
+
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    setAttachmentError(null);
+    const incoming = [...list];
+    if (attachments.length + incoming.length > 10) {
+      setAttachmentError("Maximum 10 attachments per message.");
+      return;
+    }
+    const tooLarge = incoming.find((file) => file.size > (file.type.startsWith("image/") ? 8 : 25) * 1024 * 1024);
+    if (tooLarge) {
+      setAttachmentError(`${tooLarge.name} exceeds ${tooLarge.type.startsWith("image/") ? 8 : 25} MB limit.`);
+      return;
+    }
+    setAttachments((current) => [...current, ...incoming.map((file) => {
+      const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      if (preview) previewUrls.current.add(preview);
+      return { id: crypto.randomUUID(), file, preview, status: "ready" as const };
+    })]);
+    setAttachOpen(false);
+  };
+
+  const removeAttachment = (id: string) => setAttachments((current) => current.filter((item) => {
+    if (item.id === id && item.preview) {
+      URL.revokeObjectURL(item.preview);
+      previewUrls.current.delete(item.preview);
+    }
+    return item.id !== id;
+  }));
+
+  const send = async () => {
+    if ((!text.trim() && !attachments.length) || bot.busy || uploading) return;
+    setUploading(true);
+    setAttachmentError(null);
+    try {
+      const attachmentIds = await Promise.all(attachments.map(async (item) => {
+        setAttachments((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, status: "uploading" } : candidate));
+        const response = await authFetch(`/api/bots/${bot.id}/attachments`, {
+          method: "POST",
+          headers: {
+            "content-type": item.file.type || "application/octet-stream",
+            "x-file-name": encodeURIComponent(item.file.name),
+          },
+          body: item.file,
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? `Upload failed (HTTP ${response.status})`);
+        return String((await response.json()).id);
+      }));
+      dispatch({
+        type: "send",
+        botId: bot.id,
+        text: text.trim(),
+        attachmentIds,
+        ...(reasoning !== "default" ? { reasoning } : {}),
+      });
+      track("message_sent", { driver: bot.modelSelection?.instanceId });
+      setText("");
+      for (const item of attachments) if (item.preview) URL.revokeObjectURL(item.preview);
+      previewUrls.current.clear();
+      setAttachments([]);
+    } catch (error) {
+      setAttachments((current) => current.map((item) => item.status === "uploading" ? { ...item, status: "error" } : item));
+      setAttachmentError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUploading(false);
+    }
   };
 
   // native dictation: partials stream into the input while the Swift
@@ -287,7 +373,15 @@ export function Composer({ bot }: { bot: Bot }) {
           {speechError}
         </div>
       )}
+      {attachmentError && (
+        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+          {attachmentError}
+        </div>
+      )}
       <div className="relative mx-auto max-w-[900px]">
+        <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker skilli po "/", ten sam dropdown co @mention */}
         {slashOpen && (
           <div className="absolute bottom-full left-10 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg">
@@ -333,9 +427,46 @@ export function Composer({ bot }: { bot: Bot }) {
             ))}
           </div>
         )}
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2" aria-label="Attachments ready to send">
+            {attachments.map((item) => (
+              <div key={item.id} className="flex max-w-64 items-center gap-2 rounded-xl border border-hairline/40 bg-raised px-2 py-1.5 text-xs text-ink">
+                {item.preview ? <img src={item.preview} alt="" className="size-9 rounded-lg object-cover" /> : <FileIcon size={18} className="shrink-0 text-ink-secondary" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{item.file.name}</span>
+                  <span className="text-ink-secondary">{fileSize(item.file.size)}</span>
+                </span>
+                {item.status === "uploading" ? <Loader2 size={14} className="animate-spin text-ink-secondary" /> : (
+                  <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`} className="rounded-full p-1 text-ink-secondary hover:bg-raised-hover hover:text-ink">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {attachOpen && (
+          <div id="attachment-menu" className="absolute bottom-full left-0 z-30 mb-2 min-w-44 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl" role="menu">
+            {[
+              { label: "Camera", icon: Camera, action: () => cameraRef.current?.click() },
+              { label: "Photos", icon: Images, action: () => photosRef.current?.click() },
+              { label: "Files", icon: FileIcon, action: () => filesRef.current?.click() },
+            ].map(({ label, icon: Icon, action }) => (
+              <button key={label} type="button" role="menuitem" onClick={action} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-raised">
+                <Icon size={16} className="text-ink-secondary" /> {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-hairline/40 bg-raised/60 py-2 pl-2 pr-2">
         <button
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink"
+          type="button"
+          onClick={() => setAttachOpen((open) => !open)}
+          aria-expanded={attachOpen}
+          aria-haspopup="menu"
+          aria-controls="attachment-menu"
+          disabled={bot.busy || uploading}
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           title="Attach"
         >
           <Plus size={20} />
@@ -390,7 +521,8 @@ export function Composer({ bot }: { bot: Bot }) {
                 return;
               }
             }
-            if (e.key === "Enter") send();
+            if (e.key === "Enter") void send();
+            if (e.key === "Escape" && attachOpen) setAttachOpen(false);
             if (e.key === "Escape" && recording) setRecording(false);
           }}
           placeholder={
