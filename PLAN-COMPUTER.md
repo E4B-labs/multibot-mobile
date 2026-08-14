@@ -18,7 +18,7 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 | H2 | zrobione | `server/hosted-computer.ts`; gate zweryfikowany na dwóch realnych kontenerach |
 | H3 | zrobione | Claude, Codex, ACP i Slafy montują TEN SAM komputer |
 | H4 | zrobione, zweryfikowane na żywo | Ekran przez proxy; handshake `RFB 003.008` przeszedł end-to-end na samym cookie |
-| H5 | zrobione | Lease sterowania, `user_has_control` zamiast błędu narzędzia |
+| H5 | zrobione (weryfikacja do poziomu API) | Lease i `user_has_control`; kliknięcia w wyrenderowanym panelu nikt nie sprawdził — brak przeglądarki w sesji |
 | H6 | zrobione, z jedną luką | Redakcja sekretów + kasowanie kroków; **capture na poziomie pulpitu odłożone** |
 | R1 | zrobione | Cztery presety, edycja rozpoznaje harmonogram, daty przez `Intl` |
 | A1 | kod gotowy | Działa dopiero po podaniu projektu Firebase |
