@@ -91,6 +91,50 @@ def test_recorder_js_selector_preference_order():
     assert order == sorted(order)
 
 
+def test_recorder_js_redacts_password_at_source_before_disk_and_transcript(bot):
+    """Hasło nie może opuścić przeglądarki — redakcja siedzi w injectowanym JS,
+    a realnego CDP tu nie ma (gate fazy 9, Task 4 sprawdza to na żywym Chromium).
+    Dwie sekcje na dwóch osiągalnych bez Chromium szwach:
+
+    1. ŹRÓDŁO (string JS): `input` już NIE wysyła gołego `e.target.value` (to
+       była dziura), jest helper zwracający dokładnie "[REDACTED]" dla
+       type=password / name|id|autocomplete|aria-label / autocomplete płatniczy.
+    2. DALSZY PRZEPŁYW (plik nagrania → `stop` → transkrypt): kładziemy na dysk
+       DOKŁADNIE to, co ten JS by wysłał dla pola hasła — czyli już "[REDACTED]",
+       nigdy prawdziwy sekret — i pilnujemy, że tak zredagowana wartość faktycznie
+       dociera bez zmian do `events` i do linii transkryptu. Asercje
+       `secret not in ...` są tu dokumentacją intencji, nie testem z zębami
+       (sekret nigdy fizycznie nie wchodzi do pipeline'u w tym procesie Python) —
+       zęby ma sekcja 1 (`"e.target.value" not in js`) i asercja o treści linii
+       transkryptu niżej.
+    """
+    js = teach._RECORDER_JS
+    assert "e.target.value" not in js  # była tu dziura: goła wartość leciała do send()
+    assert '"[REDACTED]"' in js
+    assert "value: value(e.target)" in js
+    for hint in ("password", "token", "secret", "apikey", "cvv", "cvc", "ssn", "current-password", "cc-number"):
+        assert hint in js
+
+    secret = "hunter2-super-secret"  # nigdy nie trafia do żadnego z poniższych — patrz docstring
+    events = [
+        {"type": "click", "selector": "text=Login", "text": "Login", "ts": 1.0},
+        {"type": "input", "selector": '[name="password"]', "value": "[REDACTED]", "ts": 2.0},
+        {"type": "submit", "selector": "text=Login", "ts": 3.0},
+    ]
+    rid = "rec-secret"
+    path = teach._path(rid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(events), encoding="utf-8")
+
+    out = asyncio.run(teach.stop(bot, rid))
+
+    assert secret not in json.dumps(out["events"])
+    assert secret not in out["transcript"]
+    assert secret not in path.read_text(encoding="utf-8")  # to samo, co siedzi na dysku (`_flush`)
+    assert '"[REDACTED]"' in path.read_text(encoding="utf-8")
+    assert 'typed "[REDACTED]" into' in out["transcript"]
+
+
 # --------------------------------------------------------------------------- #
 # transkrypt
 # --------------------------------------------------------------------------- #

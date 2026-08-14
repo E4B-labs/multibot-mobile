@@ -87,6 +87,16 @@ _RECORDER_JS = """(() => {
     return "";
   };
   const label = (el) => ((el && el.innerText) || "").trim().slice(0, 80);
+  const SENSITIVE = /password|passwd|token|secret|apikey|api-key|api_key|card|cardnumber|cvv|cvc|ssn|pin/;
+  const value = (el) => {
+    const type = ((el && el.type) || "").toLowerCase();
+    const auto = ((el && el.autocomplete) || "").toLowerCase();
+    const hay = [el && el.name, el && el.id, auto, el && el.getAttribute && el.getAttribute("aria-label")]
+      .join(" ").toLowerCase();
+    const secret = type === "password" ||
+      ["current-password", "new-password", "cc-number", "cc-csc"].includes(auto) || SENSITIVE.test(hay);
+    return secret ? "[REDACTED]" : ((el && el.value) || "");
+  };
   const send = (type, el, extra) => {
     try {
       window.slafyTeach(JSON.stringify(Object.assign(
@@ -94,7 +104,7 @@ _RECORDER_JS = """(() => {
     } catch (err) {}
   };
   document.addEventListener("click", (e) => send("click", e.target, { text: label(e.target) }), true);
-  document.addEventListener("input", (e) => send("input", e.target, { value: (e.target && e.target.value) || "" }), true);
+  document.addEventListener("input", (e) => send("input", e.target, { value: value(e.target) }), true);
   document.addEventListener("submit", (e) => send("submit", e.target, {}), true);
 })();"""
 
