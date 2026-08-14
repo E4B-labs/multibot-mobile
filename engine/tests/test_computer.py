@@ -367,6 +367,25 @@ def test_http_input_types_and_clicks(client, page):
     assert page.wait_for("document.title === 'clicked'") is True
 
 
+def test_agent_mouse_draws_a_visible_cursor(client, page):
+    """`Input.dispatchMouseEvent` nie rusza wskaznikiem X11, wiec na ekranie VNC
+    nie bylo widac, gdzie bot celuje. Wejscie myszy rysuje wiec kursor w stronie."""
+    client.post(
+        f"/api/bots/{_BOT}/computer/input",
+        json={"events": [{"kind": "mouse", "type": "mouseMoved", "x": 120, "y": 90}]},
+    )
+    assert page.wait_for("document.getElementById('__multibot_cursor__') !== null") is True
+    assert page.wait_for(
+        "document.getElementById('__multibot_cursor__').style.transform === 'translate(120px, 90px)'"
+    ) is True
+    # Strony z Trusted Types (YouTube) rzucaja na `innerHTML`
+    # "This document requires 'TrustedHTML' assignment" — kursor musi powstawac
+    # bez niego, a testowa strona tej polityki nie ma, wiec pilnujemy jej tutaj.
+    from server import computer as _computer
+
+    assert "innerHTML" not in _computer._CURSOR_JS
+
+
 def test_http_navigate_and_read_page(client, page):
     state = client.post(f"/api/bots/{_BOT}/computer/navigate", json={"url": _PAGE2}).json()
     assert state["running"] is True

@@ -217,6 +217,65 @@ def _mouse_params(event: dict) -> dict:
     return params
 
 
+# Kursor agenta. `Input.dispatchMouseEvent` NIE rusza prawdziwym wskaźnikiem X11
+# — zdarzenie wchodzi prosto do renderera — więc na ekranie VNC klikało się samo
+# z siebie i nie było widać, gdzie bot celuje. Rysujemy więc jego wskaźnik w
+# stronie: to ta sama droga (CDP), co reszta wejścia, działa jednakowo na
+# backendzie native i w kontenerze, i nie wymaga ani xdotool, ani mapowania
+# współrzędnych strony na współrzędne ekranu.
+#
+# `transition` jest tu funkcją, nie ozdobą: bot skacze od punktu do punktu, a
+# przesuwanie się kursora przez ćwierć sekundy jest tym, co user ma zobaczyć.
+#
+# ponytail: kursor żyje w karcie, więc widać go tylko wewnątrz strony — dokładnie
+# tam, gdzie sięga dzisiejsze wejście agenta. Gdy agent dostanie klikanie po
+# pulpicie (terminal, dock), trzeba będzie prawdziwego wskaźnika (xdotool na
+# native, `docker exec` przy kontenerze).
+_CURSOR_JS = """(function(x, y, hit) {
+  var id = '__multibot_cursor__';
+  var el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    // strzałka rysowana `clip-path`, nie SVG-iem: strony z Trusted Types (YouTube)
+    // odrzucają wstawianie HTML-a ("This document requires 'TrustedHTML' assignment")
+    el.style.cssText = 'position:fixed;left:0;top:0;width:20px;height:26px;' +
+      'background:#fff;filter:drop-shadow(0 0 1.5px #000) drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
+      'clip-path:polygon(0 0,0 74%,27% 57%,44% 100%,63% 92%,46% 53%,74% 53%);' +
+      'pointer-events:none;z-index:2147483647;transition:transform .25s ease-out;' +
+      'will-change:transform';
+    (document.body || document.documentElement).appendChild(el);
+  }
+  el.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+  if (hit) {
+    var ring = document.createElement('div');
+    ring.style.cssText = 'position:fixed;left:' + (x - 14) + 'px;top:' + (y - 14) + 'px;' +
+      'width:28px;height:28px;border:2px solid #4c8dff;border-radius:50%;' +
+      'pointer-events:none;z-index:2147483646;opacity:.9;transition:all .4s ease-out';
+    (document.body || document.documentElement).appendChild(ring);
+    requestAnimationFrame(function() { ring.style.opacity = '0'; ring.style.transform = 'scale(1.8)'; });
+    setTimeout(function() { ring.remove(); }, 500);
+  }
+})"""
+
+
+async def _show_cursor(cdp, session, event: dict) -> None:
+    """Przesuń rysowany kursor agenta tam, gdzie właśnie idzie zdarzenie myszy.
+    Awaria jest bez znaczenia — to podgląd, nie akcja, i nie może wywrócić kliknięcia."""
+    try:
+        await cdp.call(
+            "Runtime.evaluate",
+            {
+                "expression": f"{_CURSOR_JS}({float(event.get('x') or 0)},{float(event.get('y') or 0)},"
+                f"{'true' if event.get('type') == 'mousePressed' else 'false'})",
+                "returnByValue": True,
+            },
+            session_id=session,
+        )
+    except Exception:
+        pass
+
+
 def _key_params(event: dict) -> dict:
     key, code = str(event.get("key") or ""), str(event.get("code") or "")
     text = event.get("text")
@@ -511,6 +570,8 @@ async def send_input(bot_id: str, events: list[dict]) -> None:
             for event in events:
                 kind = event.get("kind")
                 if kind == "mouse":
+                    # kursor PRZED zdarzeniem: klik może zabrać stronę gdzie indziej
+                    await _show_cursor(cdp, session, event)
                     await cdp.call("Input.dispatchMouseEvent", _mouse_params(event), session_id=session)
                 elif kind == "key":
                     await cdp.call("Input.dispatchKeyEvent", _key_params(event), session_id=session)
