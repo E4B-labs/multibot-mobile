@@ -42,7 +42,6 @@ import { watchEngineAttention } from "./engine/attention.ts";
 import { attachExternalBrowser, configureEngineComputer, engineComputer } from "./engine/computer-mcp.ts";
 // multibot (H1-H5): jeden komputer bota — kontener na czas życia bota.
 import {
-  computerStatus as hostedStatus,
   dockerAvailable,
   ensureComputer,
   exec as computerExec,
@@ -1887,7 +1886,11 @@ const server = createServer(async (req, res) => {
     m = path.match(/^\/api\/bots\/([\w-]+)\/computer$/);
     if (m && method === "GET") {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such bot" });
-      const status = await hostedStatus(m[1]);
+      // `ensure`, nie samo `status`: docker's restart policy handles a crashed
+      // process, but a container that was stopped outright needs starting, and
+      // the panel polls this route — so watching the computer is what heals it.
+      // Idempotent, and a no-op when it is already up.
+      const status = await ensureComputer(m[1]);
       if (status.state !== "ready" && !(await dockerAvailable())) {
         return json(res, 200, {
           state: "error",
