@@ -2,7 +2,7 @@
 // noVNC iframe URL builder — extracted so they're testable without rendering.
 import { describe, expect, it } from "vitest";
 
-import { computerStateLabel, computerVncSrc, type ComputerState } from "./ComputerPanel";
+import { computerStateLabel, computerVncSrc, stripVncChrome, type ComputerState } from "./ComputerPanel";
 
 describe("computerStateLabel", () => {
   const states: ComputerState[] = ["provisioning", "ready", "recovering", "error"];
@@ -30,13 +30,31 @@ describe("computerStateLabel", () => {
 describe("computerVncSrc", () => {
   it("points at the bot's proxied noVNC path", () => {
     const src = computerVncSrc("bot-1", "user");
+    // lite, nie pelna strona noVNC: ta dokłada własny pasek sterowania
     expect(src).toBe(
-      "/api/bots/bot-1/computer/vnc/vnc.html?autoconnect=1&resize=scale&path=api/bots/bot-1/computer/vnc/websockify",
+      "/api/bots/bot-1/computer/vnc/vnc_lite.html?scale=true&path=api/bots/bot-1/computer/vnc/websockify",
     );
   });
 
   it("adds view_only=1 exactly when the agent holds control", () => {
     expect(computerVncSrc("bot-1", "agent")).toMatch(/[?&]view_only=1(&|$)/);
     expect(computerVncSrc("bot-1", "user")).not.toMatch(/view_only/);
+  });
+});
+
+describe("stripVncChrome", () => {
+  it("takes the noVNC status bar off the bot's screen", () => {
+    let removed = false;
+    const doc = {
+      getElementById: (id: string) => (id === "top_bar" ? { remove: () => (removed = true) } : null),
+      body: { style: { backgroundColor: "dimgrey" } },
+    } as unknown as Document;
+    stripVncChrome(doc);
+    expect(removed).toBe(true);
+    expect(doc.body.style.backgroundColor).toBe("#000");
+  });
+
+  it("does nothing when the iframe document is not reachable", () => {
+    expect(() => stripVncChrome(null)).not.toThrow();
   });
 });

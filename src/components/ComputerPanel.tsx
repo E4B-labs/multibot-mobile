@@ -47,8 +47,20 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
  *  the input lease — H5: "When the user does not hold the lease the iframe
  *  is view_only=1." */
 export function computerVncSrc(botId: string, controlOwner: ControlOwner): string {
-  const base = `/api/bots/${botId}/computer/vnc/vnc.html?autoconnect=1&resize=scale&path=api/bots/${botId}/computer/vnc/websockify`;
+  // `vnc_lite.html`, nie `vnc.html`: pełna strona noVNC dokłada własny pasek
+  // sterowania (logo, rozłącz, ustawienia), a to jest ekran komputera bota, nie
+  // klient VNC — sterowanie ma UI panelu. Lite umie dokładnie to, czego
+  // potrzebujemy: `path`, `scale`, `view_only`.
+  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=api/bots/${botId}/computer/vnc/websockify`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
+}
+
+/** Lite zostawia u góry pasek stanu z „Send CtrlAltDel". Strona jedzie z naszego
+ *  origin (proxy harnessu), więc po prostu go stąd usuwamy — zamiast utrzymywać
+ *  własną kopię noVNC albo przepisywać HTML w proxy. */
+export function stripVncChrome(doc: Document | null | undefined): void {
+  doc?.getElementById("top_bar")?.remove();
+  if (doc?.body) doc.body.style.backgroundColor = "#000";
 }
 
 const POLL_MS = 4000;
@@ -167,6 +179,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         <iframe
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner)}
+          onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
           className="h-full w-full border-0"
         />
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
