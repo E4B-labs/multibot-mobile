@@ -11,6 +11,8 @@ def test_create_list_get_delete(tmp_path, monkeypatch):
     assert b["id"] == "ala" and b["name"] == "Ala"
     assert (bots.profile_dir("ala") / "bot.json").exists()
     assert (bots.profile_dir("ala") / "SOUL.md").exists()
+    soul = (bots.profile_dir("ala") / "SOUL.md").read_text(encoding="utf-8")
+    assert "create_routine" in soul and "ToolSearch" in soul
     assert [x["id"] for x in bots.list_bots()] == ["ala"]
     assert bots.get_bot("ala")["title"] == "Researcher"
     bots.update_bot("ala", title="Boss")

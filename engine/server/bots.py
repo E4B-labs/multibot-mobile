@@ -36,6 +36,7 @@ _SOUL = """# {name}
 """
 
 _MULTIBOT_MARKER = "MULTIBOT_AGENT_IDENTITY_V1"
+_ROUTINE_MARKER = "MULTIBOT_ROUTINE_TOOL_ROUTING_V1"
 _MULTIBOT_IDENTITY = f"""
 
 ## MultiBot Agent
@@ -48,6 +49,16 @@ as Claude, Codex, ChatGPT, OpenAI, Anthropic, Hermes, or another product.
 Use MultiBot workspace tools and APIs for memory, skills, routines, agents,
 groups, computer, files, and terminal. Routines belong to MultiBot on this
 server; do not use external cloud scheduling or another product's infrastructure.
+"""
+_ROUTINE_IDENTITY = f"""
+
+## MultiBot routine tool
+
+<!-- {_ROUTINE_MARKER} -->
+
+When the user asks to create or change a routine, call the local MultiBot
+`create_routine` tool directly with `name`, `prompt`, and `schedule`. Never use
+ToolSearch, `/schedule`, provider-private memory, or cloud scheduling.
 """
 
 
@@ -67,7 +78,7 @@ def profile_dir(bot_id: str) -> Path:
 
 def _write(bot: dict) -> None:
     d = profile_dir(bot["id"])
-    (d / "SOUL.md").write_text(_SOUL.format(**bot) + _MULTIBOT_IDENTITY, encoding="utf-8")
+    (d / "SOUL.md").write_text(_SOUL.format(**bot) + _MULTIBOT_IDENTITY + _ROUTINE_IDENTITY, encoding="utf-8")
     (d / "bot.json").write_text(json.dumps(bot, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -77,9 +88,13 @@ def ensure_multibot_identity(bot_id: str) -> None:
     if not path.exists():
         return
     content = path.read_text(encoding="utf-8")
-    if _MULTIBOT_MARKER in content:
-        return
-    path.write_text(content.rstrip() + _MULTIBOT_IDENTITY, encoding="utf-8")
+    additions = ""
+    if _MULTIBOT_MARKER not in content:
+        additions += _MULTIBOT_IDENTITY
+    if _ROUTINE_MARKER not in content:
+        additions += _ROUTINE_IDENTITY
+    if additions:
+        path.write_text(content.rstrip() + additions, encoding="utf-8")
 
 
 def create_bot(bot_id: str, name: str, title: str = "", description: str = "") -> dict:
