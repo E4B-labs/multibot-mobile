@@ -6,7 +6,7 @@
 // multibot: the fake is a shebang script — same constraint codex.cmd
 // itself hits on Windows. resolveCliSpawn covers both, so these run
 // everywhere now.
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProviderInstance } from "../contracts.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
-import { CodexDriver } from "./codex.ts";
+import { CodexDriver, codexMcpConfig } from "./codex.ts";
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
 
@@ -55,7 +55,7 @@ describe("CodexDriver turns (fake app-server)", () => {
     delete process.env.FAKE_CODEX_MODE;
     delete process.env.FAKE_CODEX_DUMP;
     delete process.env.OPENAI_API_KEY;
-    for (const id of ["t-policy-deny", "t-policy-auto"]) clearTurnPolicy(id);
+    for (const id of ["t-policy-deny", "t-policy-auto", "t-mcp-auto"]) clearTurnPolicy(id);
     recorder?.stop();
     await instance?.dispose();
     rmSync(scratch, { recursive: true, force: true });
@@ -153,15 +153,32 @@ describe("CodexDriver turns (fake app-server)", () => {
 
     await instance.adapter.sendTurn({ threadId: "t-approve", text: "clean up" });
     const opened = await recorder.until((e) => e.type === "request.opened");
-    expect(opened).toMatchObject({ requestType: "permission", tool: "shell", summary: "rm -rf scratch" });
+    expect(opened).toMatchObject({
+      requestType: "permission",
+      tool: "shell",
+      summary: "rm -rf scratch",
+      approvalRule: { provider: "codex" },
+    });
 
     await instance.adapter.respondToRequest("t-approve", opened.requestId!, { behavior: "allow" });
     const resolved = await recorder.until((e) => e.type === "request.resolved");
     expect(resolved).toMatchObject({ behavior: "allow", source: "user" });
 
     await recorder.until((e) => e.type === "turn.completed");
-    // legacy method name → legacy decision vocabulary
-    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "approved" });
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "accept" });
+  });
+
+  it("forwards Allow for all as the proposed exec-policy amendment", async () => {
+    await create({ mode: "approval" });
+    const dump = join(scratch, "always.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+    await instance.adapter.sendTurn({ threadId: "t-always", text: "clean up" });
+    const opened = await recorder.until((event) => event.type === "request.opened");
+    await instance.adapter.respondToRequest("t-always", opened.requestId!, { behavior: "always" });
+    await recorder.until((event) => event.type === "turn.completed");
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({
+      decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ["rm", "-rf"] } },
+    });
   });
 
   it("auto-approves commands in fullAuto without opening a request", async () => {
@@ -173,7 +190,60 @@ describe("CodexDriver turns (fake app-server)", () => {
     await recorder.until((e) => e.type === "turn.completed");
 
     expect(recorder.events.some((e) => e.type === "request.opened")).toBe(false);
-    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "approved" });
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "accept" });
+  });
+
+  it("auto-accepts MCP elicitation for delegated bot tools", async () => {
+    await create({ mode: "mcp" });
+    const dump = join(scratch, "mcp.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+    setTurnPolicy("t-mcp-auto", { autonomy: "autonomous", access: "full", permissions: { delegation: true } });
+
+    await instance.adapter.sendTurn({ threadId: "t-mcp-auto", text: "list bots" });
+    await recorder.until((event) => event.type === "turn.completed");
+
+    expect(recorder.events.some((event) => event.type === "request.opened")).toBe(false);
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({
+      action: "accept",
+      content: {},
+    });
+  });
+
+  it("exposes exact models, keeps max for 5.6 and sends localImage", async () => {
+    await create();
+    expect(instance.models).toEqual({
+      default: "gpt-5.6-sol",
+      options: [
+        { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+        { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+        { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+        { id: "gpt-5.5", label: "GPT-5.5" },
+        { id: "gpt-5.4", label: "GPT-5.4" },
+        { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+      ],
+    });
+    const dump = join(scratch, "image.json");
+    const image = join(scratch, "photo.png");
+    writeFileSync(image, "png");
+    process.env.FAKE_CODEX_DUMP = dump;
+    await instance.adapter.sendTurn({
+      threadId: "t-image",
+      text: "inspect",
+      model: "gpt-5.6-sol",
+      attachments: [{ id: "a", name: "photo.png", mime: "image/png", size: 3, path: image }],
+      reasoning: "max",
+    } as any);
+    await recorder.until((event) => event.type === "turn.completed");
+    const turnStart = JSON.parse(readFileSync(dump, "utf8")).calls.find((call: any) => call.method === "turn/start");
+    expect(turnStart.params.effort).toBe("max");
+    expect(turnStart.params.input[1]).toEqual({ type: "localImage", path: image });
+
+    const cappedDump = join(scratch, "capped.json");
+    process.env.FAKE_CODEX_DUMP = cappedDump;
+    await instance.adapter.sendTurn({ threadId: "t-cap", text: "go", model: "gpt-5.4", reasoning: "max" } as any);
+    await recorder.until((event) => event.type === "turn.completed" && recorder.events.filter((item) => item.type === "turn.completed").length === 2);
+    const capped = JSON.parse(readFileSync(cappedDump, "utf8")).calls.find((call: any) => call.method === "turn/start");
+    expect(capped.params.effort).toBe("xhigh");
   });
 
   it("denies a disabled workspace tool even when legacy fullAuto is on", async () => {
@@ -186,16 +256,24 @@ describe("CodexDriver turns (fake app-server)", () => {
     await recorder.until((e) => e.type === "turn.completed");
 
     expect(recorder.events.some((e) => e.type === "request.opened")).toBe(false);
-    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "denied" });
+    expect(JSON.parse(readFileSync(dump, "utf8")).decision).toEqual({ decision: "decline" });
   });
 
   it("rejects a second turn while one is in flight", async () => {
     await create({ mode: "approval" }); // approval mode parks the turn open
+    const dump = join(scratch, "interrupt.json");
+    process.env.FAKE_CODEX_DUMP = dump;
     await instance.adapter.sendTurn({ threadId: "t-busy", text: "one" });
     await recorder.until((e) => e.type === "request.opened");
     await expect(instance.adapter.sendTurn({ threadId: "t-busy", text: "two" })).rejects.toThrow(/already running/);
     await instance.adapter.interruptTurn("t-busy");
-    await recorder.until((e) => e.type === "turn.completed");
+    const done = await recorder.until((e) => e.type === "turn.completed");
+    expect(done).toMatchObject({ ok: true, stopReason: "cancelled" });
+    expect(recorder.events.some((event) => event.type === "runtime.error")).toBe(false);
+    expect(JSON.parse(readFileSync(dump, "utf8")).calls).toContainEqual({
+      method: "turn/interrupt",
+      params: { threadId: "codex-thread-1", turnId: "codex-turn-1" },
+    });
   });
 
   it("a missing binary surfaces as a failed turn, and snapshot says unavailable", async () => {
@@ -212,5 +290,35 @@ describe("CodexDriver turns (fake app-server)", () => {
     const done = await recorder.until((e) => e.type === "turn.completed");
     expect(done).toMatchObject({ ok: false });
     expect(await instance.snapshot()).toMatchObject({ state: "unavailable" });
+  });
+});
+
+// multibot (H3): the gate says Codex really drives the bot's computer. Codex's
+// mcp_servers used to carry `agents` alone, so this pins the regression.
+describe("codexMcpConfig", () => {
+  const base = { threadId: "t1", text: "hi" } as unknown as SendTurnInput;
+
+  it("mounts the bot computer next to agents", () => {
+    const cfg = codexMcpConfig({
+      ...base,
+      integrations: {
+        agents: { command: "node", args: ["a.js"], env: {} },
+        localComputer: { command: "py", args: ["-m", "server.computer_mcp"], env: { PYTHONPATH: "e" } },
+      },
+    } as unknown as SendTurnInput);
+    expect(Object.keys(cfg.config!.mcp_servers).sort()).toEqual(["agents", "computer"]);
+    expect(cfg.config!.mcp_servers.computer).toMatchObject({ command: "py" });
+  });
+
+  it("mounts the computer even when there are no peer agents", () => {
+    const cfg = codexMcpConfig({
+      ...base,
+      integrations: { localComputer: { command: "py", args: [], env: {} } },
+    } as unknown as SendTurnInput);
+    expect(Object.keys(cfg.config!.mcp_servers)).toEqual(["computer"]);
+  });
+
+  it("sends no config block at all when the bot has neither", () => {
+    expect(codexMcpConfig(base)).toEqual({});
   });
 });

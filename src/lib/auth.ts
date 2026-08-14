@@ -110,3 +110,26 @@ export function authenticatedWebSocket(path: string, protocol = location.protoco
   const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
   return new WebSocket(`${wsProtocol}//${location.host}${path}`, token ? ["multibot-auth", token] : undefined);
 }
+
+/**
+ * multibot (H4): trade the bearer token for a session cookie, once.
+ *
+ * The bot's screen is an <iframe> of noVNC and its websocket is opened by
+ * noVNC itself. Neither can carry an Authorization header or our WS
+ * subprotocol, so a cookie is the only credential that reaches them. The
+ * exchange itself requires the token, so this does not widen the auth gate.
+ */
+let sessionPromise: Promise<void> | null = null;
+
+export function ensureBrowserSession(): Promise<void> {
+  return (sessionPromise ??= authFetch("/api/auth/session", {
+    method: "POST",
+    body: JSON.stringify({ label: "browser" }),
+  })
+    .then(() => undefined)
+    .catch(() => {
+      // A missing cookie only costs the screen; the rest of the app keeps
+      // working on the token. Retry on the next call rather than latching.
+      sessionPromise = null;
+    }));
+}

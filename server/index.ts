@@ -1600,6 +1600,21 @@ const server = createServer(async (req, res) => {
       res.setHeader("cache-control", "no-store");
       return json(res, 200, { token: cfg.auth!.token });
     }
+    // ── multibot (H4): sesja przeglądarki dla ekranu komputera ─────────
+    // Ekran to <iframe> z noVNC, a nawigacja iframe'a NIE MOŻE dołożyć nagłówka
+    // Authorization; websockify też nie zna naszego subprotokołu. Cookie jest
+    // jedynym poświadczeniem, które przejdzie przez oba — więc klient, który ma
+    // token, wymienia go raz na sesję urządzenia. Wymiana wymaga tokena, czyli
+    // nie osłabia bramki; sesje działają bez Firebase, bo tylko samo LOGOWANIE
+    // Google jest od niego zależne.
+    if (method === "POST" && path === "/api/auth/session") {
+      const body = await readBody(req).catch(() => ({}));
+      const sessionId = createDeviceSession("local", String(body?.label ?? "browser"));
+      res.setHeader("set-cookie", buildSessionCookie(sessionId, isSecureRequest(req)));
+      res.setHeader("cache-control", "no-store");
+      return json(res, 200, { ok: true });
+    }
+
     // ── multibot (A1): Firebase Google login → lokalna sesja urządzenia ──
     if (method === "POST" && path === "/api/auth/firebase/session") {
       if (!isFirebaseConfigured(cfg)) return json(res, 404, { error: "firebase not configured" });
