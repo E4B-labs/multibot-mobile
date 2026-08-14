@@ -241,7 +241,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             </button>
           </div>
 
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-card">
+          {/* Ramka trzyma kształt pulpitu (16:9, scripts/computer-native.sh), zamiast
+              rozpychać się na całą wysokość panelu — inaczej podgląd był wąskim paskiem
+              w środku wielkiego czarnego prostokąta.
+              ponytail: proporcja wpisana na sztywno; gdyby `MULTIBOT_COMPUTER_GEOMETRY`
+              zaczęło się realnie zmieniać, trzeba ją podać ze stanu komputera. */}
+          <div className="flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl bg-card">
             {!fullscreen && screen(false)}
           </div>
 
