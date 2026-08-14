@@ -24,6 +24,7 @@ import type {
 import { newEventId, newId } from "../contracts.ts";
 import { approvalRule } from "../approval-rules.ts";
 import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
+import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.ts";
 import { killTree } from "../kill-tree.ts";
 import { approvalRuleAllowed, autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.ts";
 import { appendNative } from "./native.ts";
@@ -81,7 +82,12 @@ export function codexMcpConfig(turn: SendTurnInput): { config?: { mcp_servers: R
 // traci pamięć po stronie codeksa (transkrypt harnessu zostaje). Gdyby to
 // zaczęło boleć, następny krok to dosłanie `turn.transcript` w pierwszej turze.
 export function cursorMcpKey(cfg: ReturnType<typeof codexMcpConfig>): string {
-  return Object.keys(cfg.config?.mcp_servers ?? {}).sort().join(",");
+  return Object.keys(cfg.config?.mcp_servers ?? {})
+    // Codex zapamiętuje w wątku także LISTĘ narzędzi serwera, nie tylko sam
+    // serwer — dlatego komputer wchodzi do klucza z wersją swojego zestawu.
+    .map((name) => (name === "computer" ? `computer@${COMPUTER_TOOLS_VERSION}` : name))
+    .sort()
+    .join(",");
 }
 
 /** `<codexThreadId>#<serwery>` → części. Stary kursor (bez `#`) ma pusty zestaw,

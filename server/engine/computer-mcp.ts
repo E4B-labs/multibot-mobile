@@ -27,6 +27,20 @@ export function harnessBaseUrl(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/**
+ * Wersja zestawu narzędzi komputera (`engine/server/computer_mcp.py`).
+ *
+ * Codex ZAPAMIĘTUJE listę narzędzi w wątku: świeży wątek widzi `move`, a wątek
+ * założony wcześniej wylicza tylko `click/key/type_text/navigate/read_page` i
+ * odmawia — sprawdzone na dwóch botach obok siebie. Numer jedzie w kursorze
+ * (`codex.ts::cursorMcpKey`), więc jego zmiana każe zacząć wątek od nowa.
+ *
+ * PODNIEŚ przy każdej zmianie listy narzędzi tego serwera. Cena podniesienia to
+ * pamięć bota po stronie dostawcy (transkrypt harnessu zostaje), więc nie rusza
+ * się go przy poprawkach opisów.
+ */
+export const COMPUTER_TOOLS_VERSION = 2;
+
 export interface McpSpawn {
   command: string;
   args: string[];

@@ -23,6 +23,19 @@ export function harnessBaseUrl() {
     const port = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
     return `http://127.0.0.1:${port}`;
 }
+/**
+ * Wersja zestawu narzędzi komputera (`engine/server/computer_mcp.py`).
+ *
+ * Codex ZAPAMIĘTUJE listę narzędzi w wątku: świeży wątek widzi `move`, a wątek
+ * założony wcześniej wylicza tylko `click/key/type_text/navigate/read_page` i
+ * odmawia — sprawdzone na dwóch botach obok siebie. Numer jedzie w kursorze
+ * (`codex.ts::cursorMcpKey`), więc jego zmiana każe zacząć wątek od nowa.
+ *
+ * PODNIEŚ przy każdej zmianie listy narzędzi tego serwera. Cena podniesienia to
+ * pamięć bota po stronie dostawcy (transkrypt harnessu zostaje), więc nie rusza
+ * się go przy poprawkach opisów.
+ */
+export const COMPUTER_TOOLS_VERSION = 2;
 /** Ensure engine-side bot exists and persist which browser profile it uses.
  * Slafy-native bots need this too; their browser tools do not ride this MCP. */
 export async function configureEngineComputer(threadId, mode) {

@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { newEventId, newId } from "../contracts.js";
 import { approvalRule } from "../approval-rules.js";
 import { augmentedPath, resolveCliSpawn } from "../env-path.js";
+import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.js";
 import { killTree } from "../kill-tree.js";
 import { approvalRuleAllowed, autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.js";
 import { appendNative } from "./native.js";
@@ -61,7 +62,12 @@ export function codexMcpConfig(turn) {
 // traci pamięć po stronie codeksa (transkrypt harnessu zostaje). Gdyby to
 // zaczęło boleć, następny krok to dosłanie `turn.transcript` w pierwszej turze.
 export function cursorMcpKey(cfg) {
-    return Object.keys(cfg.config?.mcp_servers ?? {}).sort().join(",");
+    return Object.keys(cfg.config?.mcp_servers ?? {})
+        // Codex zapamiętuje w wątku także LISTĘ narzędzi serwera, nie tylko sam
+        // serwer — dlatego komputer wchodzi do klucza z wersją swojego zestawu.
+        .map((name) => (name === "computer" ? `computer@${COMPUTER_TOOLS_VERSION}` : name))
+        .sort()
+        .join(",");
 }
 /** `<codexThreadId>#<serwery>` → części. Stary kursor (bez `#`) ma pusty zestaw,
  *  więc pierwsza tura z komputerem świadomie zakłada nowy wątek. */

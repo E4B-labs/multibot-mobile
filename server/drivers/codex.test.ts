@@ -332,7 +332,7 @@ describe("cursor carries the mcp set", () => {
   it("keys the cursor by server names, order-independent", () => {
     const a = cursorMcpKey(cfg({ agents: { command: "n", args: [], env: {} }, localComputer: { command: "p", args: [], env: {} } }));
     const b = cursorMcpKey(cfg({ localComputer: { command: "p", args: [], env: {} }, agents: { command: "n", args: [], env: {} } }));
-    expect(a).toBe("agents,computer");
+    expect(a).toBe("agents,computer@2"); // wersja zestawu narzędzi komputera
     expect(b).toBe(a);
     expect(cursorMcpKey(cfg(undefined))).toBe("");
   });
@@ -347,16 +347,24 @@ describe("cursor carries the mcp set", () => {
   });
 
   it("starts a new thread only when the turn brings a server the thread lacks", () => {
-    expect(cursorPlan("thr_1", "agents,computer")).toEqual({ resume: null, key: "agents,computer" });
-    expect(cursorPlan("thr_1#agents", "agents,computer")).toEqual({ resume: null, key: "agents,computer" });
+    expect(cursorPlan("thr_1", "agents,computer@2")).toEqual({ resume: null, key: "agents,computer@2" });
+    expect(cursorPlan("thr_1#agents", "agents,computer@2")).toEqual({ resume: null, key: "agents,computer@2" });
+    // Codex zapamietuje liste narzedzi w watku, wiec nowy zestaw = nowy watek
+    expect(cursorPlan("thr_1#agents,computer@1", "agents,computer@2")).toEqual({
+      resume: null,
+      key: "agents,computer@2",
+    });
     expect(cursorPlan(undefined, "agents")).toEqual({ resume: null, key: "agents" });
   });
 
   // Komputer nie wstał na jedną turę — wątek ma go zamontowanego, więc restart
   // kosztowałby całą pamięć bota za nic. Zapis zostaje przy szerszym zestawie.
   it("keeps the thread (and the wider set) when the turn has fewer servers", () => {
-    expect(cursorPlan("thr_1#agents,computer", "agents")).toEqual({ resume: "thr_1", key: "agents,computer" });
-    expect(cursorPlan("thr_1#agents,computer", "")).toEqual({ resume: "thr_1", key: "agents,computer" });
-    expect(cursorPlan("thr_1#agents,computer", "agents,computer")).toEqual({ resume: "thr_1", key: "agents,computer" });
+    expect(cursorPlan("thr_1#agents,computer@2", "agents")).toEqual({ resume: "thr_1", key: "agents,computer@2" });
+    expect(cursorPlan("thr_1#agents,computer@2", "")).toEqual({ resume: "thr_1", key: "agents,computer@2" });
+    expect(cursorPlan("thr_1#agents,computer@2", "agents,computer@2")).toEqual({
+      resume: "thr_1",
+      key: "agents,computer@2",
+    });
   });
 });
