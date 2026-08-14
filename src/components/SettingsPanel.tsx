@@ -1,4 +1,4 @@
-import { ChevronLeft, X } from "lucide-react";
+import { ChevronLeft, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
@@ -102,12 +102,53 @@ function EngineUsage({ bot }: { bot: Bot }) {
   );
 }
 
+interface ApprovalRuleOut {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+function ApprovalRules({ bot }: { bot: Bot }) {
+  const polish = useLanguage() === "pl";
+  const [rules, setRules] = useState<ApprovalRuleOut[] | null>(null);
+  useEffect(() => {
+    authFetch(`/api/bots/${bot.id}/approval-rules`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then(setRules)
+      .catch(() => setRules([]));
+  }, [bot.id]);
+  const remove = async (id: string) => {
+    const response = await authFetch(`/api/bots/${bot.id}/approval-rules/${id}`, { method: "DELETE" });
+    if (response.ok) setRules((current) => current?.filter((rule) => rule.id !== id) ?? []);
+  };
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zapamiętane zgody" : "Remembered approvals"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Akcje dozwolone przez opcję „Allow for all”." : "Actions allowed with “Allow for all”."}
+      </div>
+      {rules?.length ? (
+        <div className="mt-3 divide-y divide-hairline/40">
+          {rules.map((rule) => (
+            <div key={rule.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={rule.label}>{rule.label}</span>
+              <button type="button" onClick={() => void remove(rule.id)} aria-label={`${polish ? "Cofnij" : "Revoke"} ${rule.label}`} className="rounded-lg p-1.5 text-ink-secondary hover:bg-raised hover:text-danger">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : rules ? <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Brak zapamiętanych zgód" : "No remembered approvals"}</div> : null}
+    </div>
+  );
+}
+
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const patch = (
     p: Partial<
-      Pick<Bot, "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "mascotShape">
+      Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape">
     >,
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
@@ -237,6 +278,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           {/* multibot: workspace controls apply to every provider. Bot-to-bot
               delegation is automatic; no per-bot switch exists. */}
           <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
+          <ApprovalRules key={`approval-rules-${bot.id}-${state.workspaceVersion}`} bot={bot} />
           <div className="rounded-xl bg-card p-4 text-[13px] text-ink-secondary">
             <div className="text-[15px] font-medium text-ink">{polish ? "Delegowanie między botami" : "Bot-to-bot delegation"}</div>
             <div className="mt-1 leading-relaxed">
@@ -244,31 +286,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             </div>
           </div>
           <EngineUsage key={`usage-${bot.id}`} bot={bot} />
-
-          <div className="rounded-xl bg-card p-4">
-            <div className="text-[15px] font-medium text-ink">{polish ? "Komputer" : "Computer"}</div>
-            <div className="mt-0.5 text-[13px] text-ink-secondary">
-              {polish ? "Gdzie działa komputer tego bota" : "Where this bot's computer runs"}{bot.computer ? "" : polish ? " (obecnie: auto)" : " (currently: auto)"}
-            </div>
-            <div className="mt-3 flex overflow-hidden rounded-lg border border-hairline/40">
-              {/* multibot (F5): fourth mode — the bot's own engine browser */}
-              {(["cloud", "local", "playwright", "shared", "off"] as const).map((mode, i) => (
-                <button
-                  key={mode}
-                  onClick={() => patch({ computer: mode })}
-                  className={cn(
-                    "flex-1 py-1.5 text-[13px] capitalize",
-                    i > 0 && "border-l border-hairline/40",
-                    bot.computer === mode
-                      ? "bg-raised text-ink"
-                      : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
-                  )}
-                >
-                {mode === "shared" ? (polish ? "Wspólna przeglądarka" : "Shared browser") : mode}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
             <div>

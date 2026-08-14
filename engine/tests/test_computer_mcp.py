@@ -129,6 +129,27 @@ def test_handshake_tools_and_calls(params):
     assert click["events"][1] == {"kind": "mouse", "x": 12, "y": 34, "button": "left", "clickCount": 1, "type": "mousePressed"}
 
 
+async def _exercise_exec_without_harness(params: StdioServerParameters) -> None:
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as client:
+            await client.initialize()
+            names = {t.name for t in (await client.list_tools()).tools}
+            assert "computer_exec" in names
+
+            result = await client.call_tool("computer_exec", {"command": "echo hi"})
+            assert result.isError
+            assert "harness" in str(result.content[0].text).lower()
+
+
+def test_computer_exec_without_harness_url_fails_closed(params):
+    """Faza H3: bez `MULTIBOT_HARNESS_URL`/`--harness-url` `computer_exec` musi
+    odmówić — fallback na shell hosta byłby poważnym escape'em kontenera."""
+    asyncio.run(_exercise_exec_without_harness(params))
+    # Nigdy nie doszło do żądania HTTP po ścieżce exec — nic nie poszło ani do
+    # silnika, ani (tym bardziej) do lokalnego shella, którego to narzędzie nie ma.
+    assert not any(path.endswith("/computer/exec") for _, path, _ in _FakeEngine.calls)
+
+
 def test_missing_bot_argument_fails_fast():
     """Brak `--bot` = błąd startu, nie serwer bez tożsamości gadający z silnikiem."""
     out = subprocess.run(

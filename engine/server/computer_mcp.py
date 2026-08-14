@@ -43,6 +43,9 @@ mcp = FastMCP("computer")
 _bot = ""
 _engine = _DEFAULT_ENGINE
 _bot_ready = False
+# Faza H3: terminal kontenera H2. Silnik NIE zna URL-a harnessu sam z siebie —
+# bez niego `computer_exec` musi odmówić, a nie po cichu odpalić shell na hoście.
+_harness = ""
 
 
 async def _call(method: str, path: str, **kwargs) -> dict:
@@ -131,15 +134,34 @@ async def status() -> dict:
     return await _call("GET", f"/api/bots/{_bot}/computer/status")
 
 
+@mcp.tool()
+async def computer_exec(command: str) -> str:
+    """Uruchom polecenie shell WEWNĄTRZ komputera bota (kontener H2) — NIE na
+    hoście, na którym stoi silnik. Terminal ten sam, co widzi użytkownik w
+    live view; wynik to połączone stdout/stderr polecenia."""
+    if not _harness:
+        raise RuntimeError(
+            "terminal niedostępny: brak MULTIBOT_HARNESS_URL / --harness-url — "
+            "silnik nie zna adresu harnessu, więc nie ma jak dosięgnąć kontenera"
+        )
+    async with httpx.AsyncClient(base_url=_harness, timeout=_TIMEOUT) as client:
+        res = await client.post(f"/api/bots/{_bot}/computer/exec", json={"command": command})
+    if res.status_code >= 400:
+        raise RuntimeError(f"harness POST /computer/exec → HTTP {res.status_code}: {res.text[:200]}")
+    return str((res.json() if res.content else {}).get("output") or "")
+
+
 def main() -> None:
-    global _bot, _engine
+    global _bot, _engine, _harness
     # Bez `description=__doc__`: konsola Windows (cp1250) wywraca się na strzałkach.
     parser = argparse.ArgumentParser(prog="server.computer_mcp", description="Komputer bota jako serwer MCP (stdio).")
     parser.add_argument("--bot", required=True, help="id bota silnika (profil Hermesa)")
     parser.add_argument("--engine-url", default=os.environ.get("ENGINE_URL") or _DEFAULT_ENGINE)
+    parser.add_argument("--harness-url", default=os.environ.get("MULTIBOT_HARNESS_URL") or "")
     args = parser.parse_args()
     _bot = args.bot
     _engine = str(args.engine_url).rstrip("/")
+    _harness = str(args.harness_url).rstrip("/") if args.harness_url else ""
     mcp.run(transport="stdio")
 
 

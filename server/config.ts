@@ -10,6 +10,8 @@ import type { InstanceConfig, InstanceConfigMap } from "./contracts.ts";
 // jego klucze API — patrz `server/mcp-connectors.ts` (import wyłącznie typów,
 // więc cyklu w runtime nie ma).
 import type { McpConnector } from "./mcp-connectors.ts";
+// multibot (A1): jw. — kształt sesji urządzenia mieszka w server/firebase-auth.ts.
+import type { DeviceSession } from "./firebase-auth.ts";
 
 export interface AppConfig {
   /** multibot (G2): remote-access bearer token. Never returned by /api/config. */
@@ -28,6 +30,14 @@ export interface AppConfig {
   instances?: Record<string, InstanceConfig & { model?: { default?: string; baseUrl?: string } }>;
   // multibot (F7): id → konektor MCP użytkownika (tokeny w `env`/`headers`).
   mcpConnectors?: Record<string, Omit<McpConnector, "id">>;
+  /** multibot (A1): Firebase Google login. Absent entirely (no project id) =
+   * server/firebase-auth.ts stays completely inert and the single bearer
+   * access token above keeps working unchanged. */
+  firebase?: { projectId?: string; ownerUid?: string };
+  /** multibot (A1): device sessions from Google login, keyed by
+   * sha256(session id) hex — the raw session id (the cookie value) is never
+   * persisted, only its hash. */
+  deviceSessions?: Record<string, DeviceSession>;
 }
 
 export const DATA_DIR = join(homedir(), ".openmausbot");
@@ -82,7 +92,16 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
   // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
   // wpis (JSON.stringify pomija takie pole).
-  for (const key of ["auth", "xai", "composio", "box", "profile", "mcpConnectors"] as const) {
+  for (const key of [
+    "auth",
+    "xai",
+    "composio",
+    "box",
+    "profile",
+    "mcpConnectors",
+    "firebase",
+    "deviceSessions",
+  ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }

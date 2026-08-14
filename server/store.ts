@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { DATA_DIR } from "./config.ts";
-import { newId, type ModelSelection, type ThreadId } from "./contracts.ts";
+import { newId, type AttachmentMeta, type ModelSelection, type ThreadId } from "./contracts.ts";
 
 export type MausColor =
   | "green"
@@ -49,6 +49,7 @@ export interface Message {
   /** screen messages: a frame of the bot's computer (base64 image) */
   png?: string;
   mime?: string;
+  attachments?: AttachmentMeta[];
   at: number;
 }
 
@@ -67,11 +68,16 @@ export interface BotRecord {
   modelSelection: ModelSelection;
   /** provider-native continuation per instance (e.g. claude session id) */
   resumeCursors: Record<string, unknown>;
-  /** which computer the bot acts on: its cloud box, this Mac (local CUA),
-   * or none. Unset = auto (box when it exists, else local when available).
-   * multibot (F5): "playwright" = przeglądarka bota w silniku (trwały profil,
-   * take-over) — wyklucza box i CUA, patrz `startTurn` w server/index.ts. */
-  computer?: "cloud" | "local" | "playwright" | "shared" | "off";
+  /** multibot (H1): NIE MA wyboru źródła komputera. Każdy bot ma jeden własny
+   * hosted computer (server/hosted-computer.ts) od utworzenia do usunięcia.
+   *
+   * To pole zostaje WYŁĄCZNIE po to, żeby stary config.json się wczytał —
+   * nic go nie odczytuje. Stare wartości ("cloud"/"local"/"playwright"/
+   * "shared"/"off") są ignorowane, a bot dostaje hosted computer tak samo jak
+   * bot bez tego pola. Nie ma stanu użytkowego "off": awaria to `error` w
+   * `ComputerStatus`, nigdy cicha zmiana ustawienia bota.
+   * @deprecated legacy, do skasowania gdy żaden config w obiegu go nie ma */
+  computer?: string;
   pinned?: boolean;
   hidden?: boolean;
   busy?: boolean;

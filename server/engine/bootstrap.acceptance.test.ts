@@ -50,6 +50,10 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      // multibot (H2): a spawned harness gets a minimal env, so VITEST does not
+      // reach it — without this the server would provision REAL containers for
+      // every throwaway test bot.
+      MULTIBOT_COMPUTER: "off",
       ENGINE_URL: engine.url,
       SLAFY_IMPORT_SOURCE: source,
     },

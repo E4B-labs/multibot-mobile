@@ -39,6 +39,7 @@ export interface Message {
   /** screen messages: a frame of the bot's computer (base64) */
   png?: string;
   mime?: string;
+  attachments?: Array<{ id: string; name: string; mime: string; size: number }>;
   at: number;
 }
 
@@ -63,12 +64,6 @@ export interface Bot {
   // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
   needsAttention?: string | null;
   modelSelection: ModelSelection;
-  /** Where this bot's computer runs; unset = auto (cloud box if one exists, else local).
-   * multibot (F5): "playwright" = the bot's own engine-hosted browser (persistent
-   * profile, live view + take-over in ComputerPanel). Explicit choice only — auto
-   * never resolves to it. `shared` uses one fixed browser profile for whole
-   * fleet. Mirrors `BotRecord.computer` in server/store.ts. */
-  computer?: "cloud" | "local" | "playwright" | "shared" | "off";
   pinned?: boolean;
   hidden?: boolean;
   messages: Message[];
@@ -144,7 +139,7 @@ type Action =
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
-  | { type: "send"; botId: string; text: string; reasoning?: string }
+  | { type: "send"; botId: string; text: string; reasoning?: string; attachmentIds?: string[] }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
   | { type: "newBot" }
@@ -181,7 +176,7 @@ type Action =
       patch: Partial<
         Pick<
           Bot,
-          "name" | "title" | "description" | "notifications" | "computer" | "color" | "mascotExpression" | "mascotShape" | "pinned" | "hidden"
+          "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "pinned" | "hidden"
         >
       >;
     };
@@ -239,7 +234,7 @@ function reducer(state: AppState, action: Action): AppState {
     // optimistic card settle; the server's message.patch confirms it later
     case "answerCard":
       return withMascotMotion(
-        patchCard(state, action.botId, action.messageId, { answered: action.answer }),
+        patchCard(state, action.botId, action.messageId, { answered: action.answer, dismissed: true }),
         action.botId,
         "working",
       );
@@ -551,15 +546,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "send":
           api(`/api/bots/${action.botId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ text: action.text, ...(action.reasoning ? { reasoning: action.reasoning } : {}) }),
+            body: JSON.stringify({
+              text: action.text,
+              ...(action.reasoning ? { reasoning: action.reasoning } : {}),
+              ...(action.attachmentIds?.length ? { attachmentIds: action.attachmentIds } : {}),
+            }),
           }).catch(showError);
           break;
         case "answerCard": {
           const bot = stateRef.current.bots.find((b) => b.id === action.botId);
           const card = bot?.messages.find((m) => m.id === action.messageId)?.card;
           if (card?.requestId) {
+            persistCard(action.botId, action.messageId, { answered: action.answer, dismissed: true });
             const behavior =
-              action.answer === "Allow" ? "allow" : action.answer === "Deny" ? "deny" : "answer";
+              action.answer === "Allow" ? "allow"
+                : action.answer === "Allow for all" ? "always"
+                  : action.answer === "Deny" ? "deny"
+                    : "answer";
             api(`/api/bots/${action.botId}/respond`, {
               method: "POST",
               body: JSON.stringify({
@@ -569,7 +572,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }),
             }).catch(showError);
           } else {
-            persistCard(action.botId, action.messageId, { answered: action.answer });
+            persistCard(action.botId, action.messageId, { answered: action.answer, dismissed: true });
             api(`/api/bots/${action.botId}/messages`, {
               method: "POST",
               body: JSON.stringify({ text: action.answer }),
@@ -608,7 +611,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   description: source.description,
                   notifications: source.notifications,
                   modelSelection: source.modelSelection,
-                  ...(source.computer ? { computer: source.computer } : {}),
                 }),
               }).then(({ bot: patched }) =>
                 rawDispatch({ type: "botAdded", bot: { ...bot, ...patched, messages: bot.messages } }),

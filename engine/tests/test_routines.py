@@ -35,6 +35,7 @@ def test_create_lands_in_profile_cron(bot):
     assert r["id"] and r["name"] == "Morning" and r["prompt"] == "Say hi"
     assert r["schedule"] == "0 9 * * *"
     assert r["enabled"] is True and r["trigger"] is None and r["last_runs"] == []
+    assert r["next_run_at"]  # R1: UI next-run field, populated for a scheduled routine
 
     # wpis realnie w cron store profilu (a nie w roocie / innym profilu)
     assert r["id"] in _jobs_file_text(bot)
@@ -46,6 +47,7 @@ def test_create_lands_in_profile_cron(bot):
 def test_create_without_schedule_uses_hidden_sentinel(bot):
     r = routines.create(bot, name="WH only", prompt="p")
     assert r["schedule"] is None  # sentinel ukryty — rutyna tylko-webhookowa
+    assert r["next_run_at"] is None  # i next_run_at sentinela też ukryty (R1)
     assert r["id"] in _jobs_file_text(bot)
 
 

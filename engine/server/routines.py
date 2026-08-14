@@ -120,14 +120,20 @@ def _last_runs(job: dict) -> list[dict]:
 def _to_routine(job: dict, wh: dict) -> dict:
     rid = job["id"]
     disp = (job.get("schedule") or {}).get("display") or job.get("schedule_display") or ""
+    is_manual = disp == _SENTINEL_DISPLAY
     return {
         "id": rid,
         "name": job.get("name") or "",
-        "schedule": None if disp == _SENTINEL_DISPLAY else disp,
+        "schedule": None if is_manual else disp,
         "prompt": job.get("prompt") or "",
         "enabled": bool(job.get("enabled", True)),
         "trigger": _trigger_info(rid, wh),
         "last_runs": _last_runs(job),
+        # UI next-run field (R1). Same key as the harness path
+        # (`server/routineView` in server/index.ts) so the frontend reads one
+        # shape regardless of backend. Manual (sentinel) routines report None,
+        # same as `schedule`, since the sentinel's own next-run is meaningless.
+        "next_run_at": None if is_manual else job.get("next_run_at"),
     }
 
 

@@ -138,6 +138,10 @@ class ComputerModeIn(BaseModel):
     mode: str
 
 
+class ComputerExternalIn(BaseModel):
+    cdp_url: str | None = None
+
+
 class GroupCreate(BaseModel):
     name: str
     bot_ids: list[str]
@@ -162,6 +166,14 @@ class RoutineCreate(BaseModel):
     name: str
     prompt: str
     schedule: str | None = None
+    # R1: structured alternative to `schedule` for agent-facing create_routine —
+    # the agent picks a cadence instead of hand-building cron. `schedule` wins
+    # if both are given (back-compat: existing callers still send raw cron).
+    cadence: str | None = None  # hourly | daily | weekly | monthly
+    minute: int | None = None  # hourly: minute of the hour (0-59, default 0)
+    time: str | None = None  # daily/weekly/monthly: "HH:MM"
+    weekday: int | None = None  # weekly: 0-6, Sunday=0 (default 1 = Monday)
+    monthDay: int | None = None  # monthly: 1-31 (default 1)
     # Task 1 przyjmuje listę eventów ALBO `{"events": [...]}` — nie zawężamy tu,
     # żeby nie 422-ować UI Taska 3, który pisze się równolegle.
     trigger: list[str] | dict | None = None
@@ -346,6 +358,15 @@ async def computer_status(bot_id: str) -> dict:
 async def computer_mode(bot_id: str, body: ComputerModeIn) -> dict:
     _require(bot_id)
     return await computer.set_mode(bot_id, body.mode)
+
+
+# Faza H3: przeglądarka kontenera H2 zamiast lokalnego chromium (`hosted-computer.ts`
+# PUT-uje tu świeży `cdp_url` po każdym restarcie kontenera). `cdp_url: null` czyści
+# marker — `ensure_browser` wraca do podnoszenia własnego chromium.
+@app.put("/api/bots/{bot_id}/computer/external")
+async def computer_external(bot_id: str, body: ComputerExternalIn) -> dict:
+    _require(bot_id)
+    return await computer.set_external(bot_id, body.cdp_url)  # ValueError (zły host) → 422
 
 
 @app.post("/api/bots/{bot_id}/computer/screenshot")
@@ -630,6 +651,12 @@ async def chat(bot_id: str, body: ChatIn, stream: int = 0) -> dict | StreamingRe
             headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
         )
     return await _run_chat(bot_id, body.message)
+
+
+@app.post("/api/bots/{bot_id}/interrupt")
+async def interrupt_chat(bot_id: str) -> dict:
+    _require(bot_id)
+    return {"stopped": await asyncio.to_thread(gateway.interrupt, bot_id)}
 
 
 # --------------------------------------------------------------------------- #
@@ -1051,11 +1078,36 @@ def list_routines(bot_id: str) -> list[dict]:
     return routines.list(bot_id)
 
 
+def _schedule_from_cadence(body: RoutineCreate) -> str | None:
+    """Structured create_routine input → the same cron/interval string the UI
+    presets build (mirrors `buildSchedule()` in src/lib/routineSchedule.ts).
+    Only used when the caller sends `cadence` instead of a raw `schedule`."""
+    if body.cadence is None:
+        return None
+    if body.cadence == "hourly":
+        minute = body.minute if body.minute is not None else 0
+        return "every 1h" if minute == 0 else f"{minute} * * * *"
+    if not body.time:
+        raise ValueError(f"time is required for cadence={body.cadence!r}")
+    hour_s, minute_s = body.time.split(":")
+    hour, minute = int(hour_s), int(minute_s)
+    if body.cadence == "daily":
+        return f"{minute} {hour} * * *"
+    if body.cadence == "weekly":
+        weekday = body.weekday if body.weekday is not None else 1
+        return f"{minute} {hour} * * {weekday}"
+    if body.cadence == "monthly":
+        month_day = body.monthDay if body.monthDay is not None else 1
+        return f"{minute} {hour} {month_day} * *"
+    raise ValueError(f"unknown cadence: {body.cadence!r} (expected hourly/daily/weekly/monthly)")
+
+
 @app.post("/api/bots/{bot_id}/routines", status_code=201)
 def create_routine(bot_id: str, body: RoutineCreate) -> dict:
     _require(bot_id)
+    schedule = body.schedule or _schedule_from_cadence(body)
     return routines.create(
-        bot_id, body.name, body.prompt, schedule=body.schedule, trigger=body.trigger
+        bot_id, body.name, body.prompt, schedule=schedule, trigger=body.trigger
     )
 
 

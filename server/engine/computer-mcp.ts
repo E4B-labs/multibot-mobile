@@ -49,6 +49,32 @@ export async function configureEngineComputer(threadId: string, mode: EngineComp
   if (!configured.ok) throw new Error(`engine computer mode -> HTTP ${configured.status}`);
 }
 
+/**
+ * multibot (H3): powiedz silnikowi, że przeglądarka tego bota stoi W JEGO
+ * KOMPUTERZE, pod tym adresem CDP.
+ *
+ * Bez tego `ensure_browser` silnika podniósłby drugie, lokalne chromium — agent
+ * klikałby po ekranie, którego użytkownik nie widzi. Docker daje kontenerowi
+ * nowy port hosta po każdym restarcie, więc adres wysyłamy co turę zamiast
+ * zapamiętywać.
+ */
+export async function attachExternalBrowser(threadId: string, cdpPort: number): Promise<void> {
+  // Zakłada bota po stronie silnika, jeśli go jeszcze nie ma — to samo, co robi
+  // ścieżka MCP, więc bot slafy (który MCP nie dostaje) też ma gdzie zapisać
+  // adres. `own` jest tu bez znaczenia: wyboru trybu już nie ma, liczy się
+  // tylko istnienie profilu.
+  await configureEngineComputer(threadId, "own");
+  const baseUrl = await ensureEngine();
+  const botId = engineBotIdFor(threadId);
+  const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}/computer/external`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cdp_url: `http://127.0.0.1:${cdpPort}` }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`engine external browser -> HTTP ${res.status}`);
+}
+
 /** Kontrakt spawnu serwera MCP komputera dla wątku — bez sprawdzania, czy silnik
  * stoi (to robi `engineComputer`). Wydzielone, żeby dało się je sprawdzić bez sieci. */
 export function computerMcpSpawn(threadId: string, engineDir = ENGINE_DIR): McpSpawn {

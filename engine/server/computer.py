@@ -33,12 +33,17 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Callable, Coroutine
+from urllib.parse import urlsplit
 
 import httpx
 import websockets
 from fastapi import WebSocket
 
 from server.bots import profile_dir
+
+# Trust boundary Taska H3: bot-supplied `cdp_url` (kontener H2) nie może wskazać
+# silnika na dowolny host — tylko loopback, na którym stoi TEN kontener.
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 
 _CALL_TIMEOUT = 20.0
 _POLL_INTERVAL = 1.0
@@ -59,13 +64,59 @@ _VK = {
 _BUTTONS = {"left": 1, "right": 2, "middle": 4}
 
 
-def _cdp_url(bot_id: str) -> str | None:
-    """`cdp_url` z `browser.json` profilu bota (zapisuje go provider Taska 1)."""
+def _browser_state(bot_id: str) -> dict:
+    """`browser.json` profilu bota, świeżo z dysku — zero cache'a między wywołaniami,
+    bo `cdp_url` kontenera H2 zmienia się przy każdym jego restarcie."""
     try:
-        state = json.loads((profile_dir(bot_id) / "browser.json").read_text(encoding="utf-8"))
-        return str(state["cdp_url"])
-    except (OSError, ValueError, KeyError):
-        return None
+        return json.loads((profile_dir(bot_id) / "browser.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _cdp_url(bot_id: str) -> str | None:
+    """`cdp_url` z `browser.json` profilu bota (zapisuje go provider Taska 1 albo
+    `set_external` dla przeglądarki kontenera H2)."""
+    url = _browser_state(bot_id).get("cdp_url")
+    return str(url) if url else None
+
+
+def _validate_external_cdp_url(cdp_url: str) -> str:
+    """Tylko `http://127.0.0.1:<port>` / `http://localhost:<port>` — patrz `_LOOPBACK_HOSTS`."""
+    parsed = urlsplit(str(cdp_url))
+    if parsed.scheme != "http" or parsed.hostname not in _LOOPBACK_HOSTS or parsed.port is None:
+        raise ValueError(
+            f"cdp_url musi być http://127.0.0.1:<port> lub http://localhost:<port>, dostał: {cdp_url!r}"
+        )
+    return cdp_url
+
+
+async def set_external(bot_id: str, cdp_url: str | None) -> dict:
+    """`PUT /computer/external`: przełącz bota na przeglądarkę kontenera H2.
+
+    `cdp_url=None` czyści `browser.json` — wraca silnikowy chromium, który
+    `ensure_browser` znów sam podniesie. Marker `external: true` to jedyne
+    źródło prawdy dla `ensure_browser`/`status`: oba czytają plik na każde
+    wywołanie, więc nic nie trzyma starego portu po restarcie kontenera.
+
+    Jeśli bot MIAŁ lokalne, silnikowe chromium (`session_id` w `browser.json`),
+    zamykamy je przed przełączeniem — inaczej zostałby żywy i niewidoczny obok
+    przeglądarki kontenera, czyli dokładnie ten bug, którego zabrania gate H3.
+    Ten sam wzorzec co `set_mode` wyżej.
+    """
+    path = profile_dir(bot_id) / "browser.json"
+    state = _browser_state(bot_id)
+    if cdp_url is None:
+        if state.get("external"):
+            path.unlink(missing_ok=True)
+        return await status(bot_id)
+    if state.get("session_id"):
+        from server.browser_plugin.provider import SlafyBrowserProvider
+
+        await asyncio.to_thread(SlafyBrowserProvider().close_session, state["session_id"])
+    path.write_text(
+        json.dumps({"cdp_url": _validate_external_cdp_url(cdp_url), "external": True}), encoding="utf-8"
+    )
+    return await status(bot_id)
 
 
 async def _page_targets(cdp_url: str) -> list[dict]:
@@ -386,21 +437,33 @@ def native_turn(bot_id: str):
 
 
 async def status(bot_id: str) -> dict:
-    """`running` = przeglądarka bota odpowiada; `url` = adres karty na wierzchu."""
+    """`running` = przeglądarka bota odpowiada; `url` = adres karty na wierzchu.
+
+    Dla przeglądarki kontenera H2 (`browser.json["external"]`) `running` jest
+    realnym probe'em `/json/list`, nie zapamiętanym stanem — nieosiągalny CDP
+    dostaje czytelny `reason` zamiast cichego fallbacku na lokalne chromium.
+    """
     browser_mode = mode(bot_id)
     extra = {
         "mode": browser_mode,
         "concurrency": "queue" if browser_mode == "shared" else "independent",
         "busy": browser_mode == "shared" and _shared_operation_lock.locked(),
     }
-    url = _cdp_url(bot_id)
-    if url is None:
+    state = _browser_state(bot_id)
+    external = bool(state.get("external"))
+    url = state.get("cdp_url")
+    if not url:
         return {"running": False, "url": None, **extra}
     try:
-        targets = await _page_targets(url)
+        targets = await _page_targets(str(url))
     except (httpx.HTTPError, ValueError):
+        if external:
+            return {"running": False, "url": None, "external": True, "reason": "przeglądarka kontenera nieosiągalna", **extra}
         return {"running": False, "url": None, **extra}
-    return {"running": True, "url": targets[0].get("url") if targets else None, **extra}
+    result = {"running": True, "url": targets[0].get("url") if targets else None, **extra}
+    if external:
+        result["external"] = True
+    return result
 
 
 @asynccontextmanager
@@ -492,7 +555,14 @@ async def ensure_browser(bot_id: str) -> dict:
     `HERMES_HOME` idzie contextvarem, nie przez `os.environ`: override jest
     per-task, a `asyncio.to_thread` kopiuje kontekst do wątku, więc
     `create_session` widzi katalog TEGO bota i niczyjego innego.
+
+    Przeglądarka kontenera H2 (`browser.json["external"]`) NIGDY nie dostaje
+    tu lokalnego chromium — to byłby dokładnie ten bug, którego zabrania H3:
+    druga, niewidoczna dla użytkownika przeglądarka. Zamiast startu tylko
+    probe'ujemy jej stan przez `status`.
     """
+    if _browser_state(bot_id).get("external"):
+        return await status(bot_id)
     async with _start_lock:  # dwa równoległe tool calle = dwa chromium na tym samym profilu
         state = await status(bot_id)
         if state["running"]:

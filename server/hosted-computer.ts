@@ -63,7 +63,22 @@ export function dockerCommand(argv: string[], platform = process.platform): { fi
   return { file: "docker", args: argv };
 }
 
+/**
+ * Hard off switch. Bot computers are real containers with real volumes, so a
+ * test run — which boots the harness as a subprocess and creates throwaway bots
+ * — must never provision them: the first run of this file's integration left 11
+ * live containers behind and exhausted the port range other tests bind to.
+ *
+ * `VITEST` is inherited by the spawned harness, so this holds for both the
+ * in-process and the subprocess tests. `MULTIBOT_COMPUTER=off` is the manual
+ * escape hatch for a dev machine without docker.
+ */
+export function computersDisabled(): boolean {
+  return Boolean(process.env.VITEST) || process.env.MULTIBOT_COMPUTER === "off";
+}
+
 async function docker(argv: string[], timeoutMs = 120_000): Promise<string> {
+  if (computersDisabled()) throw new Error("bot computers are disabled in this process");
   const { file, args } = dockerCommand(argv);
   const { stdout } = await run(file, args, { timeout: timeoutMs, maxBuffer: 8 << 20 });
   return stdout.trim();

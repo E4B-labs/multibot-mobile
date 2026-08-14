@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONTAINER_PORTS,
   botHash,
+  computersDisabled,
   containerName,
   dockerCommand,
   orphanContainers,
@@ -65,9 +66,11 @@ describe("parsePortOutput", () => {
 });
 
 describe("orphanContainers", () => {
-  it("keeps live bots and never touches foreign containers", async () => {
-    // `docker` is unreachable in tests, so this exercises the failure path:
-    // an unavailable daemon must yield "no orphans", never a delete list.
+  it("yields nothing when computers are disabled, rather than a delete list", async () => {
+    // Under vitest every docker call is refused (see computersDisabled). The
+    // failure path must return "no orphans" — proposing deletions from an
+    // unreadable daemon would be the dangerous answer.
+    expect(computersDisabled()).toBe(true);
     await expect(orphanContainers(["bot-1"])).resolves.toEqual([]);
   });
 });

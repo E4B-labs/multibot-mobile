@@ -62,6 +62,37 @@ def test_create_returns_201_and_lists(client):
     assert [x["id"] for x in listed] == [r["id"]]
 
 
+# --------------------------------------------------------------------------- #
+# R1: structured create_routine input (agent-facing) — no hand-built cron.
+# --------------------------------------------------------------------------- #
+def test_create_from_cadence_hourly_and_weekly(client):
+    hourly = _create(client, cadence="hourly")
+    assert hourly["schedule"] == "every 60m"  # engine normalizes "every 1h" display
+
+    weekly = _create(client, cadence="weekly", time="17:00", weekday=5)
+    assert weekly["schedule"] == "0 17 * * 5"
+
+
+def test_create_from_cadence_daily_and_monthly_defaults(client):
+    daily = _create(client, cadence="daily", time="09:30")
+    assert daily["schedule"] == "30 9 * * *"
+
+    # weekday/monthDay omitted → sensible defaults (Monday / 1st)
+    monthly = _create(client, cadence="monthly", time="08:00")
+    assert monthly["schedule"] == "0 8 1 * *"
+
+
+def test_create_raw_schedule_still_wins_over_cadence(client):
+    r = _create(client, schedule="0 9 * * *", cadence="hourly")
+    assert r["schedule"] == "0 9 * * *"
+
+
+def test_create_bad_cadence_422(client):
+    assert client.post("/api/bots/ala/routines", json={"name": "R", "prompt": "p", "cadence": "yearly"}).status_code == 422
+    # daily/weekly/monthly cadence without `time` also 422
+    assert client.post("/api/bots/ala/routines", json={"name": "R", "prompt": "p", "cadence": "daily"}).status_code == 422
+
+
 def test_patch_updates_and_404_on_missing(client):
     r = _create(client, schedule="every 10m")
     u = client.patch(f"/api/bots/ala/routines/{r['id']}", json={"name": "Y", "enabled": False})

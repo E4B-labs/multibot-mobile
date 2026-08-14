@@ -17,6 +17,7 @@ import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { buildSchedule, isKnownPreset, parseSchedule, PRESETS, type Preset } from "@/lib/routineSchedule";
 
 // Własny helper zamiast `api` ze store: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}` — store'owy helper zgubiłby komunikat
@@ -40,6 +41,7 @@ interface Routine {
   enabled: boolean;
   trigger: { type: string; url: string; events: string[] } | null;
   last_runs: Array<{ at: string; status?: string | null; error?: string | null }>;
+  next_run_at: number | null;
 }
 
 const inputCls =
@@ -50,16 +52,61 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 // Presety harmonogramu → stringi, które silnik parsuje sam ("every 1h" =
-// interwał local service; daily/weekly = cron, dzień tygodnia 0-6 z niedzielą=0).
-const SCHEDULE_MODES = ["hourly", "daily", "weekly", "custom"] as const;
-type ScheduleMode = (typeof SCHEDULE_MODES)[number];
-const MODE_LABELS: Record<ScheduleMode, string> = {
+// interwał local service; daily/weekly/monthly = cron, dzień tygodnia 0-6 z
+// niedzielą=0). Cztery presety, zero surowego crona w UI (Faza R1).
+const MODE_LABELS: Record<Preset, string> = {
   hourly: "Hourly",
   daily: "Daily",
   weekly: "Weekly",
-  custom: "Custom",
+  monthly: "Monthly",
 };
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAY_PREP_PL = ["w niedzielę", "w poniedziałek", "we wtorek", "w środę", "w czwartek", "w piątek", "w sobotę"];
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+// Human sentence for the card — never the raw cron/interval string. Unknown
+// (unclassifiable legacy) schedules get a generic label instead of exposing
+// the cron; `null` = manual routine (webhook/Run now only).
+function scheduleSentence(schedule: string | null, polish: boolean): string {
+  const parsed = parseSchedule(schedule);
+  const at = `${pad2(parsed.hour)}:${pad2(parsed.minute)}`;
+  switch (parsed.preset) {
+    case "manual":
+      return polish ? "Ręczna" : "Manual";
+    case "hourly":
+      return polish ? "Co godzinę" : "Every hour";
+    case "daily":
+      return polish ? `Codziennie o ${at}` : `Every day at ${at}`;
+    case "weekly":
+      return polish
+        ? `Co tydzień ${WEEKDAY_PREP_PL[parsed.weekday]} o ${at}`
+        : `Every week on ${WEEKDAYS[parsed.weekday]} at ${at}`;
+    case "monthly":
+      return polish ? `Co miesiąc, ${parsed.monthDay}. dnia, o ${at}` : `Every month on day ${parsed.monthDay} at ${at}`;
+    default:
+      return polish ? "Inny harmonogram" : "Other schedule";
+  }
+}
+
+function formatNextRun(ts: number, polish: boolean): string {
+  return new Intl.DateTimeFormat(polish ? "pl-PL" : "en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(ts));
+}
+
+// Manual routines have no next-run concept — only scheduled ones get a line.
+function nextRunLine(r: Routine, polish: boolean): string | null {
+  if (!r.schedule) return null;
+  if (!r.next_run_at) return polish ? "Jeszcze nie uruchomiono" : "Not run yet";
+  return `${polish ? "Następne uruchomienie" : "Next run"}: ${formatNextRun(r.next_run_at, polish)}`;
+}
 
 function RoutineForm({
   routinePath,
@@ -76,30 +123,40 @@ function RoutineForm({
   const polish = useLanguage() === "pl";
   const [name, setName] = useState(routine?.name ?? "");
   const [prompt, setPrompt] = useState(routine?.prompt ?? "");
-  // Edycja startuje w "Custom" z aktualnym harmonogramem — display silnika
-  // ("every 60m", "30 9 * * *") jest zarazem poprawnym inputem parse_schedule.
-  const [mode, setMode] = useState<ScheduleMode>(routine ? "custom" : "daily");
-  const [time, setTime] = useState("09:00");
-  const [weekday, setWeekday] = useState(1);
-  const [cronText, setCronText] = useState(routine?.schedule ?? "");
+  // Edycja rozpoznaje preset po aktualnym harmonogramie (parser cron→preset,
+  // Faza R1). Nierozpoznany/manualny harmonogram otwiera się na "daily" jako
+  // rozsądnym domyślnym, ale nic nie wysyłamy, dopóki user faktycznie nie
+  // dotknie harmonogramu — patrz `touched` niżej.
+  const parsedInitial = parseSchedule(routine?.schedule ?? null);
+  const [mode, setMode] = useState<Preset>(isKnownPreset(parsedInitial.preset) ? parsedInitial.preset : "daily");
+  const [time, setTime] = useState(`${pad2(parsedInitial.hour)}:${pad2(parsedInitial.minute)}`);
+  const [weekday, setWeekday] = useState(parsedInitial.weekday);
+  const [monthDay, setMonthDay] = useState(parsedInitial.monthDay);
+  const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const buildSchedule = (): string | null => {
-    if (mode === "hourly") return "every 1h";
+  const touch = <T,>(setter: (v: T) => void) => (v: T) => {
+    setter(v);
+    setTouched(true);
+  };
+
+  const computeSchedule = (): string | null => {
+    // Untouched schedule on edit: keep it unchanged (PATCH omits `schedule`),
+    // even for a recognized preset — rebuilding it here would reset the
+    // harness's next-run anchor (`nextRun(schedule, now)`) on a name-only
+    // edit, and would rewrite a legacy fixed-minute hourly cron ("15 * * * *")
+    // into the fixed "every 1h" interval form (gate R1 item 5).
+    if (routine && !touched) return null;
     const [h, m] = time.split(":");
-    if (mode === "daily") return `${+m} ${+h} * * *`;
-    if (mode === "weekly") return `${+m} ${+h} * * ${weekday}`;
-    // create: pusty custom = rutyna manualna (tylko Run now / webhook);
-    // edit: pusty custom = harmonogram bez zmian (PATCH bez pola `schedule`)
-    return cronText.trim() || null;
+    return buildSchedule(mode, { minute: +m, hour: +h, weekday, monthDay });
   };
 
   const save = () => {
     if (saving || !name.trim() || !prompt.trim()) return;
     setSaving(true);
     setError(null);
-    const schedule = buildSchedule();
+    const schedule = computeSchedule();
     const body = { name: name.trim(), prompt: prompt.trim(), ...(schedule ? { schedule } : {}) };
     (routine
       ? api(`${routinePath}/${routine.id}`, {
@@ -145,10 +202,10 @@ function RoutineForm({
       <div>
         <FieldLabel>{polish ? "Harmonogram" : "Schedule"}</FieldLabel>
         <div className="flex overflow-hidden rounded-lg border border-hairline/40">
-          {SCHEDULE_MODES.map((m, i) => (
+          {PRESETS.map((m, i) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => touch(setMode)(m)}
               className={cn(
                 "flex-1 py-1.5 text-[13px]",
                 i > 0 && "border-l border-hairline/40",
@@ -159,13 +216,13 @@ function RoutineForm({
             </button>
           ))}
         </div>
-        {(mode === "daily" || mode === "weekly") && (
+        {(mode === "daily" || mode === "weekly" || mode === "monthly") && (
           <div className="mt-2 flex gap-2">
             {mode === "weekly" && (
               <select
                 className={inputCls}
                 value={weekday}
-                onChange={(e) => setWeekday(+e.target.value)}
+                onChange={(e) => touch(setWeekday)(+e.target.value)}
               >
                 {WEEKDAYS.map((d, i) => (
                   <option key={d} value={i}>
@@ -174,21 +231,23 @@ function RoutineForm({
                 ))}
               </select>
             )}
+            {mode === "monthly" && (
+              <input
+                type="number"
+                min={1}
+                max={31}
+                className={inputCls}
+                value={monthDay}
+                onChange={(e) => touch(setMonthDay)(Math.min(31, Math.max(1, +e.target.value || 1)))}
+              />
+            )}
             <input
               type="time"
               className={inputCls}
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onChange={(e) => touch(setTime)(e.target.value)}
             />
           </div>
-        )}
-        {mode === "custom" && (
-          <input
-            className={cn(inputCls, "mt-2")}
-            value={cronText}
-            onChange={(e) => setCronText(e.target.value)}
-            placeholder={routine ? "30 9 * * *  (empty = keep current)" : "30 9 * * *  or  every 30m  (empty = manual)"}
-          />
         )}
       </div>
 
@@ -343,9 +402,12 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                     <div className="min-w-0">
                       <div className="truncate text-[15px] font-medium text-ink">{r.name || r.id}</div>
                       <div className="mt-0.5 text-[13px] text-ink-secondary">
-                        {r.schedule ?? "Manual"}
+                        {scheduleSentence(r.schedule, polish)}
                         {!r.enabled && " · disabled"}
                       </div>
+                      {nextRunLine(r, polish) && (
+                        <div className="mt-0.5 text-[12px] text-ink-secondary">{nextRunLine(r, polish)}</div>
+                      )}
                       <div className="mt-0.5 truncate text-[12px] text-ink-secondary" title={lastRunLine(r)}>
                         {lastRunLine(r)}
                       </div>

@@ -57,8 +57,11 @@ _ROUTINE_IDENTITY = f"""
 <!-- {_ROUTINE_MARKER} -->
 
 When the user asks to create or change a routine, call the local MultiBot
-`create_routine` tool directly with `name`, `prompt`, and `schedule`. Never use
-ToolSearch, `/schedule`, provider-private memory, or cloud scheduling.
+`create_routine` tool directly with `name`, `prompt`, and `cadence`
+(hourly/daily/weekly/monthly) plus whichever of `minute`, `time` ("HH:MM"),
+`weekday` (0-6, Sunday=0), or `monthDay` (1-31) that cadence needs. Do not
+hand-build a raw cron string. Never use ToolSearch, `/schedule`,
+provider-private memory, or cloud scheduling.
 """
 
 

@@ -76,6 +76,10 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      // multibot (H2): a spawned harness gets a minimal env, so VITEST does not
+      // reach it — without this the server would provision REAL containers for
+      // every throwaway test bot.
+      MULTIBOT_COMPUTER: "off",
       OMB_HOST: "0.0.0.0",
       OMB_STATIC_DIR: staticDir,
       ENGINE_URL: "http://127.0.0.1:1",
@@ -245,6 +249,45 @@ describe("harness HTTP API", () => {
     expect((await api("DELETE", `/api/bots/${bot.id}/memory/facts/${fact.body.id}`)).status).toBe(200);
     expect((await api("GET", "/api/bots/missing/workspace")).status).toBe(404);
     expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
+  });
+
+  it("uploads, downloads and scopes raw attachments", async () => {
+    const bot = (await api("POST", "/api/bots")).body.bot;
+    const other = (await api("POST", "/api/bots")).body.bot;
+    const upload = await fetch(`${BASE}/api/bots/${bot.id}/attachments`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        "content-type": "text/plain",
+        "x-file-name": encodeURIComponent("notes.txt"),
+      },
+      body: "hello attachment",
+    });
+    expect(upload.status).toBe(201);
+    const file = await upload.json() as { id: string };
+
+    const download = await fetch(`${BASE}/api/bots/${bot.id}/attachments/${file.id}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe("hello attachment");
+    expect((await fetch(`${BASE}/api/bots/${other.id}/attachments/${file.id}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })).status).toBe(404);
+    expect((await fetch(`${BASE}/api/bots/${bot.id}/attachments`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "text/plain", "x-file-name": "..%2Fsecret" },
+      body: "x",
+    })).status).toBe(422);
+
+    await api("PATCH", `/api/bots/${bot.id}`, { modelSelection: { instanceId: "ghost", model: "" } });
+    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "", attachmentIds: [file.id] })).status).toBe(409);
+    expect((await api("POST", `/api/bots/${other.id}/messages`, { text: "", attachmentIds: [file.id] })).status).toBe(404);
+    expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
+    expect((await fetch(`${BASE}/api/bots/${bot.id}/attachments/${file.id}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })).status).toBe(404);
+    await api("DELETE", `/api/bots/${other.id}`);
   });
 
   it("describes the configured fleet, shadows included", async () => {

@@ -1,4 +1,5 @@
-// multibot: F5 — komputer "playwright" po stronie harnessu. Kontrakt spawnu
+// multibot: kontrakt spawnu MCP komputera po stronie harnessu (H1 skasował
+// wybór "playwright"/"shared" — komputer jest jeden i zawsze). Kontrakt spawnu
 // sprawdzamy jednostkowo, a to, ŻE trafia do agenta, na żywym harnessie z fake
 // CLI claude'a (jak server/index.test.ts): branch siedzi w `startTurn`
 // w index.ts, więc żaden fake driver by go nie ruszył.
@@ -85,7 +86,7 @@ describe("computerMcpSpawn", () => {
   });
 });
 
-describe("computer: playwright on a claude-style driver (live harness)", () => {
+describe("computer on a claude-style driver (live harness)", () => {
   const hasVenv = existsSync(venvPython(ENGINE_DIR));
   const PORT = 18800 + Math.floor(Math.random() * 10_000);
   const BASE = `http://127.0.0.1:${PORT}`;
@@ -137,6 +138,10 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
         HOME: home,
         USERPROFILE: home,
         OMB_PORT: String(PORT),
+      // multibot (H2): a spawned harness gets a minimal env, so VITEST does not
+      // reach it — without this the server would provision REAL containers for
+      // every throwaway test bot.
+      MULTIBOT_COMPUTER: "off",
         ENGINE_URL: engine.url, // silnik "stoi" = zero spawnu Pythona w teście
         // driver claude'a spawnuje CLI ze SWOIM env (nie z `environment` instancji),
         // więc zrzut argv zamawiamy w środowisku harnessu
@@ -170,43 +175,40 @@ describe("computer: playwright on a claude-style driver (live harness)", () => {
     if (home) rmSync(home, { recursive: true, force: true });
   });
 
-  it.skipIf(!hasVenv)("mounts the engine computer as the agent's MCP computer", async () => {
+  // multibot (H1): wyboru źródła komputera już nie ma. Kontener stoi zawsze,
+  // więc nie da się go "włączyć" patchem — a w testach jest jawnie wyłączony
+  // (MULTIBOT_COMPUTER=off), żeby suite nie tworzył prawdziwych kontenerów.
+  // Montaż MCP przy DZIAŁAJĄCYM kontenerze weryfikuje spike H0 na realnym
+  // obrazie; tutaj pilnujemy zachowania przy jego braku.
+  it.skipIf(!hasVenv)("bez komputera tura leci dalej, tylko bez narzędzi komputera", async () => {
     const bot = (await api("POST", "/api/bots")).body.bot;
-    expect((await api("PATCH", `/api/bots/${bot.id}`, { computer: "playwright" })).body.bot.computer).toBe(
-      "playwright",
-    );
 
     const sent = await api("POST", `/api/bots/${bot.id}/messages`, { text: "zrób zrzut" });
     expect(sent, JSON.stringify(sent.body)).toMatchObject({ status: 202 });
     const deadline = Date.now() + 20_000;
     while (!existsSync(dump)) {
-      if (Date.now() > deadline) throw new Error(`fake claude never ran. stderr:\n${stderr}`);
+      if (Date.now() > deadline) throw new Error(`fake claude never ran. stderr:
+${stderr}`);
       await new Promise((r) => setTimeout(r, 100));
     }
     const seen = JSON.parse(readFileSync(dump, "utf8"));
-    const mcp = JSON.parse(seen.argv[seen.argv.indexOf("--mcp-config") + 1]).mcpServers.computer;
-    expect(mcp.command).toBe(venvPython(ENGINE_DIR));
-    expect(mcp.args).toEqual([
-      "-m",
-      "server.computer_mcp",
-      "--bot",
-      `mb-${bot.threadId}`,
-      "--engine-url",
-      engine.url,
-    ]);
-    expect(mcp.env.PYTHONPATH).toBe(ENGINE_DIR);
-    // ani box, ani CUA — wybór "playwright" wyklucza oba komputery upstreamu
-    expect(mcp.args.join(" ")).not.toContain("cua");
-    expect(mcp.env.OGB_BOX_ID).toBeUndefined();
-    // i agent dostaje opis SWOJEJ przeglądarki, nie pulpitu użytkownika
-    expect(seen.argv[seen.argv.indexOf("--append-system-prompt") + 1]).toContain("your own browser");
+    const mcpConfig = JSON.parse(seen.argv[seen.argv.indexOf("--mcp-config") + 1]);
+    // graceful absence: brak kontenera = brak komputera, nie wywrócona tura
+    expect(mcpConfig.mcpServers.computer).toBeUndefined();
+    expect(seen.env.OGB_BOX_ID).toBeUndefined();
   }, 45_000);
 
-  it.skipIf(!hasVenv)("configures shared profile on selection before the first turn", async () => {
+  // Profil bota w silniku trzyma pamięć, skille i rutyny, więc musi powstać
+  // niezależnie od tego, czy komputer wstał.
+  it.skipIf(!hasVenv)("zakłada bota po stronie silnika nawet bez komputera", async () => {
     const bot = (await api("POST", "/api/bots")).body.bot;
-    const patched = await api("PATCH", `/api/bots/${bot.id}`, { computer: "shared" });
-    expect(patched).toMatchObject({ status: 200, body: { bot: { computer: "shared" } } });
+    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "cześć" })).status).toBe(202);
+    const deadline = Date.now() + 20_000;
+    while (!engine.createdBots.includes(`mb-${bot.threadId}`)) {
+      if (Date.now() > deadline) throw new Error(`engine bot never created. stderr:
+${stderr}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
     expect(engine.createdBots).toContain(`mb-${bot.threadId}`);
-    expect(engine.computerModes[`mb-${bot.threadId}`]).toBe("shared");
-  });
+  }, 45_000);
 });

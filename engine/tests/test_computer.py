@@ -484,3 +484,104 @@ def test_native_turn_and_live_bridge_share_one_queue(tmp_path, monkeypatch):
     asyncio.run(own_takeover())
     own_thread.join(timeout=2)
     assert not own_thread.is_alive()
+
+
+# ── faza H3: przeglądarka kontenera H2 zamiast lokalnego chromium ─────────────
+# `browser.json["external"]` — ensure_browser NIGDY nie może odpalić lokalnego
+# chromium dla bota, którego przeglądarka żyje w kontenerze; to dokładnie ten
+# bug, którego zabrania gate H3 ("no provider has an extra invisible browser").
+
+
+def test_ensure_browser_external_marker_never_spawns_local(tmp_path, monkeypatch):
+    root = tmp_path / "external-data"
+    profile = root / "profiles" / "ext-bot"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+    # Port nieosiągalny celowo — sprawdzamy, że mimo to nikt nie odpala lokalnego chromium.
+    (profile / "browser.json").write_text(
+        json.dumps({"cdp_url": "http://127.0.0.1:1", "external": True}), encoding="utf-8"
+    )
+
+    class _BoomProvider:
+        def create_session(self, *a, **kw):  # pragma: no cover — nie powinno się odpalić
+            raise AssertionError("ensure_browser odpalił lokalne chromium dla przeglądarki external")
+
+    monkeypatch.setattr("server.browser_plugin.provider.SlafyBrowserProvider", _BoomProvider)
+
+    state = asyncio.run(app_module.computer.ensure_browser("ext-bot"))
+    assert state["external"] is True
+    assert state["running"] is False
+
+
+def test_status_external_unreachable_reports_reason(tmp_path, monkeypatch):
+    root = tmp_path / "external-unreachable-data"
+    profile = root / "profiles" / "ext-bot-2"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+    (profile / "browser.json").write_text(
+        json.dumps({"cdp_url": "http://127.0.0.1:1", "external": True}), encoding="utf-8"
+    )
+
+    state = asyncio.run(app_module.computer.status("ext-bot-2"))
+    assert state == {
+        "running": False,
+        "url": None,
+        "external": True,
+        "reason": "przeglądarka kontenera nieosiągalna",
+        "mode": "own",
+        "concurrency": "independent",
+        "busy": False,
+    }
+
+
+def test_set_external_rejects_non_loopback_host(tmp_path, monkeypatch):
+    root = tmp_path / "external-validate-data"
+    profile = root / "profiles" / "ext-bot-3"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+
+    with pytest.raises(ValueError):
+        asyncio.run(app_module.computer.set_external("ext-bot-3", "http://evil.example.com:9222"))
+    assert not (profile / "browser.json").exists()
+
+
+def test_set_external_closes_running_local_browser(tmp_path, monkeypatch):
+    """Bot z lokalnym, silnikowym chromium (`session_id`) nie może zostać z nim
+    żywym i niewidocznym po przełączeniu na przeglądarkę kontenera."""
+    root = tmp_path / "external-switch-data"
+    profile = root / "profiles" / "ext-bot-5"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+    (profile / "browser.json").write_text(
+        json.dumps({"cdp_url": "http://127.0.0.1:1", "session_id": "sess-local-1", "mode": "own"}),
+        encoding="utf-8",
+    )
+
+    closed: list[str] = []
+
+    class _FakeProvider:
+        def close_session(self, session_id: str) -> bool:
+            closed.append(session_id)
+            return True
+
+    monkeypatch.setattr("server.browser_plugin.provider.SlafyBrowserProvider", _FakeProvider)
+
+    asyncio.run(app_module.computer.set_external("ext-bot-5", "http://127.0.0.1:32773"))
+    assert closed == ["sess-local-1"]
+    saved = json.loads((profile / "browser.json").read_text(encoding="utf-8"))
+    assert saved == {"cdp_url": "http://127.0.0.1:32773", "external": True}
+
+
+def test_set_external_clears_marker_on_null(tmp_path, monkeypatch):
+    root = tmp_path / "external-clear-data"
+    profile = root / "profiles" / "ext-bot-4"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("SLAFY_DATA_DIR", str(root))
+    (profile / "browser.json").write_text(
+        json.dumps({"cdp_url": "http://127.0.0.1:1", "external": True}), encoding="utf-8"
+    )
+
+    state = asyncio.run(app_module.computer.set_external("ext-bot-4", None))
+    assert state["running"] is False
+    assert "external" not in state
+    assert not (profile / "browser.json").exists()
