@@ -63,6 +63,10 @@ beforeAll(async () => {
       },
     ]),
   );
+  writeFileSync(
+    join(home, ".openmausbot", "groups.json"),
+    JSON.stringify([{ id: "g-local", name: "1", bot_ids: [], createdAt: 1, messages: [] }]),
+  );
 
   child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {
     cwd: ROOT,
@@ -194,6 +198,14 @@ describe("harness HTTP API", () => {
     })).status).toBe(422);
     expect((await api("DELETE", `/api/bots/${bot.id}/routines/${id}`)).status).toBe(200);
     expect((await api("GET", `/api/bots/${bot.id}/routines`)).body).toEqual([]);
+  });
+
+  it("deletes the local group roster when engine is unavailable", async () => {
+    expect((await api("GET", "/api/groups")).body.map((group: { id: string }) => group.id)).toContain("g-local");
+    const deleted = await api("DELETE", "/api/groups/g-local");
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ ok: true, engineSynced: false });
+    expect((await api("GET", "/api/groups")).body).toEqual([]);
   });
 
   it("serves a provider-neutral workspace for every harness bot", async () => {

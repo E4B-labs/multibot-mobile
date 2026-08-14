@@ -844,6 +844,25 @@ function json(res: ServerResponse, status: number, body: unknown) {
   res.end(data);
 }
 
+// multibot: local group roster remains deletable when engine is offline.
+// Engine cleanup is best-effort; a dead engine must not turn a local DELETE
+// into a misleading 502 or leave the sidebar stuck.
+async function deleteGroupRecord(id: string): Promise<{ found: boolean; engineSynced: boolean }> {
+  const found = groupStore.delete(id);
+  if (!found) return { found: false, engineSynced: false };
+  let engineSynced = false;
+  try {
+    const base = await ensureEngine();
+    const removed = await fetch(`${base}/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+    engineSynced = removed.ok || removed.status === 404;
+  } catch {
+    // The durable harness roster is authoritative for UI deletion; engine
+    // will reconcile on its next successful start.
+  }
+  broadcast({ kind: "group", deleted: id });
+  return { found: true, engineSynced };
+}
+
 function readBody(req: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -953,13 +972,10 @@ const server = createServer(async (req, res) => {
           case "groups.delete": {
             requireFull();
             const id = String(body.groupId ?? "");
-            if (!groupStore.get(id)) return json(res, 404, { error: "no such group" });
-            const base = await ensureEngine();
-            const removed = await fetch(`${base}/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
-            if (!removed.ok) return json(res, removed.status, { error: "no such group" });
-            groupStore.delete(id);
-            broadcast({ kind: "group", deleted: id });
-            return json(res, 200, { ok: true });
+            const removed = await deleteGroupRecord(id);
+            return removed.found
+              ? json(res, 200, { ok: true, engineSynced: removed.engineSynced })
+              : json(res, 404, { error: "no such group" });
           }
           case "device.info": return json(res, 200, await deviceInfo());
           case "groups.create": {
@@ -1153,17 +1169,10 @@ const server = createServer(async (req, res) => {
       return group ? json(res, 200, group) : json(res, 404, { error: "no such group" });
     }
     if (m && method === "DELETE") {
-      if (!groupStore.get(m[1])) return json(res, 404, { error: "no such group" });
-      try {
-        const base = await ensureEngine();
-        const removed = await fetch(`${base}/api/groups/${encodeURIComponent(m[1])}`, { method: "DELETE" });
-        if (!removed.ok) return json(res, removed.status === 404 ? 404 : 502, { error: "no such group" });
-        if (!groupStore.delete(m[1])) return json(res, 404, { error: "no such group" });
-        broadcast({ kind: "group", deleted: m[1] });
-        return json(res, 200, { ok: true });
-      } catch (error) {
-        return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
-      }
+      const removed = await deleteGroupRecord(m[1]);
+      return removed.found
+        ? json(res, 200, { ok: true, engineSynced: removed.engineSynced })
+        : json(res, 404, { error: "no such group" });
     }
     // multibot: mixed-provider group rooms. Engine stores membership/shadow
     // ids; harness owns actual turns so Claude/Codex/ACP bots answer through
