@@ -60,6 +60,11 @@ fi
 # a menu, a file manager and a terminal you can actually open. A bare WM leaves
 # the browser filling the screen with nothing behind it, which reads as "there
 # is only a browser". openbox stays as the fallback for hosts too small for it.
+#
+# Appearance is written FIRST: xfconfd loads it once when the session starts, so
+# anything applied afterwards would be overwritten on the next launch.
+"$(dirname "${BASH_SOURCE[0]}")/computer-desktop.sh" >"$LOG/desktop-config.log" 2>&1 || true
+
 if ! running "xfce4-session|openbox"; then
   if have xfce4-session; then
     # Termux has no D-Bus session by default; xfce4-session needs one.
