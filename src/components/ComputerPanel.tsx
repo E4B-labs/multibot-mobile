@@ -332,8 +332,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-app">
-          <div className="flex items-center justify-between px-4 py-3">
+        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
+        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px]">
+          <div className="flex items-center justify-between px-1 py-2">
             <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             <div className="flex items-center gap-2">
               {controlButton}
@@ -345,7 +347,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               </button>
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center overflow-hidden">{screen(true)}</div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden">
+            <div className="h-full w-full overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10">
+              {screen(true)}
+            </div>
+          </div>
         </div>
       )}
     </>
