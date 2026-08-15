@@ -21,7 +21,7 @@ czyste, `vite build` i `tsc -p tsconfig.server.build.json` przechodzą,
 | H5 | zrobione (weryfikacja do poziomu API) | Lease GLOBALNY — jeden ekran, jeden właściciel wejścia; kliknięcia w wyrenderowanym panelu nikt nie sprawdził, brak przeglądarki w sesji |
 | H6 | zrobione, z jedną luką | Redakcja sekretów + kasowanie kroków; **capture na poziomie pulpitu odłożone** |
 | R1 | zrobione | Cztery presety, edycja rozpoznaje harmonogram, daty przez `Intl` |
-| A1 | kod gotowy | Działa dopiero po podaniu projektu Firebase |
+| A1 | zrobione po stronie serwera i przeglądarki | Przycisk Google włącza się sam, gdy w configu są `projectId`, `apiKey` i `clientId` — patrz `docs/REMOTE-ACCESS.md`. Mobilny flow Google odłożony (WebView Androida odrzuca OAuth) |
 | C1 | kod gotowy, niezbudowany | Expo — brak konta i urządzenia; parowanie QR działa po stronie serwera |
 | C2 | kod gotowy, niezbudowany | Electron rozszerzony o zdalny host |
 | Q | częściowo | Testy automatyczne zielone; testy z realnymi modelami wymagają kluczy |
