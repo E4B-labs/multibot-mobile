@@ -4,9 +4,7 @@
     "slug": "multibot-mobile",
     "scheme": "multibot",
     "version": "0.1.0",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "0.1.0",
     "platforms": [
       "android",
       "ios"
