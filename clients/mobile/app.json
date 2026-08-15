@@ -45,6 +45,15 @@
         }
       ],
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
+      }
+    },
+    "owner": "slafy",
+    "updates": {
+      "url": "https://u.expo.dev/ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
+    }
   }
 }
