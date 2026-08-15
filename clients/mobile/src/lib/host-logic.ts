@@ -33,3 +33,30 @@ export function removeHostById(hosts: Host[], id: string): Host[] {
 export function newHostId(): string {
   return `h_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/** Renames one host by id, leaving every other field untouched. Returns the
+ * list unchanged when the id is unknown so callers can stay oblivious. */
+export function renameHost(hosts: Host[], id: string, name: string): Host[] {
+  const trimmed = name.trim();
+  if (!trimmed) return hosts;
+  return hosts.map((h) => (h.id === id ? { ...h, name: trimmed } : h));
+}
+
+/** Human-readable "last used" label the host list can show directly. Anchored
+ * to the local clock on purpose — the phone is the only time source the shell
+ * has, and a precise timestamp would lie across timezones anyway. */
+export function formatLastUsed(ts: number): string {
+  const diffMs = Date.now() - ts;
+  if (diffMs < 0) return "just now";
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "yesterday";
+  if (day < 7) return `${day} days ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk} wk ago`;
+  return new Date(ts).toLocaleDateString();
+}

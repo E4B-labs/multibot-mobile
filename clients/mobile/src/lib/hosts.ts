@@ -4,7 +4,7 @@
 // value risks the ~2KB ceiling some iOS Keychain releases enforce.
 import * as SecureStore from "expo-secure-store";
 
-import { type Host, removeHostById, upsertHost } from "./host-logic";
+import { type Host, removeHostById, renameHost as renameHostInList, upsertHost } from "./host-logic";
 
 export type { Host } from "./host-logic";
 
@@ -41,4 +41,11 @@ export async function deleteHost(id: string): Promise<void> {
   const hosts = removeHostById(await listHosts(), id);
   await saveIndex(hosts);
   await SecureStore.deleteItemAsync(tokenKey(id));
+}
+
+/** Renames a stored host. Reads the index, swaps the name, writes it back —
+ * the token lives under its own key and is never touched. */
+export async function renameHost(id: string, name: string): Promise<void> {
+  const hosts = renameHostInList(await listHosts(), id, name);
+  await saveIndex(hosts);
 }

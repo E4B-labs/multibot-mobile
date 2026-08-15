@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { newHostId, normalizeHostUrl, removeHostById, upsertHost, type Host } from "./host-logic.ts";
+import { newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, upsertHost, type Host } from "./host-logic.ts";
 import { parseQrPayload } from "./pair.ts";
 
 test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
@@ -40,6 +40,29 @@ test("newHostId returns distinct, non-empty ids", () => {
   const ids = new Set(Array.from({ length: 20 }, () => newHostId()));
   assert.equal(ids.size, 20);
   for (const id of ids) assert.ok(id.startsWith("h_"));
+});
+
+test("renameHost swaps only the matching id and keeps other fields", () => {
+  const hosts: Host[] = [
+    { id: "a", name: "A", url: "https://a", createdAt: 1, lastUsedAt: 1 },
+    { id: "b", name: "B", url: "https://b", createdAt: 2, lastUsedAt: 2 },
+  ];
+  const renamed = renameHost(hosts, "a", "  New A  ");
+  assert.equal(renamed[0].name, "New A");
+  assert.equal(renamed[0].url, "https://a");
+  assert.equal(renamed[1].name, "B");
+  // unknown id and blank name are no-ops
+  assert.deepEqual(renameHost(hosts, "z", "Z"), hosts);
+  assert.deepEqual(renameHost(hosts, "a", "   "), hosts);
+});
+
+test("formatLastUsed buckets recent and old timestamps", () => {
+  const now = Date.now();
+  assert.equal(formatLastUsed(now - 30_000), "just now");
+  assert.equal(formatLastUsed(now - 5 * 60_000), "5 min ago");
+  assert.equal(formatLastUsed(now - 3 * 3_600_000), "3 hr ago");
+  assert.equal(formatLastUsed(now - 1 * 86_400_000), "yesterday");
+  assert.equal(formatLastUsed(now - 3 * 86_400_000), "3 days ago");
 });
 
 test("parseQrPayload accepts the PLAN-CLIENTS {url, code} shape", () => {

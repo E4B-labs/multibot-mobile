@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { SafeAreaView, StatusBar, StyleSheet } from "react-native";
 
 import type { Host } from "./src/lib/host-logic";
-import { deleteHost, listHosts } from "./src/lib/hosts";
+import { deleteHost, listHosts, renameHost } from "./src/lib/hosts";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import HostListScreen from "./src/screens/HostListScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
@@ -10,7 +10,10 @@ import WebViewScreen from "./src/screens/WebViewScreen";
 // No navigation library: three screens, switched by local state. Adding
 // react-navigation for this would be an unrequested abstraction — bring it
 // in when a fourth screen or deep-link routing actually needs it.
-type Route = { name: "list" } | { name: "add" } | { name: "webview"; host: Host };
+type Route =
+  | { name: "list" }
+  | { name: "add" }
+  | { name: "webview"; host: Host; botId?: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "list" });
@@ -34,6 +37,14 @@ export default function App() {
     [refresh],
   );
 
+  const handleRename = useCallback(
+    async (id: string, name: string) => {
+      await renameHost(id, name);
+      refresh();
+    },
+    [refresh],
+  );
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#070707" />
@@ -44,6 +55,7 @@ export default function App() {
           onOpen={(host) => setRoute({ name: "webview", host })}
           onAdd={() => setRoute({ name: "add" })}
           onRemove={(id) => void handleRemove(id)}
+          onRename={(id, name) => void handleRename(id, name)}
         />
       )}
       {route.name === "add" && (
@@ -55,7 +67,9 @@ export default function App() {
           onCancel={() => setRoute({ name: "list" })}
         />
       )}
-      {route.name === "webview" && <WebViewScreen host={route.host} onBack={() => setRoute({ name: "list" })} />}
+      {route.name === "webview" && (
+        <WebViewScreen host={route.host} botId={route.botId} onBack={() => setRoute({ name: "list" })} />
+      )}
     </SafeAreaView>
   );
 }
