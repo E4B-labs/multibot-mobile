@@ -72,8 +72,9 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
       const result = await claimPairing(payload.url, payload.code, name.trim() || "My phone");
       await finish(payload.url, result.token);
     } catch (e) {
-      // Seam: /api/pair/claim isn't wired server-side yet (see pair.ts) —
-      // degrade to manual token entry instead of dead-ending the flow.
+      // Trasy parowania (/api/pair/start, /api/pair/claim) już działają po
+      // stronie serwera — nieudane claimowanie to zły/wygasły kod, nie brak
+      // backendu. Cofamy do ręcznego wpisania tokena, zamiast zablokować przepływ.
       setUrl(payload.url);
       setError(e instanceof Error ? e.message : "Pairing failed");
       setSegment("manual");
