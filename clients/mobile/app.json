@@ -1,10 +1,10 @@
 {
   "expo": {
     "name": "MultiBot",
-    "slug": "multibot-mobile",
+    "slug": "multibot2-mobile",
     "scheme": "multibot",
     "version": "0.1.0",
-    "runtimeVersion": "8d291d16ced5fae324025ea27c674b2b59123af7",
+    "runtimeVersion": "1.0.0",
     "platforms": [
       "android",
       "ios"
@@ -14,7 +14,7 @@
     "backgroundColor": "#070707",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.openmausbot.mobile",
+      "bundleIdentifier": "com.multibot2.mobile",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan a QR code to pair with your MultiBot host.",
         "NSAppTransportSecurity": {
@@ -23,10 +23,8 @@
       }
     },
     "android": {
-      "package": "com.openmausbot.mobile",
+      "package": "com.multibot2.mobile",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
@@ -47,15 +45,6 @@
         }
       ],
       "expo-notifications"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "1d7db8a3-befe-4dc3-a347-293d98c0d031"
-      }
-    },
-    "owner": "slafy",
-    "updates": {
-      "url": "https://u.expo.dev/1d7db8a3-befe-4dc3-a347-293d98c0d031"
-    }
+    ]
   }
 }
