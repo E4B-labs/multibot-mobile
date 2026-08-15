@@ -655,7 +655,13 @@ async function startTurn(botId, text, opts) {
                             " Anything you leave there (open tabs, downloads, logins) is visible to them and to the user, and they may change it while you work, so re-check the screen instead of trusting what you saw earlier." +
                             " Take a screenshot or read the page first, then click/type_text/key/scroll on what you actually see; navigate opens a URL and read_page returns the page text." +
                             " move takes a list of points and glides the cursor along them — the user watches that cursor, so use it to show where you are looking or to hover something." +
-                            " computer_exec runs commands inside your computer, never on the user's machine. The user sees this same screen and may take control — if input comes back user_has_control, wait and keep watching rather than retrying."
+                            " computer_exec runs commands inside your computer, never on the user's machine. The user sees this same screen and may take control — if input comes back user_has_control, wait and keep watching rather than retrying." +
+                            // multibot (A4): nawigacja ma iść przez komputer, nie przez shell
+                            // hosta — słaby model wziął xdg-open na HOŚCIE i "nie widział"
+                            // navigate (tool search pokazuje namespaces, nie pojedyncze
+                            // narzędzia). Wprost: preferuj navigate, shell hosta nie dotyka
+                            // komputera, szukaj narzędzi w namespace.
+                            " To open a URL, call navigate(url) — prefer it over shell commands. The shell tools you may also have (bash, exec_command) run on the HOST machine, never inside your computer; for anything on the computer use only the computer tools (navigate, screenshot, read_page, click, type_text, key, scroll, status, computer_exec). If a computer tool is not visible, search for it in the mcp__computer tool namespace."
                         : "") +
                     (integrations.agents
                         ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."

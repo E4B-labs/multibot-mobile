@@ -25,6 +25,7 @@ import { newEventId, newId } from "../contracts.ts";
 import { approvalRule } from "../approval-rules.ts";
 import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
 import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.ts";
+import { COMPUTER_MCP_TOOLS } from "../turn-tools.ts"; // multibot (A4): whitelist narzędzi komputera
 import { killTree } from "../kill-tree.ts";
 import { approvalRuleAllowed, autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.ts";
 import { appendNative } from "./native.ts";
@@ -87,7 +88,25 @@ export function codexMcpConfig(turn: SendTurnInput): { config?: { mcp_servers: R
   // optional MCP server`, WSZYSTKIE `server_name=computer`, zero dla `agents`.
   // Zostaje opcjonalny: `required` dodałby ryzyko wywrócenia tury bez zysku.
   if (turn.integrations?.localComputer) {
-    mcp_servers.computer = { ...turn.integrations.localComputer, required: true };
+    mcp_servers.computer = {
+      ...turn.integrations.localComputer,
+      required: true,
+      // multibot (A4): komputer bota to jego WŁASNY sandbox (wspólny pulpit,
+      // akcje nie ruszają hosta), więc nie pytamy o każdy tool z osobna.
+      // `default_tools_approval_mode: "auto"` omija elicitation w codexie —
+      // bez tego każdy screenshot/click/navigate czeka na aprobatę, a brak
+      // odpowiedzi po 15 min kończył się cichym "user rejected" (sprawdzone:
+      // fail screenshot w smoke i tura, w której bot nie nawigował, bo każdy
+      // krok wisiał na aprobacie). Shell/edit na HOŚCIE dalej idą przez
+      // zwykły approval policy — to nie jest obejście turn-policy.
+      default_tools_approval_mode: "auto",
+      // Jawna whitelist (mirror COMPUTER_MCP_TOOLS) — codex rejestruje tylko
+      // te narzędzia; to samo źródło, z którego prompt wylicza ofertę tury.
+      enabled_tools: [...COMPUTER_MCP_TOOLS],
+      // Serwer to Python i na s10e wstaje ~4 s; default 10 s — zapas na
+      // wolny dzień telefonu, zanim required:true skończy turę błędem.
+      startup_timeout_ms: 30_000,
+    };
   }
   return Object.keys(mcp_servers).length ? { config: { mcp_servers } } : {};
 }

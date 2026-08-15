@@ -41,8 +41,12 @@ export function harnessBaseUrl() {
  *
  * 3: `required: true` — wątki z wersji 2 powstały w wyścigu i zostały bez
  *    komputera na zawsze, więc muszą zacząć od nowa.
+ * 4: montaż komputera dostał `default_tools_approval_mode: "auto"`,
+ *    `enabled_tools` (whitelist) i `startup_timeout_ms: 30000` (A4) — wątki
+ *    z wersji 3 mają stary montaż (elicitation na każdy tool), więc muszą
+ *    zacząć od nowa, żeby bot nie wisiał na aprobatach.
  */
-export const COMPUTER_TOOLS_VERSION = 3;
+export const COMPUTER_TOOLS_VERSION = 4;
 /** Ensure engine-side bot exists and persist which browser profile it uses.
  * Slafy-native bots need this too; their browser tools do not ride this MCP. */
 export async function configureEngineComputer(threadId, mode) {

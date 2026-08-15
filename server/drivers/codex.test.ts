@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ProviderInstance, SendTurnInput } from "../contracts.ts";
 import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.ts";
+import { COMPUTER_MCP_TOOLS } from "../turn-tools.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
 import { CodexDriver, codexMcpConfig, cursorMcpKey, cursorPlan, splitCursor } from "./codex.ts";
@@ -323,6 +324,21 @@ describe("codexMcpConfig", () => {
     expect(cfg.config!.mcp_servers.computer).toMatchObject({ required: true });
     // agents wstaje od razu, więc zostaje opcjonalny (mniejsze ryzyko dla tury)
     expect(cfg.config!.mcp_servers.agents).not.toHaveProperty("required");
+  });
+
+  it("auto-approves computer tools and whitelists them (A4)", () => {
+    const cfg = codexMcpConfig({
+      ...base,
+      integrations: { localComputer: { command: "py", args: [], env: {} } },
+    } as unknown as SendTurnInput);
+    const computer = cfg.config!.mcp_servers.computer as Record<string, unknown>;
+    // komputer to sandbox bota — bez elicitation na każdy tool; inaczej 15-min
+    // timeout odmawiał po cichu i bot nie nawigował
+    expect(computer.default_tools_approval_mode).toBe("auto");
+    // whitelist musi być mirrorem prawdziwego zestawu narzędzi
+    expect(computer.enabled_tools).toEqual([...COMPUTER_MCP_TOOLS]);
+    // Python na telefonie wstaje ~4 s; 30 s zapasu przed błędem required
+    expect(computer.startup_timeout_ms).toBe(30_000);
   });
 
   it("mounts the computer even when there are no peer agents", () => {
