@@ -7,6 +7,10 @@
     "runtimeVersion": {
       "policy": "fingerprint"
     },
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070707",
