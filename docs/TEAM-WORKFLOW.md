@@ -45,6 +45,7 @@ Prefer one owner per area during a task:
 | Frontend | `src/`, `public/` | `server/`, `engine/` |
 | Harness | `server/` | `src/`, `engine/` |
 | Engine | `engine/` | `src/`, most `server/` |
+| Mobile shell | `clients/mobile/` | every other area |
 | Install/docs | `scripts/`, `docs/`, root Markdown | any code area |
 
 When two branches must touch one file, agree on order first. Rebase before
