@@ -240,6 +240,10 @@ nadpisuje drugą.
 Wzór: `C:\Users\kacpe\Desktop\loga\inspiracje.png` (u Kacpra). Poniżej opis,
 żeby dało się pracować bez pliku.
 
+Wzór leży w repo: **`docs/branding/inspiracje.png`** — przychodzi przez
+`git fetch original`, nie trzeba go nikomu wysyłać. Tam też
+`docs/branding/gemini.png`, `kimi.png`, `qwen.png` — logo dostawców.
+
 Styl: bardzo ciemny, prawie czarny (`#0a0a0a`) na tło, karty odrobinę jaśniejsze
 (`#141414`) z delikatną jasną obwódką `1px` o niskiej przezroczystości. Rogi
 mocno zaokrąglone (12–16 px). Tekst biały, opisy szare (`#8a8a8a`). Zero
