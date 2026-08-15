@@ -12,7 +12,6 @@ import {
   Pin,
   PinOff,
   Plus,
-  Search,
   Settings,
   Puzzle,
   Trash2,
@@ -22,6 +21,8 @@ import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store"
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
+// multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
+import { SearchPalette, type SearchTab } from "./SearchPalette";
 import { authFetch } from "@/lib/auth";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
@@ -171,8 +172,8 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
         onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
       }}
       className={cn(
-        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left",
-        selected ? "bg-raised" : "hover:bg-raised/50",
+        "flex w-full items-center gap-3 rounded-card border border-hairline bg-card px-3 py-2.5 text-left",
+        selected ? "ring-1 ring-accent/60" : "hover:bg-raised/60",
       )}
     >
       <MausAvatar
@@ -431,6 +432,9 @@ export function Sidebar() {
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  // multibot: B4 — paleta wyszukiwania (inspiracje.png): zapytanie + aktywna zakładka
+  const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<SearchTab>("All");
 
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
   // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
@@ -459,6 +463,16 @@ export function Sidebar() {
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
+
+  // multibot: B4 — filtrowanie listy po zapytaniu z palety wyszukiwania
+  const q = query.trim().toLowerCase();
+  const filteredBots = q
+    ? visibleBots.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.description.toLowerCase().includes(q),
+      )
+    : visibleBots;
 
   // multibot: F9-FE — kandydaci do grup: cała flota, także ukryci. Kolejność
   // stabilna z listy botów; wybrany driver nie usuwa bota z grup.
@@ -533,15 +547,14 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search — B4: paleta wyszukiwania (inspiracje.png) */}
       <div className="px-3 pt-2 pb-3">
-        <div className="flex items-center gap-2 rounded-lg bg-raised/70 px-3 py-2">
-          <Search size={16} className="text-ink-secondary" />
-          <input
-            placeholder={polish ? "Szukaj" : "Search"}
-            className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-secondary focus:outline-none"
-          />
-        </div>
+        <SearchPalette
+          query={query}
+          onQueryChange={setQuery}
+          activeTab={tab}
+          onTabChange={setTab}
+        />
       </div>
 
       {/* Unified conversation list: group rows sit with bots, above plugins. */}
@@ -555,7 +568,7 @@ export function Sidebar() {
           />
         )}
         <div className="flex flex-col gap-0.5">
-          {visibleBots.map((b) => (
+          {filteredBots.map((b) => (
             <BotListItem key={b.id} bot={b} onMenu={setMenu} />
           ))}
         </div>
