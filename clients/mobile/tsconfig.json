@@ -1,7 +1,11 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // `logic.test.ts` chodzi pod runnerem Node'a, ktory wymaga rozszerzenia w
+    // imporcie — bez tego `tsc --noEmit` na tym projekcie nie przechodzi wcale.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["**/*.ts", "**/*.tsx"]
 }

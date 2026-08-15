@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { WebView, type WebViewHttpErrorEvent } from "react-native-webview";
+import { WebView } from "react-native-webview";
 
 import type { Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
@@ -10,9 +10,18 @@ interface Props {
   onBack: () => void;
 }
 
+// Ile czekamy, zanim kręcące się kółko zamieni się w konkretną informację.
+// Host w tej samej sieci oddaje UI w ułamku sekundy (zmierzone na telefonie:
+// 875 KB paczki w 22 ms), więc kilkanaście sekund to już awaria, a nie wolne
+// łącze. Bez tego ekran kręcił się w nieskończoność i nie dało się zgadnąć, czy
+// to sieć, token, czy WebView.
+const LOAD_TIMEOUT_MS = 15_000;
+
 export default function WebViewScreen({ host, onBack }: Props) {
   const [uri, setUri] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,13 +39,31 @@ export default function WebViewScreen({ host, onBack }: Props) {
       // mounted, replace this with a POST of a Firebase ID token to
       // /api/auth/firebase/session and let the WebView pick up the resulting
       // HttpOnly mb_session cookie instead — no token in the URL or here.
-      const fragment = token ? `#access_token=${encodeURIComponent(token)}` : "";
+      if (!token) {
+        // Wpis hosta bez tokenu: WebView pokazałby ekran logowania albo nic.
+        setFailed("No access token saved for this host — remove it and add it again.");
+        return;
+      }
+      const fragment = `#access_token=${encodeURIComponent(token)}`;
       setUri(`${host.url}/${fragment}`);
+    }, (e: unknown) => {
+      if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
     return () => {
       cancelled = true;
     };
   }, [host]);
+
+  // Kółko z terminem: po `LOAD_TIMEOUT_MS` bez `onLoadEnd` mówimy, co dokładnie
+  // się nie udało, zamiast kręcić dalej.
+  useEffect(() => {
+    if (loaded || failed) return;
+    const timer = setTimeout(
+      () => setFailed(`${host.url} did not finish loading in ${LOAD_TIMEOUT_MS / 1000}s.`),
+      LOAD_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [loaded, failed, host.url, attempt]);
 
   if (!uri) {
     return (
@@ -50,7 +77,18 @@ export default function WebViewScreen({ host, onBack }: Props) {
     return (
       <View style={styles.center}>
         <Text style={styles.errorTitle}>Can&apos;t reach {host.name}</Text>
-        <Text style={styles.errorBody}>Check that the host is running and reachable (Tailscale/VPN if remote).</Text>
+        <Text style={styles.errorBody}>{failed}</Text>
+        <Text style={styles.errorBody}>{host.url}</Text>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => {
+            setFailed(null);
+            setLoaded(false);
+            setAttempt((n) => n + 1);
+          }}
+        >
+          <Text style={styles.backButtonText}>Try again</Text>
+        </Pressable>
         <Pressable style={styles.backButton} onPress={onBack}>
           <Text style={styles.backButtonText}>Back to hosts</Text>
         </Pressable>
@@ -61,6 +99,7 @@ export default function WebViewScreen({ host, onBack }: Props) {
   return (
     <View style={styles.flex}>
       <WebView
+        key={attempt}
         source={{ uri }}
         style={styles.flex}
         // The harness UI — including the bot-computer noVNC iframe reached
@@ -72,6 +111,12 @@ export default function WebViewScreen({ host, onBack }: Props) {
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={["*"]}
+        // `startInLoadingState` samo w sobie potrafi zostawić kółko na wieki,
+        // gdy `onLoadEnd` nie przyjdzie — stan trzymamy więc u siebie.
+        onLoadEnd={() => setLoaded(true)}
+        onLoadProgress={({ nativeEvent }) => {
+          if (nativeEvent.progress >= 1) setLoaded(true);
+        }}
         startInLoadingState
         // Deliberately not wrapped in a ScrollView and scrollEnabled is left
         // at its default (true) — pinch-zoom and scroll inside the noVNC
@@ -82,9 +127,11 @@ export default function WebViewScreen({ host, onBack }: Props) {
             <ActivityIndicator color="#fcfcfc" />
           </View>
         )}
-        onError={() => setFailed(true)}
-        onHttpError={(e: WebViewHttpErrorEvent) => {
-          if (e.nativeEvent.statusCode >= 500) setFailed(true);
+        onError={({ nativeEvent }) =>
+          setFailed(nativeEvent.description || `WebView error ${nativeEvent.code ?? ""}`.trim())
+        }
+        onHttpError={(e) => {
+          if (e.nativeEvent.statusCode >= 500) setFailed(`Host answered HTTP ${e.nativeEvent.statusCode}.`);
         }}
       />
       <Pressable style={styles.floatingBack} onPress={onBack}>
