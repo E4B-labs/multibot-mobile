@@ -27,6 +27,12 @@ export function configurePushNotifications(): void {
 
 // Asks the OS for permission and returns the Expo push token, or null when the
 // user declines or the platform refuses. Call once at first launch.
+//
+// TODO(push-rejestracja, U28): gdy serwer dostarczy `POST /api/devices/:id/push`
+// (PLAN-UI.md U28 — dziś tego nie ma w server/), tutaj trzeba wysłać ten token
+// do hosta, żeby serwer mógł puścić Expo push przy `needsAttention`. Wywołanie
+// musi iść na konkretny host (zapisany w SecureStore) i być odporne na brak
+// trasy (404) — nie wymyślać backendu po stronie klienta.
 export async function requestPushPermission(): Promise<string | null> {
   try {
     const { status } = await Notifications.requestPermissionsAsync();
