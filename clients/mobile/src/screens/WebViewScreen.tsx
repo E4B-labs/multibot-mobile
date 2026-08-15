@@ -22,6 +22,9 @@ export default function WebViewScreen({ host, onBack }: Props) {
   const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Ile strony zdążyło wejść, zanim się zatrzymało — bez tego „ładuje się"
+  // znaczy tyle samo przy zerze, co przy 99%.
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +62,15 @@ export default function WebViewScreen({ host, onBack }: Props) {
   useEffect(() => {
     if (loaded || failed) return;
     const timer = setTimeout(
-      () => setFailed(`${host.url} did not finish loading in ${LOAD_TIMEOUT_MS / 1000}s.`),
+      () =>
+        setFailed(
+          `${host.url} did not finish loading in ${LOAD_TIMEOUT_MS / 1000}s ` +
+            `(stopped at ${Math.round(progress * 100)}%).`,
+        ),
       LOAD_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
-  }, [loaded, failed, host.url, attempt]);
+  }, [loaded, failed, host.url, attempt, progress]);
 
   if (!uri) {
     return (
@@ -115,6 +122,7 @@ export default function WebViewScreen({ host, onBack }: Props) {
         // gdy `onLoadEnd` nie przyjdzie — stan trzymamy więc u siebie.
         onLoadEnd={() => setLoaded(true)}
         onLoadProgress={({ nativeEvent }) => {
+          setProgress(nativeEvent.progress);
           if (nativeEvent.progress >= 1) setLoaded(true);
         }}
         startInLoadingState
@@ -125,6 +133,7 @@ export default function WebViewScreen({ host, onBack }: Props) {
         renderLoading={() => (
           <View style={styles.center}>
             <ActivityIndicator color="#fcfcfc" />
+            <Text style={styles.errorBody}>{Math.round(progress * 100)}%</Text>
           </View>
         )}
         onError={({ nativeEvent }) =>
