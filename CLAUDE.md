@@ -165,6 +165,17 @@ logu wynik jest przypadkiem.**
 
 ## 6. Higiena repo
 
+- **Plany.** `PLAN-00-INDEX.md` to spis wszystkiego, co ma powstać, z numerami
+  pozycji. Plany wykonawcze: `PLAN-COMPUTER-USE.md`, `PLAN-PAMIEC.md`,
+  `PLAN-UI.md`, `PLAN-BIZNES.md`, `PLAN-STOS.md`. Zanim zaczniesz zadanie,
+  sprawdź, czy nie ma go już na tej liście z podjętą decyzją — kilka rzeczy
+  zostało tam świadomie odrzuconych i nie otwiera się ich ponownie.
+- **Aplikacja na telefon mieszka w drugim repo.** `clewkord/multibot2` to fork
+  tego repo, prowadzony przez kolegę Kacpra, i tam idą wszystkie zmiany
+  aplikacji mobilnej. Tutaj `clients/mobile/` zostaje jako źródło, z którego
+  tamten fork się aktualizuje. Nie rób w tym repo zmian pod telefon bez
+  uzgodnienia — trafią do dwóch miejsc naraz. Zasady współpracy i pułapka
+  wspólnego projektu EAS: `PLAN-MOBILE-KOLEGA.md`.
 - Pliki upstreamu (OpenMausBot) zmieniamy wyłącznie małymi, dodającymi blokami
   oznaczonymi komentarzem `// multibot:`. `server/contracts.ts` — zero zmian.
 - Bez nowych zależności npm w ich `package.json`. Bez reformatów.
