@@ -7,10 +7,24 @@ import { createAcpDriver, type AcpSupport } from "./core.ts";
 
 export const qwenAcpArgs = (model?: string) => ["--acp", ...(model ? ["--model", model] : [])];
 
+// Qwen Code (qwen-code): realne modele z qwenlm.github.io/qwen-code-docs/
+// en/users/configuration/auth/ — Alibaba Cloud Coding Plan (qwen OAuth
+// wyłączony 2026-04-15; wymagany klucz sk-sp- lub API key). Zalecany default
+// to qwen3-coder-plus; reszta to modele Coding Plan Qwen.
 const support: AcpSupport = {
   driverKind: "qwenAgent",
   displayName: "Qwen",
-  models: { default: "qwen3-coder-plus", options: [{ id: "qwen3-coder-plus", label: "Qwen3 Coder Plus" }] },
+  models: {
+    default: "qwen3-coder-plus",
+    options: [
+      { id: "qwen3-coder-plus", label: "Qwen3 Coder Plus" },
+      { id: "qwen3-coder-next", label: "Qwen3 Coder Next" },
+      { id: "qwen3.5-plus", label: "Qwen3.5 Plus" },
+      { id: "qwen3.6-plus", label: "Qwen3.6 Plus" },
+      { id: "qwen3.7-plus", label: "Qwen3.7 Plus" },
+      { id: "qwen3-max-2026-01-23", label: "Qwen3 Max (2026-01-23)" },
+    ],
+  },
   defaultCli: "qwen",
   nativeSource: "qwen.acp",
   loginNote: "Qwen is not signed in — run `qwen` once to log in",

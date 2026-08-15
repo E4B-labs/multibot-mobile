@@ -35,6 +35,7 @@ describe("ACP decodeConfig", () => {
   it("kimi uses the official ACP stdio entrypoint", () => {
     expect(KimiAgentDriver.decodeConfig(undefined)).toEqual({ cli: "kimi", fullAuto: false, workspace: undefined });
     expect(kimiAcpArgs()).toEqual(["acp"]);
+    expect(kimiAcpArgs("kimi-for-coding")).toEqual(["acp", "-m", "kimi-for-coding"]);
   });
   it("qwen uses the official stable ACP stdio flag", () => {
     expect(QwenAgentDriver.decodeConfig(undefined)).toEqual({ cli: "qwen", fullAuto: false, workspace: undefined });
@@ -82,7 +83,7 @@ describe("ACP turns (fake CLI)", () => {
 
   it("normalizes a full turn into the canonical event sequence", async () => {
     await create();
-    const { turnId } = await instance.adapter.sendTurn({ threadId: "t-happy", text: "hi", model: "grok-4.5" });
+    const { turnId } = await instance.adapter.sendTurn({ threadId: "t-happy", text: "hi", model: "grok-4.6" });
     await recorder.until((e) => e.type === "turn.completed");
 
     const types = recorder.events.map((e) => e.type);
@@ -126,7 +127,7 @@ describe("ACP turns (fake CLI)", () => {
     await create(GrokAgentDriver, "permission");
     await instance.adapter.sendTurn({ threadId: "t-perm", text: "go" });
     const opened = await recorder.until((e) => e.type === "request.opened");
-    expect(opened).toMatchObject({ requestType: "permission", tool: "shell" });
+    expect(opened).toMatchObject({ requestType: "permission", tool: "shell", approvalRule: { provider: "grokAgent" } });
 
     await instance.adapter.respondToRequest("t-perm", (opened as any).requestId, { behavior: "allow" });
     const resolved = await recorder.until((e) => e.type === "request.resolved");

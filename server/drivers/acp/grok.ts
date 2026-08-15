@@ -12,9 +12,12 @@ import { createAcpDriver, type AcpSupport } from "./core.ts";
 const support: AcpSupport = {
   driverKind: "grokAgent",
   displayName: "Grok",
-  // The CLI catalog is account-driven (`grok models` reports one today);
-  // eventually read from the initialize result's _meta.modelState.
-  models: { default: "grok-4.5", options: [{ id: "grok-4.5", label: "Grok 4.5" }] },
+  // The CLI catalog is account-driven (`grok models` reports what the
+  // subscription allows). Grok Build (github.com/xai-org/grok-build,
+  // open-source od 2026-07) — model, który go napędza, to grok-4.6
+  // (docs.x.ai/build). Fast/mini warianty zależą od konta; zostaje to,
+  // co działa u każdego.
+  models: { default: "grok-4.6", options: [{ id: "grok-4.6", label: "Grok 4.6" }] },
   defaultCli: "grok",
   nativeSource: "grok.acp",
   loginNote: "Grok CLI is not signed in — run `grok login` in a terminal",
