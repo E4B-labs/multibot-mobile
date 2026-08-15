@@ -67,7 +67,26 @@ const DENY_TIMEOUT_NOTE =
 export function codexMcpConfig(turn: SendTurnInput): { config?: { mcp_servers: Record<string, unknown> } } {
   const mcp_servers: Record<string, unknown> = {};
   if (turn.integrations?.agents) mcp_servers.agents = turn.integrations.agents;
-  if (turn.integrations?.localComputer) mcp_servers.computer = turn.integrations.localComputer;
+  // `required` — bez tego bot bywa BEZ komputera, cicho i losowo.
+  //
+  // Codex startuje serwery MCP równolegle z turą i kompletuje listę narzędzi w
+  // momencie `resolve_for_step`. Serwer, który do tej chwili nie wstał, jest
+  // POMIJANY, jeśli nie jest wymagany — w logu `omitting pending optional MCP
+  // server server_name=computer`. Na telefonie ten serwer to Python (mcp +
+  // pydantic + fastmcp), więc wstaje ~4 s i nie zdąża: 46 tur z rzędu poszło
+  // bez komputera, a bot uczciwie meldował, że komputera nie ma. Łaska dla
+  // serwerów opcjonalnych to stała w kodzie codeksa (`OPTIONAL_MCP_STARTUP_
+  // GRACE`), więc podnieść jej się nie da — jedyną dźwignią jest `required`.
+  //
+  // Cena: gdy serwer NIE wstanie, codex kończy sesję błędem zamiast puścić turę
+  // bez komputera. Świadomie, bo cicha degradacja to dokładnie ta awaria, którą
+  // tu naprawiamy — a `engineComputer()` i tak wcześniej sprawdza venv i silnik,
+  // więc do tego miejsca dochodzi tylko komputer, który ma czym wstać.
+  // Serwer `agents` jest node'owy, wstaje od razu i wyścigu nie przegrywa
+  // (0 pominięć w logach) — zostaje opcjonalny.
+  if (turn.integrations?.localComputer) {
+    mcp_servers.computer = { ...turn.integrations.localComputer, required: true };
+  }
   return Object.keys(mcp_servers).length ? { config: { mcp_servers } } : {};
 }
 

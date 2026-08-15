@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ProviderInstance, SendTurnInput } from "../contracts.ts";
+import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.ts";
 import { recordEvents, type EventRecorder } from "../testing/events.ts";
 import { clearTurnPolicy, setTurnPolicy } from "../turn-policy.ts";
 import { CodexDriver, codexMcpConfig, cursorMcpKey, cursorPlan, splitCursor } from "./codex.ts";
@@ -310,6 +311,20 @@ describe("codexMcpConfig", () => {
     expect(cfg.config!.mcp_servers.computer).toMatchObject({ command: "py" });
   });
 
+  it("marks the computer required so a slow start cannot silently drop it", () => {
+    const cfg = codexMcpConfig({
+      ...base,
+      integrations: {
+        agents: { command: "node", args: ["a.js"], env: {} },
+        localComputer: { command: "py", args: [], env: {} },
+      },
+    } as unknown as SendTurnInput);
+    // codex pomija niegotowe serwery opcjonalne — komputer musi być wymagany
+    expect(cfg.config!.mcp_servers.computer).toMatchObject({ required: true });
+    // agents wstaje od razu, więc zostaje opcjonalny (mniejsze ryzyko dla tury)
+    expect(cfg.config!.mcp_servers.agents).not.toHaveProperty("required");
+  });
+
   it("mounts the computer even when there are no peer agents", () => {
     const cfg = codexMcpConfig({
       ...base,
@@ -332,7 +347,9 @@ describe("cursor carries the mcp set", () => {
   it("keys the cursor by server names, order-independent", () => {
     const a = cursorMcpKey(cfg({ agents: { command: "n", args: [], env: {} }, localComputer: { command: "p", args: [], env: {} } }));
     const b = cursorMcpKey(cfg({ localComputer: { command: "p", args: [], env: {} }, agents: { command: "n", args: [], env: {} } }));
-    expect(a).toBe("agents,computer@2"); // wersja zestawu narzędzi komputera
+    // wersja podpięcia komputera jedzie w kluczu — czytana ze źródła, żeby jej
+    // podniesienie nie wywracało tego testu, a samo podpięcie było sprawdzone
+    expect(a).toBe(`agents,computer@${COMPUTER_TOOLS_VERSION}`);
     expect(b).toBe(a);
     expect(cursorMcpKey(cfg(undefined))).toBe("");
   });

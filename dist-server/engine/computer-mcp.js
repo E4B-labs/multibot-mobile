@@ -24,18 +24,25 @@ export function harnessBaseUrl() {
     return `http://127.0.0.1:${port}`;
 }
 /**
- * Wersja zestawu narzędzi komputera (`engine/server/computer_mcp.py`).
+ * Wersja PODPIĘCIA komputera: zestawu narzędzi (`engine/server/computer_mcp.py`)
+ * i warunków, na jakich codex go montuje.
  *
- * Codex ZAPAMIĘTUJE listę narzędzi w wątku: świeży wątek widzi `move`, a wątek
+ * Codex ZAPAMIĘTUJE jedno i drugie w wątku: świeży wątek widzi `move`, a wątek
  * założony wcześniej wylicza tylko `click/key/type_text/navigate/read_page` i
- * odmawia — sprawdzone na dwóch botach obok siebie. Numer jedzie w kursorze
- * (`codex.ts::cursorMcpKey`), więc jego zmiana każe zacząć wątek od nowa.
+ * odmawia — sprawdzone na dwóch botach obok siebie. `thread/resume` nigdy tego
+ * nie naprawia: w logach codeksa tura wznowiona nie startuje serwerów MCP w
+ * ogóle. Numer jedzie w kursorze (`codex.ts::cursorMcpKey`), więc jego zmiana
+ * jest JEDYNYM sposobem, żeby istniejący bot dostał poprawione podpięcie.
  *
- * PODNIEŚ przy każdej zmianie listy narzędzi tego serwera. Cena podniesienia to
- * pamięć bota po stronie dostawcy (transkrypt harnessu zostaje), więc nie rusza
- * się go przy poprawkach opisów.
+ * PODNIEŚ przy każdej zmianie listy narzędzi tego serwera ORAZ przy zmianie
+ * tego, jak jest montowany (patrz `required` w `codex.ts::codexMcpConfig`).
+ * Cena podniesienia to pamięć bota po stronie dostawcy (transkrypt harnessu
+ * zostaje), więc nie rusza się go przy poprawkach opisów.
+ *
+ * 3: `required: true` — wątki z wersji 2 powstały w wyścigu i zostały bez
+ *    komputera na zawsze, więc muszą zacząć od nowa.
  */
-export const COMPUTER_TOOLS_VERSION = 2;
+export const COMPUTER_TOOLS_VERSION = 3;
 /** Ensure engine-side bot exists and persist which browser profile it uses.
  * Slafy-native bots need this too; their browser tools do not ride this MCP. */
 export async function configureEngineComputer(threadId, mode) {
