@@ -6,11 +6,11 @@ import { createAcpDriver } from "./core.js";
 export const qwenAcpArgs = (model) => ["--acp", ...(model ? ["--model", model] : [])];
 const support = {
     driverKind: "qwenAgent",
-    displayName: "Qwen Code",
+    displayName: "Qwen",
     models: { default: "qwen3-coder-plus", options: [{ id: "qwen3-coder-plus", label: "Qwen3 Coder Plus" }] },
     defaultCli: "qwen",
     nativeSource: "qwen.acp",
-    loginNote: "Qwen Code is not signed in — run `qwen` once to log in",
+    loginNote: "Qwen is not signed in — run `qwen` once to log in",
     spawnArgs: (_config, turn) => qwenAcpArgs(turn.model),
     pickAuthMethod: (methods) => methods.find((method) => typeof method.id === "string")?.id ?? null,
     authFailure: "continue",
