@@ -1,3 +1,24 @@
+## Zanim cokolwiek zrobisz w tym repo
+
+To repo jest forkiem `clewkord/multibot`. Kod oryginalny mieszka TAM, tutaj
+mieszka wyłącznie aplikacja na telefon (`clients/mobile/`).
+
+Na starcie każdej sesji, przed odczytaniem zadania:
+
+    git fetch original
+    git log --oneline HEAD..original/main
+
+Coś wyszło — scal to i dopiero wtedy pracuj. Zasada rozstrzygania konfliktów:
+`clients/mobile/` należy do tego repo, `server/`, `engine/` i `src/` należą do
+oryginału i tutaj się ich NIE edytuje, tylko przyjmuje.
+
+`clients/mobile/webui/` to ręczna kopia `src/`. Git jej nie zsynchronizuje —
+po merge'u ruszającym `src/` przenieś zmiany do `webui/` ręcznie.
+
+Projekt EAS tego repo jest WŁASNY i nie wolno go zmieniać na projekt
+oryginału. Jeden `projectId` w dwóch repozytoriach oznacza, że jedna apka
+nadpisuje drugą.
+
 # CLAUDE.md
 
 Instrukcje dla agentów pracujących w tym repo. Rzeczy, których nie da się
