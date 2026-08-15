@@ -302,6 +302,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         } };
         allowed.push("mcp__computer");
       } else if (turn.integrations?.localComputer) {
+        // multibot (A1): serwer komputera, ten sam stdio co u codexa. Claude
+        // Code czeka na wolno wstające serwery i nie pomija ich po cichu —
+        // wyścig z sekcji A1 (omitting pending optional MCP server) dotyczy
+        // tylko codexa. Awarię serwera Claude raportuje w ToolSearch; tura nie
+        // pada i bot wie, że komputera nie ma.
         mcpServers.computer = { ...turn.integrations.localComputer };
         allowed.push("mcp__computer");
       }
@@ -338,7 +343,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       }
       let spawnedWorker = false;
       if (!worker || worker.child.stdin?.destroyed) {
-        const env: Record<string, string | undefined> = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error" };
+        // multibot (A1): Claude Code NIE ma wyścigu codexa — czeka na łączące się
+      // serwery MCP (tool search / WaitForMcpServers), a awarię serwera zgłasza
+      // Claude'owi zamiast cicho pominąć narzędzia. `MCP_TIMEOUT` to startup
+      // timeout serwerów MCP (default 10 s; serwer komputera to Python i na
+      // telefonie wstaje ~4 s — 30 s zostawia zapas na wolny dzień s10e).
+      // Stdio serwery nie reconnectują się same, więc start musi się zmieścić
+      // w tym oknie — stąd podbicie, a nie domyślne 10 s.
+      const env: Record<string, string | undefined> = { ...process.env, PATH: augmentedPath(), NPM_CONFIG_LOGLEVEL: "error", MCP_TIMEOUT: "30000" };
         delete env.ANTHROPIC_API_KEY;
         delete env.CLAUDECODE;
         delete env.CLAUDE_CODE_ENTRYPOINT;

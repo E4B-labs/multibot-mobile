@@ -62,8 +62,10 @@ export function codexMcpConfig(turn) {
     // bez komputera. Świadomie, bo cicha degradacja to dokładnie ta awaria, którą
     // tu naprawiamy — a `engineComputer()` i tak wcześniej sprawdza venv i silnik,
     // więc do tego miejsca dochodzi tylko komputer, który ma czym wstać.
-    // Serwer `agents` jest node'owy, wstaje od razu i wyścigu nie przegrywa
-    // (0 pominięć w logach) — zostaje opcjonalny.
+    // Serwer `agents` jest node'owy, wstaje od razu i wyścigu nie przegrywa —
+    // sprawdzone w logach codeksa (logs_2.sqlite): 46 pominięć `omitting pending
+    // optional MCP server`, WSZYSTKIE `server_name=computer`, zero dla `agents`.
+    // Zostaje opcjonalny: `required` dodałby ryzyko wywrócenia tury bez zysku.
     if (turn.integrations?.localComputer) {
         mcp_servers.computer = { ...turn.integrations.localComputer, required: true };
     }

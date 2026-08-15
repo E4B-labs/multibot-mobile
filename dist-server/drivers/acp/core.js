@@ -89,6 +89,13 @@ export function createAcpDriver(support) {
                 // multibot (H3): ten sam komputer bota, co u claude'a i codexa — bez
                 // tego agent ACP widzi ekran użytkownika w panelu, ale nie ma czym na
                 // nim działać.
+                //
+                // multibot (A1): ACP NIE ma konceptu `required` w mcpServers — serwery
+                // idą do `session/new`, a to, czy agent poczeka na ich start, zależy od
+                // vendorów (Grok/Gemini/Kimi/Qwen). Wyścig codexa (ciche pomijanie
+                // niegotowych serwerów opcjonalnych) tu nie występuje w tej formie,
+                // ale i dźwigni `required` nie ma; awaria = brak narzędzi, nie wywrócona
+                // tura. W produkcji brak botów ACP — monitorować w logach vendorów.
                 const computer = turn.integrations?.localComputer;
                 if (computer) {
                     servers.push({

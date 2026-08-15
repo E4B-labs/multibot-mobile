@@ -37,7 +37,11 @@ _SOUL = """# {name}
 
 _MULTIBOT_MARKER = "MULTIBOT_AGENT_IDENTITY_V1"
 _ROUTINE_MARKER = "MULTIBOT_ROUTINE_TOOL_ROUTING_V1"
-_COMPUTER_MARKER = "MULTIBOT_COMPUTER_IDENTITY_V1"
+_COMPUTER_MARKER = "MULTIBOT_COMPUTER_IDENTITY_V2"
+# Stary marker bloku komputera. Migracja V1→V2 w `ensure_multibot_identity`
+# PODMIENIA stary blok na nowy zamiast dokładać drugi (sekcja A2: „rozszerz
+# istniejący blok, nie dokładaj drugiego").
+_COMPUTER_MARKER_V1 = "MULTIBOT_COMPUTER_IDENTITY_V1"
 _MULTIBOT_IDENTITY = f"""
 
 ## MultiBot Agent
@@ -92,6 +96,18 @@ Because the desktop is shared, open tabs, downloads and logins are visible to th
 user and to the other bots, and they may change things while you work: take a
 `browser_snapshot` and act on what you see now instead of trusting what you saw
 earlier.
+
+On this installation your terminal and file tools run on the same machine as the
+desktop — a file you download in the browser is visible from your terminal, and
+vice versa. The computer is one environment, not a set of disconnected boxes.
+
+Keep trying until you succeed: do not give up after one failed tool. When the
+search/read tools cannot answer, go to your computer — browse, run terminal
+commands, read files. Ask the user only for a real decision or for data you
+cannot get anywhere else (a password, a direction, consent for something
+irreversible). Never claim you did something you did not — if something failed,
+say what and why. Persistence is not permission bypass: a toolset disabled by
+your permissions stays disabled, and approval mode still asks.
 """
 
 
@@ -117,6 +133,21 @@ def _write(bot: dict) -> None:
     (d / "bot.json").write_text(json.dumps(bot, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _replace_computer_block(content: str, new_block: str) -> str:
+    """Zastąp stary blok `## MultiBot computer` (V1) nowym — bez duplikacji.
+
+    Blok to sekcja od nagłówka do następnego `## ` albo końca pliku. Gdy
+    nagłówka nie ma (marker był, a treść ktoś ręcznie sklecił), dołączamy nowy
+    blok na końcu — tura nie może się wywrócić przez treść SOUL-a."""
+    start = content.find("## MultiBot computer")
+    if start < 0:
+        return content.rstrip() + new_block
+    end = content.find("\n## ", start + 1)
+    if end < 0:
+        end = len(content)
+    return content[:start].rstrip() + new_block + content[end:]
+
+
 def ensure_multibot_identity(bot_id: str) -> None:
     """Append identity to imported/legacy profiles without erasing custom SOUL text."""
     path = profile_dir(bot_id) / "SOUL.md"
@@ -129,9 +160,14 @@ def ensure_multibot_identity(bot_id: str) -> None:
     if _ROUTINE_MARKER not in content:
         additions += _ROUTINE_IDENTITY
     if _COMPUTER_MARKER not in content:
-        additions += _COMPUTER_IDENTITY
+        if _COMPUTER_MARKER_V1 in content:
+            # Migracja V1→V2: podmieniamy stary blok, nie dokładamy drugiego.
+            content = _replace_computer_block(content, _COMPUTER_IDENTITY)
+        else:
+            additions += _COMPUTER_IDENTITY
     if additions:
-        path.write_text(content.rstrip() + additions, encoding="utf-8")
+        content = content.rstrip() + additions
+    path.write_text(content, encoding="utf-8")
 
 
 def create_bot(bot_id: str, name: str, title: str = "", description: str = "") -> dict:

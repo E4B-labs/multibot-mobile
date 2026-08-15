@@ -58,6 +58,7 @@ import { ProviderRegistry } from "./harness/registry.ts";
 import { HarnessRoutines, type HarnessRoutine } from "./routines.ts";
 import { GroupStore } from "./group-store.ts";
 import { jobProgress, SetupJobs } from "./setup-jobs.ts";
+import { turnToolsText } from "./turn-tools.ts"; // multibot (A2): wyliczenie narzędzi tury w prompcie
 import { chainDepth, mentionedBots, Store, type Message } from "./store.ts";
 import { registerWindowsServerAutostart } from "./windows-autostart.ts";
 import { WorkspaceStore } from "./workspace.ts";
@@ -580,6 +581,10 @@ async function startTurn(
     "For questions about the host device, call get_device_info first. Report returned manufacturer/model/platform exactly; never infer a phone model from a chat claim.",
     accessContext,
     sharedPolicy,
+    // multibot (A3): reguła wytrwałości — dotyczy każdego drivera CLI/API.
+    // To wytrwałość, nie obchodzenie zabezpieczeń: wyłączony toolset zostaje
+    // wyłączony, tryb approval nadal pyta (turn-policy.ts).
+    "Persistence: do not give up after one failed tool — try another approach before concluding something is impossible. When the CLI-style tools (grep, read, search, run_command) cannot get the information, go to your computer and get it there: browse, read files, run commands in its terminal. Ask the user only when you genuinely need their decision or data you have no way to obtain (a password, a direction choice, consent for something irreversible). Never claim you did something you did not; if something failed, say plainly what and why. Persistence is not permission bypass: a disabled toolset stays disabled, and approval mode still asks.",
     sharedFacts && `Memory facts:\n${sharedFacts}`,
     sharedMemory && `Memory notes:\n${sharedMemory}`,
     sharedSkills && `Reusable skills:\n${sharedSkills}`,
@@ -677,6 +682,10 @@ async function startTurn(
           .join("\n");
       }
 
+      // multibot (A2): bot ma OD RAZU wiedzieć, jakie narzędzia faktycznie
+      // dostał w tej turze — wyliczenie trafia do promptu systemowego.
+      const toolsText = turnToolsText(integrations);
+
       await instance.adapter.sendTurn({
         threadId: bot.threadId,
         text: [text, turnAttachments.length ? `Attached files:\n${turnAttachments.map((file) => `- ${file.name}: ${file.path}`).join("\n")}` : ""]
@@ -687,6 +696,8 @@ async function startTurn(
         transcript,
         system:
           persona + "\n\n" + workspaceContext +
+          // multibot (A2): wyliczenie narzędzi tej tury (agents/computer/composio)
+          (toolsText ? "\n\n" + toolsText : "") +
           // multibot (H3): jeden opis komputera dla każdego drivera. Desktop,
           // przeglądarka i pliki to JEDNO środowisko, więc agent musi wiedzieć,
           // że plik pobrany w przeglądarce zobaczy w terminalu — i że
