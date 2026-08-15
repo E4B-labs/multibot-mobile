@@ -58,7 +58,10 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
       }
       const fragment = `#access_token=${encodeURIComponent(token)}`;
       const deep = botId ? `&bot=${encodeURIComponent(botId)}` : "";
-      setUri(`${host.url}/${fragment}${deep}`);
+      // mobile-only UI copy lives at /m/ (clients/mobile/webui build output),
+      // so the WebView loads the responsive drawer layout instead of the desktop
+      // root. Same token-seam as before.
+      setUri(`${host.url.replace(/\/$/, "")}/m/${fragment}${deep}`);
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
