@@ -294,7 +294,7 @@ describe("harness HTTP API", () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);
     expect(body.instances.map((instance: { instanceId: string }) => instance.instanceId)).toEqual(
-      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "computer", "ghost"]),
+      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "ghost"]),
     );
     expect(body.instances.some((instance: { instanceId: string }) => instance.instanceId === "slafy")).toBe(false);
     const ghost = body.instances.find((instance: { instanceId: string }) => instance.instanceId === "ghost");

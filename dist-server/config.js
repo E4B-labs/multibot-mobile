@@ -94,7 +94,11 @@ export const DEFAULT_INSTANCE_CONFIGS = {
     qwen: { driver: "qwenAgent" },
     claude: { driver: "claudeAgent" },
     codex: { driver: "codex" },
-    computer: { driver: "boxAgent" },
+    // multibot (A5): `computer` (box.ascii.dev, boxAgent) celowo usunięty z
+    // domyślnej floty — MultiBot ma swój komputer (wspólny pulpit na hoście,
+    // integrations.localComputer), a ta instancja tylko pokazywała w model
+    // pickerze "Computer / no Box token". Własny wpis `instances.computer`
+    // w configu przywróci boxa każdemu, kto go chce.
 };
 // multibot (G3): Kimi/Qwen share the same durable allow switch API.
 export const BUILT_IN_CLI_IDS = ["grok", "gemini", "claude", "codex", "kimi", "qwen"];

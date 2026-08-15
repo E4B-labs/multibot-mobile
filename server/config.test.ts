@@ -20,7 +20,7 @@ describe("instanceConfigs", () => {
 
     const fleet = instanceConfigs(cfg);
     expect(Object.keys(fleet)).toEqual(
-      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "computer", "local"]),
+      expect.arrayContaining(["grok", "gemini", "kimi", "qwen", "claude", "codex", "local"]),
     );
     expect(fleet.slafy).toBeUndefined();
     expect(fleet.codex.enabled).toBe(false);
