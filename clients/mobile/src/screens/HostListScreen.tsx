@@ -16,6 +16,11 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<Host | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // TEKSTY DO UZGODNIENIA Z KACPREM (PLAN-MOBILE-KOLEGA B5): ten ekran startowy
+  // musi być spójny z onboardingiem po stronie webu — Kacper robi to samo po
+  // stronie serwera, więc sformułowania „Postaw serwer" / „Zaloguj się" i
+  // instrukcja poniżej wymagają wspólnego ustalenia.
+  const [serverHelp, setServerHelp] = useState(false);
 
   function startRename(host: Host) {
     setMenuFor(null);
@@ -34,7 +39,19 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
       {loading ? (
         <Text style={styles.dim}>Loading hosts…</Text>
       ) : hosts.length === 0 ? (
-        <Text style={styles.dim}>No hosts paired yet. Add one to get started.</Text>
+        <View style={styles.onboard}>
+          <Text style={styles.onboardIntro}>
+            Połącz się ze swoim serwerem MultiBota, żeby rozmawiać z botami bezpośrednio z telefonu.
+          </Text>
+          <Pressable style={styles.onboardButton} onPress={() => setServerHelp(true)}>
+            <Text style={styles.onboardButtonTitle}>Postaw serwer</Text>
+            <Text style={styles.onboardButtonHint}>Uruchom MultiBota 24/7 na wybranym urządzeniu</Text>
+          </Pressable>
+          <Pressable style={styles.onboardButton} onPress={onAdd}>
+            <Text style={styles.onboardButtonTitle}>Zaloguj się do serwera</Text>
+            <Text style={styles.onboardButtonHint}>Zeskanuj kod QR albo wklej adres i token</Text>
+          </Pressable>
+        </View>
       ) : (
         <FlatList
           data={hosts}
@@ -110,6 +127,20 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={serverHelp} transparent animationType="fade" onRequestClose={() => setServerHelp(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setServerHelp(false)}>
+          <View style={[styles.sheet, styles.helpSheet]}>
+            <Text style={styles.sheetTitle}>Postaw serwer</Text>
+            <Text style={styles.helpStep}>1. Zainstaluj i uruchom MultiBota na wybranym urządzeniu (telefon, mini-PC, VPS).</Text>
+            <Text style={styles.helpStep}>2. W ustawieniach serwera znajdź sekcję Token i skopiuj wygenerowany token.</Text>
+            <Text style={styles.helpStep}>3. Wróć tutaj, wybierz „Zaloguj się do serwera" i zeskanuj kod QR lub wklej adres z tokenem.</Text>
+            <Pressable style={styles.sheetCancel} onPress={() => setServerHelp(false)}>
+              <Text style={styles.sheetCancelText}>Rozumiem</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -145,4 +176,18 @@ const styles = StyleSheet.create({
   sheetCancel: { paddingVertical: 14, alignItems: "center" },
   sheetCancelText: { color: "#fcfcfc99", fontSize: 15 },
   input: { color: "#fcfcfc", backgroundColor: "#0f0f0f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
+  onboard: { gap: 14, marginTop: 8 },
+  onboardIntro: { color: "#fcfcfc99", fontSize: 15, lineHeight: 22 },
+  onboardButton: {
+    backgroundColor: "#151515",
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+  },
+  onboardButtonTitle: { color: "#fcfcfc", fontSize: 18, fontWeight: "700" },
+  onboardButtonHint: { color: "#fcfcfc99", fontSize: 13, marginTop: 4 },
+  helpSheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  helpStep: { color: "#fcfcfc99", fontSize: 14, lineHeight: 21, marginBottom: 10 },
 });
