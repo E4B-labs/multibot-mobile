@@ -48,7 +48,10 @@ const simple = (name: Exclude<MascotShape, "cursor">, body: string): CursorShape
 // ucinałaby się w rogach inaczej, niż widać kształt.
 const SHAPES: Record<Exclude<MascotShape, "cursor">, CursorShape> = {
   // Soczewka: dwa łuki o tym samym promieniu, oba wybrzuszone na zewnątrz.
-  leaf: simple("leaf", '<path d="M34 194A170 170 0 0 1 194 34A170 170 0 0 1 34 194Z" fill="{{GRADIENT}}"/>'),
+  // Promień steruje grubością i jest odwrotny do intuicji — im MNIEJSZY, tym
+  // soczewka pełniejsza. Nie może zejść poniżej połowy cięciwy (127), bo wtedy
+  // łuk nie ma jak połączyć końców.
+  leaf: simple("leaf", '<path d="M24 204A150 150 0 0 1 204 24A150 150 0 0 1 24 204Z" fill="{{GRADIENT}}"/>'),
   circle: simple("circle", '<circle cx="114.2705" cy="114.2705" r="96" fill="{{GRADIENT}}"/>'),
   square: simple("square", '<rect x="24" y="24" width="180" height="180" rx="38" fill="{{GRADIENT}}"/>'),
   pill: simple("pill", '<rect x="12" y="64" width="204" height="100" rx="50" fill="{{GRADIENT}}"/>'),
