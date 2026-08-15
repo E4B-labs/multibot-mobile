@@ -9,11 +9,11 @@ export const kimiAcpArgs = () => ["acp"];
 
 const support: AcpSupport = {
   driverKind: "kimiAgent",
-  displayName: "Kimi Code",
+  displayName: "Kimi",
   models: { default: "kimi-for-coding", options: [{ id: "kimi-for-coding", label: "Kimi for Coding" }] },
   defaultCli: "kimi",
   nativeSource: "kimi.acp",
-  loginNote: "Kimi Code is not signed in — run `kimi` once to log in",
+  loginNote: "Kimi is not signed in — run `kimi` once to log in",
   spawnArgs: () => kimiAcpArgs(),
   pickAuthMethod: (methods) => methods.find((method) => typeof method.id === "string")?.id ?? null,
   authFailure: "continue",

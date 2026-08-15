@@ -1,6 +1,11 @@
 // Provider brand marks, keyed by driver kind. Dark-theme fills.
 import { Monitor } from "lucide-react";
 import { cn } from "@/lib/cn";
+// multibot (A6): official logos for Gemini/Kimi/Qwen — PNG z
+// C:\Users\kacpe\Desktop\loga (przeskalowane do 128px, src/assets/providers).
+import geminiLogo from "@/assets/providers/gemini.png";
+import kimiLogo from "@/assets/providers/kimi.png";
+import qwenLogo from "@/assets/providers/qwen.png";
 
 export interface IconProps {
   size?: number;
@@ -49,15 +54,15 @@ function BadgeMark({ label, tone, size = 16, className }: IconProps & { label: s
 }
 
 export function GeminiMark({ size = 16, className }: IconProps) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" className={cn("fill-none stroke-blue-400", className)} aria-label="Gemini"><path d="M12 2c.8 5.4 4.6 9.2 10 10-5.4.8-9.2 4.6-10 10-.8-5.4-4.6-9.2-10-10 5.4-.8 9.2-4.6 10-10Z" strokeWidth="2" strokeLinejoin="round"/></svg>;
+  return <img src={geminiLogo} width={size} height={size} alt="Gemini" className={cn("rounded-full", className)} />;
 }
 
 export function KimiMark({ size = 16, className }: IconProps) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" className={cn("fill-cyan-400", className)} aria-label="Kimi"><path d="M12 2.5c5.25 0 9.5 4.25 9.5 9.5s-4.25 9.5-9.5 9.5S2.5 17.25 2.5 12 6.75 2.5 12 2.5Zm-4 8.3c1.8-2.3 6.8-2.3 8.6 0 .5.65.2 1.6-.6 1.9-1.3.5-6.1.5-7.4 0-.8-.3-1.1-1.25-.6-1.9Zm1 4.1c1.2 1.65 4.8 1.65 6 0-.7 3-5.3 3-6 0Z"/></svg>;
+  return <img src={kimiLogo} width={size} height={size} alt="Kimi" className={cn("rounded-full", className)} />;
 }
 
 export function QwenMark({ size = 16, className }: IconProps) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" className={cn("fill-violet-400", className)} aria-label="Qwen"><path d="M12 2.2c2.7 0 4.3 2.1 4.3 4.8 2.8-1.2 5.2.1 5.2 2.7 0 1.3-.7 2.4-1.8 3.1 1.7 2.3.6 5.1-2.2 5.1-1.1 0-2.1-.5-2.8-1.3-1.6 2.2-4.8 2.2-6.4 0-.7.8-1.7 1.3-2.8 1.3-2.8 0-3.9-2.8-2.2-5.1A3.6 3.6 0 0 1 1.5 9.7c0-2.6 2.4-3.9 5.2-2.7C6.7 4.3 9.3 2.2 12 2.2Zm-2.3 7.7v4.2h1.8l2.8-3.2v3.2h1.7V9.9h-1.8l-2.8 3.2V9.9H9.7Z"/></svg>;
+  return <img src={qwenLogo} width={size} height={size} alt="Qwen" className={cn("rounded-full", className)} />;
 }
 
 export function LocalMark(props: IconProps) {
