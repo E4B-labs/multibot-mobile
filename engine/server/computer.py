@@ -623,11 +623,21 @@ async def _attached(bot_id: str):
 
 
 async def screenshot(bot_id: str) -> str:
-    """Base64 JPEG karty na wierzchu — do computer card w czacie."""
+    """Base64 JPEG karty na wierzchu — do computer card w czacie.
+
+    `captureBeyondViewport: False` zamyka domyślne zachowanie Chromium, które
+    przy `captureBeyondViewport: true` robi zrzut CAŁEJ przewijalnej strony, a
+    nie samego viewportu. Na długiej stronie to gigantyczny JPEG, który na
+    słabym telefonie (s10e) potrafi wisieć dziesiątki sekund — a do tego taki
+    obraz nie pokrywa się ze współrzędnymi CSS viewportu, w których agent
+    klika. Robimy dokładnie to, co widzi użytkownik, i tylko tyle.
+    """
     async with _operation(bot_id):
         async with _attached(bot_id) as (cdp, session):
             result = await cdp.call(
-                "Page.captureScreenshot", {"format": "jpeg", "quality": _JPEG_QUALITY}, session_id=session
+                "Page.captureScreenshot",
+                {"format": "jpeg", "quality": _JPEG_QUALITY, "captureBeyondViewport": False},
+                session_id=session,
             )
             return result["data"]
 
