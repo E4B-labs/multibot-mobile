@@ -1,0 +1,39 @@
+{
+  "name": "multibot-mobile-webui",
+  "description": "Mobile-only copy of the MultiBot web UI, served inside the Expo WebView shell. Editable separately from the desktop src/.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@trycua/cua-driver": "^0.19.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.539.0",
+    "posthog-js": "^1.415.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.4.3",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.0",
+    "vitest": "^4.1.10"
+  }
+}
