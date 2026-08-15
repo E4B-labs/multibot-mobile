@@ -117,6 +117,7 @@ da się jej pokazać na spotkaniu w piętnaście minut.
 | U25 | „Install app" — opisać po co jest i jak ma działać |
 | U26 | Wygląd całości według `inspiracje.png` |
 | U27 | Logowanie zostaje na tokenie, ale ma być znacznie prostsze |
+| U28 | Serwer dla powiadomień push: przyjęcie tokenu urządzenia i wysyłka przy `needsAttention` |
 
 ### B — biznes (`PLAN-BIZNES.md`)
 

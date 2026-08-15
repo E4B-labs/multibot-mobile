@@ -1,7 +1,7 @@
 // multibot: F8 — skille silnika slafy w prawym slocie (400px, jak Routines).
 // Provider-neutral skills. Harness stores them per bot and injects enabled
 // instructions into every provider turn.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -212,6 +212,29 @@ export function TeachCard({
         setError(e instanceof Error ? e.message : String(e));
       });
   };
+
+  // K5: pilnuj przycisk z pulpitem (ComputerPanel) może wystartować/przerwać
+  // nagrywanie, mimo że stan trzymamy tu. Jedno źródło prawdy o fazie leci w
+  // drugą stronę jako zdarzenie, żeby pasek nagrywania mógł się narysować
+  // na ekranie bota, a nie tylko w bocznym TeachCard.
+  const teachRef = useRef(teach);
+  teachRef.current = teach;
+  useEffect(() => {
+    const onStart = () => start();
+    const onStop = () => {
+      const t = teachRef.current;
+      if (t.phase === "recording" || t.phase === "stopping") stop(t.recordingId);
+    };
+    window.addEventListener("mb:teach:start", onStart);
+    window.addEventListener("mb:teach:stop", onStop);
+    return () => {
+      window.removeEventListener("mb:teach:start", onStart);
+      window.removeEventListener("mb:teach:stop", onStop);
+    };
+  }, [start, stop]);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("mb:teach:phase", { detail: teach }));
+  }, [teach]);
 
   return (
     <div className="mt-3 rounded-xl bg-card p-4">

@@ -63,6 +63,24 @@ export function stripVncChrome(doc: Document | null | undefined): void {
   if (doc?.body) doc.body.style.backgroundColor = "#000";
 }
 
+/** noVNC rysuje kursor zdalny jako nakładkę (`.noVNC_cursor`). Gdy użytkownik
+ *  odda sterowanie (`owner === "agent"`), ten kursor zostaje tam, gdzie go
+ *  zostawił człowiek, i wygląda, jakby wciąż sterował — mylące. Chowamy go
+ *  dokładnie w chwili oddania, nie po następnej klatce. */
+const CURSOR_HIDE_ID = "__mb_vnc_cursor_hide__";
+export function setRemoteCursorHidden(doc: Document | null | undefined, hidden: boolean): void {
+  if (!doc) return;
+  let style = doc.getElementById(CURSOR_HIDE_ID) as HTMLStyleElement | null;
+  if (hidden && !style) {
+    style = doc.createElement("style");
+    style.id = CURSOR_HIDE_ID;
+    style.textContent = "#noVNC_cursor, .noVNC_cursor { display: none !important; }";
+    (doc.head || doc.documentElement).appendChild(style);
+  } else if (!hidden && style) {
+    style.remove();
+  }
+}
+
 const POLL_MS = 4000;
 // server lease (computer-control.ts LEASE_MS) is 30s; renew at a third of
 // that so a slow tick never lets it lapse
@@ -78,6 +96,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   const [fullscreen, setFullscreen] = useState(false);
   const ownerRef = useRef<ControlOwner>("agent");
   ownerRef.current = owner;
+  const screenRef = useRef<HTMLIFrameElement>(null);
 
   // poll the harness for the container's state; ready/provisioning/
   // recovering/error only — never a user-facing "off"
@@ -144,6 +163,22 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  // Chowaj kursor zdalny dokładnie w chwili oddania sterowania — nie czekaj na
+  // przeładowanie iframe'a (efekt wyżej działa tylko przy onLoad).
+  useEffect(() => {
+    setRemoteCursorHidden(screenRef.current?.contentDocument, owner === "agent");
+  }, [owner, computerState, fullscreen]);
+
+  // K5: faza nagrywania skilla leci z TeachCard (boczny) jako zdarzenie, żeby
+  // pilulka "Naucz z demonstracji" i pasek nagrywania mogły siedzieć NA ekranie
+  // komputera, a nie tylko w panelu bocznym.
+  const [teachPhase, setTeachPhase] = useState<string>("idle");
+  useEffect(() => {
+    const onPhase = (e: Event) => setTeachPhase(((e as CustomEvent).detail as { phase: string }).phase);
+    window.addEventListener("mb:teach:phase", onPhase);
+    return () => window.removeEventListener("mb:teach:phase", onPhase);
+  }, []);
+
   const acquireControl = () => {
     setControlPending(true);
     api(`/api/bots/${bot.id}/computer/control/acquire`, { method: "POST" })
@@ -177,9 +212,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     computerState === "ready" ? (
       <div className="relative h-full w-full">
         <iframe
+          ref={screenRef}
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner)}
-          onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
+          onLoad={(e) => {
+            stripVncChrome(e.currentTarget.contentDocument);
+            setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
+          }}
           className="h-full w-full border-0"
         />
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
@@ -190,6 +229,34 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             onClick={() => setFullscreen(true)}
             className="absolute inset-0 cursor-zoom-in"
           />
+        )}
+        {/* K5: pilulka "Naucz z demonstracji" NA ekranie komputera — start
+            nagrywania stąd, a nie z bocznego panelu. Znika, gdy nagrywanie
+            trwa (wtedy jest pasek u góry). */}
+        {teachPhase === "idle" && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:start"))}
+            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-[13px] font-medium text-white backdrop-blur hover:bg-black/80"
+          >
+            {polish ? "Naucz z demonstracji" : "Learn from demonstration"}
+          </button>
+        )}
+        {(teachPhase === "recording" || teachPhase === "stopping") && (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 bg-danger/90 px-3 py-1.5 text-[12px] font-medium text-white">
+            <span className="size-2 animate-pulse rounded-full bg-white" />
+            {polish
+              ? "Nagrywanie — pokaż zadanie na komputerze bota"
+              : "Recording — demonstrate the task on the bot's computer"}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:stop"))}
+              className="ml-1 rounded p-0.5 hover:bg-white/20"
+              aria-label={polish ? "Zatrzymaj" : "Stop"}
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
       </div>
     ) : (
@@ -265,8 +332,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-app">
-          <div className="flex items-center justify-between px-4 py-3">
+        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
+        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px]">
+          <div className="flex items-center justify-between px-1 py-2">
             <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             <div className="flex items-center gap-2">
               {controlButton}
@@ -278,7 +347,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               </button>
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center overflow-hidden">{screen(true)}</div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden">
+            <div className="h-full w-full overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10">
+              {screen(true)}
+            </div>
+          </div>
         </div>
       )}
     </>

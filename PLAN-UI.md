@@ -218,14 +218,44 @@ zawiera ani jednego `[Group room]`; panel komputera po prawej działa (K10).
 **Decyzja, która już zapadła: logowanie zostaje na tokenie.** Powód
 w `PLAN-00-INDEX.md`. Robotą jest uproszczenie, nie zmiana sposobu.
 
-**U23 — pierwszy ekran po instalacji.** Dwa duże przyciski i nic więcej:
-
-- **Postaw serwer** — to urządzenie ma być serwerem. Program stawia usługę,
-  pokazuje adres i kod QR, i od razu przechodzi do czatu.
-- **Zaloguj się do serwera** — łączymy się z serwerem, który już gdzieś stoi.
-  Skanowanie kodu QR albo wklejenie adresu z tokenem.
-
+**U23 — pierwszy ekran po instalacji.** Dwa duże przyciski i nic więcej.
 Dziś użytkownik dostaje ekran, który zakłada, że wie, czym jest host i token.
+
+**Teksty poniżej są wiążące dla obu stron — web i telefon.** Aplikacja mobilna
+(`clients/mobile/src/screens/HostListScreen.tsx` w repo `multibot2`) i
+onboarding webowy (`src/components/Onboarding.tsx`) mają pokazywać dokładnie
+te same zdania. Zmiana tekstu = zmiana w tym pliku najpierw, potem w obu
+miejscach.
+
+Nagłówek ekranu:
+
+> **MultiBot**
+> Zacznij od jednej z dwóch rzeczy.
+
+Przycisk pierwszy:
+
+> **Postaw serwer**
+> To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć.
+
+Przycisk drugi:
+
+> **Zaloguj się do serwera**
+> Serwer już gdzieś stoi. To urządzenie tylko się do niego łączy.
+
+Instrukcja pod „Postaw serwer" jest **samodzielna** — nie odsyła do przepływu
+webowego, bo człowiek, który stawia serwer z telefonu, nie ma przed sobą
+przeglądarki. Trzy kroki:
+
+> 1. Uruchom MultiBota na komputerze albo telefonie, który ma być serwerem.
+> 2. W ustawieniach serwera wejdź w **Połącz urządzenie**. Pokaże kod QR.
+> 3. Wróć tutaj, wybierz **Zaloguj się do serwera** i zeskanuj ten kod.
+
+Instrukcja pod „Zaloguj się do serwera": pole na kod QR jako droga główna,
+pod nim mniejsze **Wpisz adres ręcznie** dla kogoś, kto nie ma jak zeskanować.
+
+Uzasadnienie tej kolejności: kod QR jest jedyną drogą bez przepisywania
+sześćdziesięciu czterech znaków tokenu z ekranu na ekran. Wpisywanie ręczne
+zostaje jako wyjście awaryjne, nie jako pierwsza opcja.
 
 **U27 — logowanie prostsze.** Cel: postawienie serwera, instalacja programu
 i połączenie jednego z drugim mają iść bez ani jednego ręcznie przepisanego
@@ -235,6 +265,37 @@ poprawka o największym efekcie na tej całej liście.
 
 **Gate grupy E:** czysta instalacja na dwóch urządzeniach; drugie łączy się
 z pierwszym przez zeskanowanie kodu; nikt niczego nie przepisuje.
+
+---
+
+## U28 — serwer dla powiadomień push
+
+Powiadomienia na telefonie miał ogarnąć kolega, ale połowa tej roboty stoi po
+naszej stronie i on jej nie zrobi: **w `server/` nie ma ani trasy przyjmującej
+token urządzenia, ani wysyłki.** Potwierdzone, w `clients/mobile/src/lib/push.ts`
+stoi to wprost:
+
+```
+// TODO: POST { token: data } to /api/devices/:id/push once that route
+// ships server-side (PLAN-CLIENTS.md C4).
+```
+
+`deviceSessions` w `server/firebase-auth.ts` to co innego — sesje logowania,
+nie tokeny push. Nie mieszać.
+
+Do zrobienia po naszej stronie, dwie rzeczy i koniec:
+
+1. `POST /api/devices/:id/push` — zapisuje token Expo urządzenia w configu,
+   obok istniejących sesji.
+2. Wysyłka na `https://exp.host/--/api/v2/push/send`, gdy bot wchodzi
+   w `needsAttention`. To zwykły `fetch` z JSON-em, bez pakietu ani klucza —
+   Expo nie wymaga uwierzytelnienia dla tokenów, które sam wydał.
+
+Bez tego gate B3 z `PLAN-MOBILE-KOLEGA.md` jest niezamykalny i kolega słusznie
+to zgłosił. Zrobić ZANIM zabierze się za coś innego, bo jego kod czeka gotowy.
+
+**Gate:** bot kończy turę przy zamkniętej aplikacji, powiadomienie przychodzi
+na telefon.
 
 ---
 
