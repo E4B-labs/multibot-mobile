@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import * as Updates from "expo-updates";
+import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
+import { normalizeHostUrl } from "./src/lib/host-logic";
 import { deleteHost, listHosts, renameHost } from "./src/lib/hosts";
+import { configurePushNotifications, extractBotTarget, requestPushPermission } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import HostListScreen from "./src/screens/HostListScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
@@ -19,6 +22,7 @@ type Route =
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "list" });
   const [hosts, setHosts] = useState<Host[]>([]);
+  const hostsRef = useRef<Host[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -34,6 +38,44 @@ export default function App() {
   }, []);
 
   useEffect(refresh, [refresh]);
+
+  useEffect(() => {
+    hostsRef.current = hosts;
+  }, [hosts]);
+
+  // Push: ask for permission once at launch, then route a tapped notification
+  // to the right host's WebView (scrolled to its bot). The server-side push
+  // backend is still missing in server/, so notifications only start arriving
+  // once that ships — the shell is ready for them now.
+  useEffect(() => {
+    configurePushNotifications();
+    void requestPushPermission();
+
+    const openFromTarget = (target: ReturnType<typeof extractBotTarget>) => {
+      if (!target.hostUrl) {
+        setRoute({ name: "list" });
+        return;
+      }
+      let normalized: string;
+      try {
+        normalized = normalizeHostUrl(target.hostUrl);
+      } catch {
+        return;
+      }
+      const host = hostsRef.current.find((h) => h.url === normalized);
+      if (host) setRoute({ name: "webview", host, botId: target.botId });
+    };
+
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      openFromTarget(extractBotTarget(response.notification.request.content.data));
+    });
+
+    void Notifications.getLastNotificationResponseAsync().then((last) => {
+      if (last) openFromTarget(extractBotTarget(last.notification.request.content.data));
+    });
+
+    return () => sub.remove();
+  }, []);
 
   const handleRemove = useCallback(
     async (id: string) => {
