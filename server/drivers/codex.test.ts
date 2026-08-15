@@ -352,6 +352,23 @@ describe("codexMcpConfig", () => {
   it("sends no config block at all when the bot has neither", () => {
     expect(codexMcpConfig(base)).toEqual({});
   });
+
+  it("mounts composio as an HTTP MCP server with the consumer key header", () => {
+    const cfg = codexMcpConfig({
+      ...base,
+      integrations: {
+        agents: { command: "node", args: ["a.js"], env: {} },
+        composio: { key: "ck_secret" },
+      },
+    } as unknown as SendTurnInput);
+    expect(Object.keys(cfg.config!.mcp_servers).sort()).toEqual(["agents", "composio"]);
+    // codex nie używa pola `type` (wykrywa HTTP po `url`) i wysyła klucz przez
+    // `http_headers`, a nie `headers` (format Claude'a)
+    expect(cfg.config!.mcp_servers.composio).toEqual({
+      url: "https://connect.composio.dev/mcp",
+      http_headers: { "x-consumer-api-key": "ck_secret" },
+    });
+  });
 });
 
 // multibot (H3): `thread/resume` nie dokłada nowych serwerów MCP do istniejącego

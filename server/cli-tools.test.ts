@@ -10,6 +10,7 @@ describe("CLI tool metadata", () => {
     expect(byId.claude).toMatchObject({ loginCommand: "claude auth login", login: { command: "claude", args: ["auth", "login"] } });
     expect(byId.claude.installStrategy).toBe("claude-native");
     expect(byId.codex).toMatchObject({
+      installStrategy: "codex-native",
       loginCommand: "codex login --device-auth",
       login: { command: "codex", args: ["login", "--device-auth"] },
       loginMode: "device",

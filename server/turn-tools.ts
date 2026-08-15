@@ -49,6 +49,7 @@ export const AGENTS_MCP_TOOLS = [
   "write_file",
   "run_command",
   "get_device_info",
+  "send_file",
 ] as const;
 
 export interface TurnIntegrationsLike {

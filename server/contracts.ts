@@ -50,6 +50,23 @@ export interface RuntimeEventBase {
   raw?: { source: string; payload: unknown };
 }
 
+export interface ApprovalRuleCandidate {
+  provider: string;
+  key: string;
+  label: string;
+}
+
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+export interface TurnAttachment extends AttachmentMeta {
+  path: string;
+}
+
 export type RuntimeEvent = RuntimeEventBase &
   (
     | { type: "session.started"; sessionId: string | null; model?: string | null }
@@ -73,6 +90,7 @@ export type RuntimeEvent = RuntimeEventBase &
         tool: string;
         summary: string;
         choices?: string[];
+        approvalRule?: ApprovalRuleCandidate;
       }
     | { type: "request.resolved"; behavior: string; source: string }
     | { type: "thread.token-usage.updated"; input: number; output: number }
@@ -89,6 +107,7 @@ export type RuntimeEventListener = (event: RuntimeEvent) => void;
 export interface SendTurnInput {
   threadId: ThreadId;
   text: string;
+  attachments?: TurnAttachment[];
   model?: string;
   resumeCursor?: unknown;
   /** Prior turns for transcript-replay providers (API-backed drivers). */
@@ -131,7 +150,7 @@ export interface ProviderAdapter {
   respondToRequest(
     threadId: ThreadId,
     requestId: string,
-    decision: { behavior: "allow" | "deny" | "answer"; message?: string },
+    decision: { behavior: "allow" | "always" | "deny" | "answer"; message?: string },
   ): Promise<void>;
   hasSession(threadId: ThreadId): boolean;
   stopAll(): Promise<void>;

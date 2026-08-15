@@ -27,8 +27,10 @@ import { augmentedPath, resolveCliSpawn } from "../env-path.ts";
 import { COMPUTER_TOOLS_VERSION } from "../engine/computer-mcp.ts";
 import { COMPUTER_MCP_TOOLS } from "../turn-tools.ts"; // multibot (A4): whitelist narzędzi komputera
 import { killTree } from "../kill-tree.ts";
-import { approvalRuleAllowed, autoApproveAllowed, toolAllowed, turnPolicy } from "../turn-policy.ts";
+import { approvalRuleAllowed, autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../turn-policy.ts";
 import { appendNative } from "./native.ts";
+import { loadConfig } from "../config.ts";
+import { connectors as userConnectors } from "../mcp-connectors.ts";
 
 const DRIVER_KIND = "codex";
 
@@ -107,6 +109,37 @@ export function codexMcpConfig(turn: SendTurnInput): { config?: { mcp_servers: R
       // wolny dzień telefonu, zanim required:true skończy turę błędem.
       startup_timeout_ms: 30_000,
     };
+  }
+  // multibot: Composio (meta-MCP HTTP) — boty codexowe go nie dostawały, bo
+  // codexMcpConfig przekazywał tylko agents + computer. Claude owszem (przez
+  // mcpServers()), codex nie, więc przy codexie Composio/Gmail milczały.
+  // Codex chce kształt HTTP bez pola `type` (wykrywa po `url`) i wysyła
+  // nagłówki z `http_headers` — nie z `headers` (to format Claude'a).
+  if (turn.integrations?.composio?.key) {
+    mcp_servers.composio = {
+      url: turn.integrations.composio.url || "https://connect.composio.dev/mcp",
+      http_headers: { "x-consumer-api-key": turn.integrations.composio.key },
+    };
+  }
+  // multibot (F7): własne konektory MCP użytkownika — te same co u Claude'a.
+  // Codex gubił je (przekazywał tylko agents + computer + composio), więc boty
+  // codexowe nie widziały firmowych serwerów MCP. Kształt: stdio 1:1, HTTP przez
+  // `url` + `http_headers` (nie `type`/`headers` jak Claude).
+  if (canUseIntegration(turn.threadId, "integrations")) {
+    for (const c of userConnectors(loadConfig())) {
+      if (c.transport.type === "stdio") {
+        mcp_servers[c.id] = {
+          command: c.transport.command,
+          args: c.transport.args ?? [],
+          env: c.transport.env ?? {},
+        };
+      } else {
+        mcp_servers[c.id] = {
+          url: c.transport.url,
+          ...(c.transport.headers ? { http_headers: c.transport.headers } : {}),
+        };
+      }
+    }
   }
   return Object.keys(mcp_servers).length ? { config: { mcp_servers } } : {};
 }

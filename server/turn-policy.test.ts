@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  approvalRuleAllowed,
   autoApproveAllowed,
   canUseIntegration,
   clearTurnPolicy,
@@ -44,5 +45,15 @@ describe("turn policy", () => {
     expect(autoApproveAllowed("thread", "shell")).toBe(false);
     setTurnPolicy("thread", { autonomy: "autonomous", permissions: { terminal: true } });
     expect(autoApproveAllowed("thread", "shell")).toBe(true);
+  });
+
+  it("matches remembered rules only inside their provider", () => {
+    setTurnPolicy("thread", {
+      autonomy: "approval",
+      permissions: { terminal: true },
+      approvalRules: [{ provider: "codex", key: "prefix:git status" }],
+    });
+    expect(approvalRuleAllowed("thread", { provider: "codex", key: "prefix:git status" })).toBe(true);
+    expect(approvalRuleAllowed("thread", { provider: "claudeAgent", key: "prefix:git status" })).toBe(false);
   });
 });

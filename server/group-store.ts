@@ -24,6 +24,7 @@ const FILE = join(DATA_DIR, "groups.json");
 /** Small durable shadow for engine groups; engine remains source of turn execution. */
 export class GroupStore {
   private groups: GroupRecord[];
+  private hasSnapshot = false;
   private file: string;
 
   constructor(file = FILE) {
@@ -32,6 +33,7 @@ export class GroupStore {
     try {
       const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
       this.groups = Array.isArray(parsed) ? parsed as GroupRecord[] : [];
+      this.hasSnapshot = Array.isArray(parsed);
     } catch {
       this.groups = [];
     }
@@ -40,6 +42,11 @@ export class GroupStore {
 
   private save(): void {
     writeFileSync(this.file, JSON.stringify(this.groups, null, 2));
+    this.hasSnapshot = true;
+  }
+
+  hasLocalRoster(): boolean {
+    return this.hasSnapshot;
   }
 
   list(): GroupRecord[] {

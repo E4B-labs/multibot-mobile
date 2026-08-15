@@ -134,7 +134,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       // an injected stdio proxy — e.g. the peer-agent comms tool — attaches
       // fine here. env is the ACP {name,value}[] shape.
       const acpMcpServers = (turn: SendTurnInput) => {
-        const servers: Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }> = [];
+        const servers: Array<
+        { name: string } & (
+          | { command: string; args: string[]; env: Array<{ name: string; value: string }> }
+          | { url: string; headers?: Record<string, string> }
+        )
+      > = [];
         const agents = turn.integrations?.agents;
         if (agents) {
           servers.push({
@@ -174,6 +179,16 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             command: c.transport.command,
             args: c.transport.args ?? [],
             env: Object.entries(c.transport.env ?? {}).map(([name, value]) => ({ name, value: String(value) })),
+          });
+        }
+        // multibot: Composio (meta-MCP HTTP) — ACP gubił go, więc boty ACP
+        // (Grok/Gemini/Kimi/Qwen) nie widziały Gmaila. HTTP to EXTRA transport
+        // ACP, więc vendor musi go wspierać; montujemy w kształcie url+headers.
+        if (canUseIntegration(turn.threadId, "integrations") && turn.integrations?.composio?.key) {
+          servers.push({
+            name: "composio",
+            url: turn.integrations.composio.url || "https://connect.composio.dev/mcp",
+            headers: { "x-consumer-api-key": turn.integrations.composio.key },
           });
         }
         return servers;

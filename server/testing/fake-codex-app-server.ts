@@ -4,7 +4,7 @@
 // initialize/thread/turn handshake, then plays a scripted turn. Like the
 // real app-server, it never exits on its own — the driver kills it.
 //
-//   FAKE_CODEX_MODE   happy (default) | approval | resume | stream
+//   FAKE_CODEX_MODE   happy (default) | approval | mcp | resume | stream
 //   FAKE_CODEX_DUMP   path to write {argv, env, calls, decision} as JSON
 //
 // Keep this file dependency-free — it runs as a bare `node` subprocess.
@@ -78,14 +78,36 @@ process.stdin.on("data", (chunk) => {
         out({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: "codex-thread-1" }, model: "fake-codex-model" } });
         break;
       case "turn/start":
-        out({ jsonrpc: "2.0", id: msg.id, result: { ok: true } });
+        out({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: "codex-turn-1" } } });
         notify("item/started", { item: { id: "i1", type: "commandExecution", command: "ls -la" } });
         if (mode === "approval") {
-          out({ jsonrpc: "2.0", id: 100, method: "execCommandApproval", params: { command: "rm -rf scratch" } });
+          out({
+            jsonrpc: "2.0",
+            id: 100,
+            method: "item/commandExecution/requestApproval",
+            params: { command: "rm -rf scratch", proposedExecpolicyAmendment: ["rm", "-rf"] },
+          });
           // turn continues from the approval response handler above
+        } else if (mode === "mcp") {
+          out({
+            jsonrpc: "2.0",
+            id: 100,
+            method: "mcpServer/elicitation/request",
+            params: {
+              serverName: "agents",
+              mode: "form",
+              message: "Allow the agents MCP server to run tool \"list_bots\"?",
+              requestedSchema: { type: "object", properties: {} },
+            },
+          });
         } else {
           finishTurn();
         }
+        break;
+      case "turn/interrupt":
+        out({ jsonrpc: "2.0", id: msg.id, result: { ok: true } });
+        dump();
+        notify("turn/completed", { turn: { id: "codex-turn-1", status: "interrupted" } });
         break;
       default:
         if (msg.id !== undefined) out({ jsonrpc: "2.0", id: msg.id, result: {} });

@@ -5,12 +5,18 @@ export interface TurnPolicy {
   autonomy: "approval" | "autonomous";
   access?: "read-only" | "approval" | "full";
   permissions: Record<string, boolean>;
+  approvalRules?: Array<{ provider: string; key: string }>;
 }
 
 const active = new Map<string, TurnPolicy>();
 
 export function setTurnPolicy(threadId: string, policy: TurnPolicy): void {
-  active.set(threadId, { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } });
+  active.set(threadId, {
+    autonomy: policy.autonomy,
+    access: policy.access,
+    permissions: { ...policy.permissions },
+    approvalRules: policy.approvalRules?.map((rule) => ({ ...rule })) ?? [],
+  });
 }
 
 export function clearTurnPolicy(threadId: string): void {
@@ -19,7 +25,23 @@ export function clearTurnPolicy(threadId: string): void {
 
 export function turnPolicy(threadId: string): TurnPolicy | undefined {
   const policy = active.get(threadId);
-  return policy ? { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } } : undefined;
+  return policy ? {
+    autonomy: policy.autonomy,
+    access: policy.access,
+    permissions: { ...policy.permissions },
+    approvalRules: policy.approvalRules?.map((rule) => ({ ...rule })) ?? [],
+  } : undefined;
+}
+
+export function approvalRuleAllowed(threadId: string, rule: { provider: string; key: string }): boolean {
+  return active.get(threadId)?.approvalRules?.some((saved) => saved.provider === rule.provider && saved.key === rule.key) ?? false;
+}
+
+export function rememberApprovalRule(threadId: string, rule: { provider: string; key: string }): void {
+  const policy = active.get(threadId);
+  if (!policy) return;
+  const rules = (policy.approvalRules ??= []);
+  if (!rules.some((saved) => saved.provider === rule.provider && saved.key === rule.key)) rules.push({ ...rule });
 }
 
 export function toolsetFor(tool: string): string {

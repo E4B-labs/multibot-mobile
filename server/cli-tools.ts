@@ -10,8 +10,8 @@ export interface CliToolMetadata {
   driverKind: string;
   displayName: string;
   install?: CliInstall;
-  /** Uses scripts/install-claude.mjs with native/proot fallback. */
-  installStrategy?: "claude-native";
+  /** Uses a packaged native installer script with Termux/proot fallback. */
+  installStrategy?: "claude-native" | "codex-native";
   /** Interactive OAuth/subscription login; never automated by server. */
   loginCommand?: string;
   /** Fixed interactive command; stdin stays attached for OAuth prompts. */
@@ -52,6 +52,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
     id: "codex",
     driverKind: "codex",
     displayName: "Codex",
+    installStrategy: "codex-native",
     // Official non-TTY OAuth: output carries URL + one-time code, then CLI
     // polls until browser authorization completes. No token crosses harness.
     loginCommand: "codex login --device-auth",
@@ -62,7 +63,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
   {
     id: "kimi",
     driverKind: "kimiAgent",
-    displayName: "Kimi Code",
+    displayName: "Kimi",
     loginCommand: "kimi",
     login: { command: "kimi", args: [] },
     install: { command: "uv", args: ["tool", "install", "--python", "3.13", "kimi-cli"] },
@@ -70,7 +71,7 @@ export const CLI_TOOLS: readonly CliToolMetadata[] = [
   {
     id: "qwen",
     driverKind: "qwenAgent",
-    displayName: "Qwen Code",
+    displayName: "Qwen",
     loginCommand: "qwen",
     login: { command: "qwen", args: [] },
     install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] },

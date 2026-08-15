@@ -28,6 +28,14 @@ export interface WorkspaceUsage {
   turns: number;
 }
 
+export interface WorkspaceApprovalRule {
+  id: string;
+  provider: string;
+  key: string;
+  label: string;
+  created_at: string;
+}
+
 interface BotWorkspace {
   facts: WorkspaceFact[];
   markdown: string;
@@ -35,6 +43,7 @@ interface BotWorkspace {
   autonomy: "approval" | "autonomous";
   access?: "read-only" | "approval" | "full";
   permissions: Record<string, boolean>;
+  approvalRules?: WorkspaceApprovalRule[];
   usage: WorkspaceUsage;
 }
 
@@ -55,6 +64,7 @@ const empty = (): BotWorkspace => ({
   autonomy: "approval",
   access: "approval",
   permissions: { ...DEFAULT_PERMISSIONS },
+  approvalRules: [],
   usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 },
 });
 
@@ -263,6 +273,36 @@ export class WorkspaceStore {
     workspace.access = workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
     this.save();
     return { ...workspace.permissions };
+  }
+
+  approvalRules(botId: string): WorkspaceApprovalRule[] {
+    return structuredClone(this.get(botId).approvalRules ?? []);
+  }
+
+  addApprovalRule(botId: string, value: Pick<WorkspaceApprovalRule, "provider" | "key" | "label">): WorkspaceApprovalRule {
+    const workspace = this.get(botId);
+    const rules = (workspace.approvalRules ??= []);
+    const existing = rules.find((rule) => rule.provider === value.provider && rule.key === value.key);
+    if (existing) return structuredClone(existing);
+    const rule = {
+      id: newId(),
+      provider: text(value.provider, "provider", 40),
+      key: text(value.key, "key", 2_000),
+      label: text(value.label, "label", 240),
+      created_at: new Date().toISOString(),
+    };
+    rules.unshift(rule);
+    this.save();
+    return structuredClone(rule);
+  }
+
+  removeApprovalRule(botId: string, ruleId: string): boolean {
+    const workspace = this.get(botId);
+    const rules = workspace.approvalRules ?? [];
+    const before = rules.length;
+    workspace.approvalRules = rules.filter((rule) => rule.id !== ruleId);
+    if (workspace.approvalRules.length !== before) this.save();
+    return workspace.approvalRules.length !== before;
   }
 
   usage(botId: string): WorkspaceUsage {

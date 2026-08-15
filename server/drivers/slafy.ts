@@ -23,10 +23,12 @@ import type {
   SendTurnInput,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
-import { NATIVE_DIR } from "../config.ts";
+import { approvalRule } from "../approval-rules.ts";
+import { NATIVE_DIR, loadConfig } from "../config.ts";
 import { EngineUnavailableError, ensureEngine, engineBaseUrl } from "../engine/supervisor.ts";
 import { connectors as customConnectors } from "../mcp-connectors.ts";
 import { engineSpec } from "../mcp-servers.ts";
+import { approvalRuleAllowed } from "../turn-policy.ts";
 import { appendNative } from "./native.ts";
 
 const DRIVER_KIND = "slafy";
@@ -186,6 +188,16 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
     let syncedConnectors: string | null = null;
     const syncConnectors = async (baseUrl: string) => {
       const wanted = customConnectors();
+      // multibot: Composio do silnika — Hermes musi widzieć te same narzędzia
+      // co Claude/Codex. Bez tego boty slafy (silnik) nie miały Gmaila itp.
+      const composioKey = loadConfig().composio?.key;
+      if (composioKey) {
+        wanted.push({
+          id: "composio",
+          name: "Composio",
+          transport: { type: "http", url: "https://connect.composio.dev/mcp", headers: { "x-consumer-api-key": composioKey } },
+        });
+      }
       const signature = JSON.stringify(wanted);
       if (signature === syncedConnectors) return; // zestaw bez zmian — zero HTTP
       const names = new Set(wanted.map((c) => ENGINE_PLUGIN_PREFIX + c.id));
@@ -362,6 +374,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
     const requestTurn = new Map<string, string>(); // requestId → turnId, na którym padła prośba
     const decisionOf = (behavior: string, message?: string) => {
       if (behavior === "allow") return "allow";
+      if (behavior === "always") return "always";
       if (behavior === "answer" && /always/i.test(message ?? "")) return "always";
       return "deny";
     };
@@ -369,7 +382,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
     const respondToRequest = async (
       threadId: string,
       requestId: string,
-      decision: { behavior: "allow" | "deny" | "answer"; message?: string },
+      decision: { behavior: "allow" | "always" | "deny" | "answer"; message?: string },
     ) => {
       // `engineBaseUrl`, nie `ensureEngine`: odpowiadamy na prośbę ŻYWEJ tury,
       // więc silnik z definicji stoi — podnoszenie go tutaj tylko maskowałoby
@@ -395,7 +408,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
         ...base(threadId, turnId),
         type: "request.resolved",
         requestId,
-        behavior: value === "always" ? "allow" : value,
+        behavior: value,
         source: "user",
       });
     };
@@ -471,6 +484,16 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
                 const requestId = String(payload.request_id ?? "");
                 if (!requestId) break;
                 requestTurn.set(requestId, turnId);
+                const remembered = approvalRule(
+                  DRIVER_KIND,
+                  String(payload.tool ?? "tool"),
+                  { command: String(payload.args_preview ?? "") },
+                  payload.pattern_key || undefined,
+                );
+                if (approvalRuleAllowed(threadId, remembered)) {
+                  void respondToRequest(threadId, requestId, { behavior: "always" });
+                  break;
+                }
                 emit({
                   ...base(threadId, turnId),
                   requestId,
@@ -478,6 +501,7 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
                   requestType: "permission",
                   tool: String(payload.tool ?? "tool"),
                   summary: String(payload.args_preview || payload.tool || "Tool use"),
+                  approvalRule: remembered,
                   // Etykiety, nie kody: index.ts wkłada je wprost w kartę, a front
                   // odsyła klikniętą etykietę (patrz `decisionOf`).
                   choices: ["Allow", "Deny", "Always allow"],
@@ -584,10 +608,15 @@ export const SlafyDriver: ProviderDriver<SlafyConfig> = {
         // obietnica, więc gate w `index.ts` i podpowiedź w personie zostają wspólne.
         capabilities: { sessionModelSwitch: "unsupported", agentsMcp: true },
         sendTurn,
-        // Zrywamy TYLKO nasz strumień — tura po stronie silnika dobiegnie końca
-        // (Hermes nie ma anulowania w locie). Odpowiedź wyląduje w historii bota
-        // i zobaczy ją następna tura. Prawdziwe przerwanie = osobny endpoint silnika.
-        interruptTurn: async (threadId) => active.get(threadId)?.abort.abort(),
+        interruptTurn: async (threadId) => {
+          const running = active.get(threadId);
+          if (!running) return;
+          await fetch(`${engineBaseUrl()}/api/bots/${encodeURIComponent(engineBotId(threadId))}/interrupt`, {
+            method: "POST",
+            signal: AbortSignal.timeout(15_000),
+          }).catch(() => {});
+          running.abort.abort();
+        },
         respondToRequest,
         hasSession: (threadId) => active.has(threadId),
         stopAll: async () => {

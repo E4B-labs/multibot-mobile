@@ -20,6 +20,7 @@ describe("durable group store", () => {
     expect(new GroupStore(file).get("g1")?.messages.map((m) => m.text)).toEqual(["hej", "cześć"]);
     expect(first.delete("g1")).toBe(true);
     expect(new GroupStore(file).get("g1")).toBeNull();
+    expect(new GroupStore(file).hasLocalRoster()).toBe(true);
     expect(first.delete("g1")).toBe(false);
   });
 });

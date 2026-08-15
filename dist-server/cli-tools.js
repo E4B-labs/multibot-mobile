@@ -41,7 +41,7 @@ export const CLI_TOOLS = [
     {
         id: "kimi",
         driverKind: "kimiAgent",
-        displayName: "Kimi Code",
+        displayName: "Kimi",
         loginCommand: "kimi",
         login: { command: "kimi", args: [] },
         install: { command: "uv", args: ["tool", "install", "--python", "3.13", "kimi-cli"] },
@@ -49,7 +49,7 @@ export const CLI_TOOLS = [
     {
         id: "qwen",
         driverKind: "qwenAgent",
-        displayName: "Qwen Code",
+        displayName: "Qwen",
         loginCommand: "qwen",
         login: { command: "qwen", args: [] },
         install: { command: "npm", args: ["install", "-g", "@qwen-code/qwen-code@latest"] },

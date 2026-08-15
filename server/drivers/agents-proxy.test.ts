@@ -18,6 +18,7 @@ let stubPort = 0;
 let lastAuth: string | undefined;
 let lastAskBody: any = null;
 let lastActionBody: any = null;
+let lastAttachmentBody: any = null;
 let askResponse: unknown = { botName: "Helper", text: "hi from helper" };
 
 let child: ChildProcess;
@@ -86,6 +87,16 @@ beforeAll(async () => {
           manufacturer: "samsung",
           model: "SM-G970F",
         } : { ok: true }));
+      });
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/internal/attachments") {
+      let data = "";
+      req.on("data", (c) => (data += c));
+      req.on("end", () => {
+        lastAttachmentBody = JSON.parse(data);
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: "att-1", name: lastAttachmentBody.name, mime: lastAttachmentBody.mime, size: 42 }));
       });
       return;
     }
@@ -205,5 +216,15 @@ describe("agents-proxy MCP surface", () => {
   it("requires bot_id and message", async () => {
     const res = await callTool("ask_bot", { bot_id: "", message: "" });
     expect(res.result.isError).toBe(true);
+  });
+
+  // multibot: bot→user file sending — the `send_file` tool lands on the
+  // harness attachment endpoint with the bot id and base64 content.
+  it("send_file posts the file to the chat attachment endpoint", async () => {
+    const html = "<h1>hi</h1>";
+    const res = await callTool("send_file", { name: "report.html", mime: "text/html", content_base64: Buffer.from(html).toString("base64") });
+    expect(res.result.content[0].text).toContain("File sent to the chat");
+    expect(lastAttachmentBody).toMatchObject({ botId: "bot-asker", name: "report.html", mime: "text/html" });
+    expect(Buffer.from(lastAttachmentBody.content, "base64").toString()).toBe(html);
   });
 });

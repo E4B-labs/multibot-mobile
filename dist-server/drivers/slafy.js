@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newEventId, newId } from "../contracts.js";
 import { approvalRule } from "../approval-rules.js";
-import { NATIVE_DIR } from "../config.js";
+import { NATIVE_DIR, loadConfig } from "../config.js";
 import { EngineUnavailableError, ensureEngine, engineBaseUrl } from "../engine/supervisor.js";
 import { connectors as customConnectors } from "../mcp-connectors.js";
 import { engineSpec } from "../mcp-servers.js";
@@ -168,6 +168,16 @@ export const SlafyDriver = {
         let syncedConnectors = null;
         const syncConnectors = async (baseUrl) => {
             const wanted = customConnectors();
+            // multibot: Composio do silnika — Hermes musi widzieć te same narzędzia
+            // co Claude/Codex. Bez tego boty slafy (silnik) nie miały Gmaila itp.
+            const composioKey = loadConfig().composio?.key;
+            if (composioKey) {
+                wanted.push({
+                    id: "composio",
+                    name: "Composio",
+                    transport: { type: "http", url: "https://connect.composio.dev/mcp", headers: { "x-consumer-api-key": composioKey } },
+                });
+            }
             const signature = JSON.stringify(wanted);
             if (signature === syncedConnectors)
                 return; // zestaw bez zmian — zero HTTP

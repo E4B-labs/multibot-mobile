@@ -119,6 +119,16 @@ export function createAcpDriver(support) {
                         env: Object.entries(c.transport.env ?? {}).map(([name, value]) => ({ name, value: String(value) })),
                     });
                 }
+                // multibot: Composio (meta-MCP HTTP) — ACP gubił go, więc boty ACP
+                // (Grok/Gemini/Kimi/Qwen) nie widziały Gmaila. HTTP to EXTRA transport
+                // ACP, więc vendor musi go wspierać; montujemy w kształcie url+headers.
+                if (canUseIntegration(turn.threadId, "integrations") && turn.integrations?.composio?.key) {
+                    servers.push({
+                        name: "composio",
+                        url: turn.integrations.composio.url || "https://connect.composio.dev/mcp",
+                        headers: { "x-consumer-api-key": turn.integrations.composio.key },
+                    });
+                }
                 return servers;
             };
             const sendTurn = async (turn) => {

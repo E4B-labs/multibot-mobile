@@ -56,6 +56,7 @@ const TOOLS = [
     { name: "write_file", description: "Write a UTF-8 file on the host.", inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
     { name: "run_command", description: "Run a host command with arguments.", inputSchema: { type: "object", properties: { command: { type: "string" }, args: { type: "array", items: { type: "string" } }, cwd: { type: "string" } }, required: ["command"] } },
     { name: "get_device_info", description: "Read verified host device facts (platform, Android model, Termux, RAM and installed runtimes).", inputSchema: { type: "object", properties: {} } },
+    { name: "send_file", description: "Send a file to the chat so the user can download or open it — for example an HTML report or any artifact you generated. Pass the file bytes as base64 in content_base64.", inputSchema: { type: "object", properties: { name: { type: "string", description: "File name, e.g. report.html" }, mime: { type: "string", description: "MIME type, e.g. text/html" }, content_base64: { type: "string", description: "File bytes encoded as base64" } }, required: ["name", "mime", "content_base64"] } },
 ].filter((tool) => DEPTH < 1 || !["list_bots", "ask_bot"].includes(tool.name));
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
 const ok = (id, result) => send({ jsonrpc: "2.0", id, result });
@@ -97,6 +98,18 @@ async function callTool(name, args) {
         if (r.error)
             return { text: `Couldn't reach that bot: ${r.error}`, isError: true };
         return { text: `${r.botName ?? "Bot"} replied:\n${r.text ?? "(no reply)"}` };
+    }
+    if (name === "send_file") {
+        const r = await api("/api/internal/attachments", {
+            method: "POST",
+            body: JSON.stringify({
+                botId: BOT_ID,
+                name: String(args.name ?? "file"),
+                mime: String(args.mime ?? "application/octet-stream"),
+                content: String(args.content_base64 ?? ""),
+            }),
+        });
+        return { text: `File sent to the chat: ${r.name} (${r.mime}, ${r.size} bytes). The user can download or open it.` };
     }
     const action = {
         get_my_profile: "profile.get", update_my_profile: "profile.update", remember: "memory.add", recall: "memory.list",

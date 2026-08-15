@@ -47,6 +47,7 @@ export const AGENTS_MCP_TOOLS = [
     "write_file",
     "run_command",
     "get_device_info",
+    "send_file",
 ];
 /**
  * Markdown z wyliczeniem narzędzi tej tury. Pusty string tylko wtedy, gdy

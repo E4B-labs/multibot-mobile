@@ -67,4 +67,13 @@ describe("driver-neutral workspace", () => {
     expect(store.patchSkill("bot", skill.name, { enabled: false })?.enabled).toBe(false);
     expect(store.deleteSkill("bot", skill.name)).toBe(true);
   });
+
+  it("persists and revokes remembered approval rules", () => {
+    const { file, store } = make();
+    const rule = store.addApprovalRule("bot", { provider: "codex", key: "prefix:git status", label: "git status …" });
+    expect(store.addApprovalRule("bot", { provider: "codex", key: rule.key, label: rule.label }).id).toBe(rule.id);
+    expect(new WorkspaceStore(file).approvalRules("bot")).toEqual([rule]);
+    expect(store.removeApprovalRule("bot", rule.id)).toBe(true);
+    expect(store.approvalRules("bot")).toEqual([]);
+  });
 });

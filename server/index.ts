@@ -202,6 +202,10 @@ let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
 const workspace = new WorkspaceStore();
 const attachments = new AttachmentStore();
+// multibot: bot→user file sending. Files the bot creates via the agents MCP
+// `send_file` tool land here, keyed by thread, and ride the bot's next chat
+// message (see the item.completed / assistant_text handler below).
+const pendingBotAttachments = new Map<string, ReturnType<AttachmentStore["add"]>[]>();
 const bootFleet = await registry.describe();
 bootSelection = await defaultSelection(bootFleet);
 // multibot (G1): legacy bots selected the removed `slafy` default instance.
@@ -304,7 +308,11 @@ bus.subscribe((event: RuntimeEvent) => {
       break;
     case "item.completed":
       if (event.itemType === "assistant_text") {
-        pushMessage({ role: "bot", kind: "text", text: event.text });
+        // multibot: attach any files the bot sent this turn (send_file) to the
+        // message so the user can download / open them from the chat.
+        const pending = pendingBotAttachments.get(event.threadId);
+        pendingBotAttachments.delete(event.threadId);
+        pushMessage({ role: "bot", kind: "text", text: event.text, ...(pending?.length ? { attachments: pending } : {}) });
       } else if (event.itemType === "tool" && event.itemId) {
         const messageId = toolMessageByItem.get(event.itemId);
         if (messageId) {
@@ -974,6 +982,20 @@ const server = createServer(async (req, res) => {
             description: [b.title, b.description].filter(Boolean).join(" — "),
           }));
         return json(res, 200, { bots });
+      }
+      if (method === "POST" && path === "/api/internal/attachments") {
+        // multibot: bot→user file sending. The agents MCP `send_file` tool POSTs
+        // here; we store the file and hold it for the bot's next chat message.
+        const body = await readBody(req);
+        const botId = String(body.botId ?? "");
+        const bot = store.bot(botId);
+        if (!bot) return json(res, 404, { error: "no such bot" });
+        const buf = Buffer.from(String(body.content ?? ""), "base64");
+        const meta = attachments.add(botId, String(body.name ?? "file"), String(body.mime ?? "application/octet-stream"), buf);
+        const pending = pendingBotAttachments.get(bot.threadId) ?? [];
+        pending.push(meta);
+        pendingBotAttachments.set(bot.threadId, pending);
+        return json(res, 201, meta);
       }
       if (method === "POST" && path === "/api/internal/agent-action") {
         const body = await readBody(req);

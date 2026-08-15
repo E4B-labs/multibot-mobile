@@ -53,6 +53,8 @@ extraResources:
   # multibot: platform-aware Claude Code installer used by Settings → CLI.
   - from: scripts/install-claude.mjs
     to: install-claude.mjs
+  - from: scripts/install-codex.mjs
+    to: install-codex.mjs
 
 mac:
   # multibot: speech-helper to binarka ze Swifta (`pnpm build:speech`, swiftc
