@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { StoreProvider, useStore } from "@/state/store";
 import { Onboarding } from "@/components/Onboarding";
@@ -20,6 +20,8 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
 import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
+// multibot (A1): logowanie Google — pola konfiguracji i cała droga do sesji
+import { fetchAuthStatus, renderGoogleButton, type GoogleLoginConfig } from "@/lib/googleLogin";
 import { useLanguage } from "@/lib/language";
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -28,6 +30,32 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Google pokazujemy tylko wtedy, gdy serwer ma czym się logować — inaczej
+  // ekran obiecywałby przycisk, który i tak skończyłby błędem.
+  const [google, setGoogle] = useState<GoogleLoginConfig | null>(null);
+  const googleSlot = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchAuthStatus()
+      .then((status) => {
+        if (!alive) return;
+        if (status.session) onLogin(); // ciasteczko z poprzedniego logowania
+        else if (status.google.configured) setGoogle(status.google);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [onLogin]);
+
+  useEffect(() => {
+    if (!google || !googleSlot.current) return;
+    void renderGoogleButton(googleSlot.current, google, (e) => {
+      if (e) setError(e.message);
+      else onLogin();
+    }).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, [google, onLogin]);
   const submit = async () => {
     if (!token.trim() || busy) return;
     setBusy(true);
@@ -54,7 +82,22 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl"
       >
         <h1 className="text-[18px] font-semibold">{polish ? "Zaloguj się" : "Sign in"}</h1>
-        <p className="mt-1 text-[13px] text-ink-secondary">{polish ? "Wpisz token dostępu do tego serwera MultiBot." : "Enter access token for this Multibot server."}</p>
+        {google && (
+          <>
+            <p className="mt-1 text-[13px] text-ink-secondary">
+              {polish ? "Zaloguj się kontem Google właściciela serwera." : "Sign in with the owner's Google account."}
+            </p>
+            <div ref={googleSlot} className="mt-4 flex justify-center" />
+            <div className="mt-4 flex items-center gap-2 text-[11px] text-ink-secondary">
+              <span className="h-px flex-1 bg-hairline/40" />
+              {polish ? "albo token" : "or token"}
+              <span className="h-px flex-1 bg-hairline/40" />
+            </div>
+          </>
+        )}
+        {!google && (
+          <p className="mt-1 text-[13px] text-ink-secondary">{polish ? "Wpisz token dostępu do tego serwera MultiBot." : "Enter access token for this Multibot server."}</p>
+        )}
         <input
           autoFocus
           type="password"
@@ -125,6 +168,8 @@ function Shell() {
 
 export default function App() {
   const [gated, setGated] = useState(() => !emailGateDone());
+  // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
+  // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.
   const [authenticated, setAuthenticated] = useState(() => Boolean(getAuthToken()));
   useEffect(() => {
     initAnalytics();

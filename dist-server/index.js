@@ -1675,6 +1675,23 @@ const server = createServer(async (req, res) => {
             res.setHeader("cache-control", "no-store");
             return json(res, 200, { ok: true });
         }
+        // ── multibot (A1): co ekran logowania ma pokazać ──────────────────
+        // Publiczna (patrz `mountAuth`): klient pyta o to, ZANIM ma czym się
+        // uwierzytelnić. Oddajemy tylko rzeczy, które i tak muszą trafić do
+        // przeglądarki, żeby logowanie Google w ogóle zadziałało.
+        if (method === "GET" && path === "/api/auth/status") {
+            const google = isFirebaseConfigured(cfg) && cfg.firebase?.apiKey && cfg.firebase?.clientId
+                ? {
+                    configured: true,
+                    projectId: cfg.firebase.projectId,
+                    apiKey: cfg.firebase.apiKey,
+                    clientId: cfg.firebase.clientId,
+                }
+                : { configured: false };
+            const sessionId = sessionIdFromCookieHeader(req.headers.cookie);
+            res.setHeader("cache-control", "no-store");
+            return json(res, 200, { google, session: Boolean(sessionId && verifyDeviceSession(sessionId)) });
+        }
         // ── multibot (A1): Firebase Google login → lokalna sesja urządzenia ──
         if (method === "POST" && path === "/api/auth/firebase/session") {
             if (!isFirebaseConfigured(cfg))

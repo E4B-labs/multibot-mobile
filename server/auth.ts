@@ -79,6 +79,11 @@ export function mountAuth(server: Server, getToken: () => string, hasSession: Se
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const publicRoute =
       (req.method === "GET" && url.pathname === "/api/health") ||
+      // multibot (A1): ekran logowania musi wiedzieć, CZY jest się czym
+      // logować, zanim cokolwiek ma. Trasa oddaje wyłącznie publiczne
+      // identyfikatory projektu Firebase (te i tak jadą do przeglądarki) plus
+      // informację, czy to żądanie ma już sesję.
+      (req.method === "GET" && url.pathname === "/api/auth/status") ||
       (req.method === "POST" && /^\/webhooks\/[^/]+$/.test(url.pathname)) ||
       ((req.method === "GET" || req.method === "HEAD") &&
         !url.pathname.startsWith("/api/") &&

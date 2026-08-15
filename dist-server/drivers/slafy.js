@@ -12,10 +12,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newEventId, newId } from "../contracts.js";
+import { approvalRule } from "../approval-rules.js";
 import { NATIVE_DIR } from "../config.js";
 import { EngineUnavailableError, ensureEngine, engineBaseUrl } from "../engine/supervisor.js";
 import { connectors as customConnectors } from "../mcp-connectors.js";
 import { engineSpec } from "../mcp-servers.js";
+import { approvalRuleAllowed } from "../turn-policy.js";
 import { appendNative } from "./native.js";
 const DRIVER_KIND = "slafy";
 /** Prefiks naszych wpisów w `/api/plugins` silnika — patrz `syncConnectors`. */
@@ -345,6 +347,8 @@ export const SlafyDriver = {
         const decisionOf = (behavior, message) => {
             if (behavior === "allow")
                 return "allow";
+            if (behavior === "always")
+                return "always";
             if (behavior === "answer" && /always/i.test(message ?? ""))
                 return "always";
             return "deny";
@@ -371,7 +375,7 @@ export const SlafyDriver = {
                 ...base(threadId, turnId),
                 type: "request.resolved",
                 requestId,
-                behavior: value === "always" ? "allow" : value,
+                behavior: value,
                 source: "user",
             });
         };
@@ -442,6 +446,11 @@ export const SlafyDriver = {
                                 if (!requestId)
                                     break;
                                 requestTurn.set(requestId, turnId);
+                                const remembered = approvalRule(DRIVER_KIND, String(payload.tool ?? "tool"), { command: String(payload.args_preview ?? "") }, payload.pattern_key || undefined);
+                                if (approvalRuleAllowed(threadId, remembered)) {
+                                    void respondToRequest(threadId, requestId, { behavior: "always" });
+                                    break;
+                                }
                                 emit({
                                     ...base(threadId, turnId),
                                     requestId,
@@ -449,6 +458,7 @@ export const SlafyDriver = {
                                     requestType: "permission",
                                     tool: String(payload.tool ?? "tool"),
                                     summary: String(payload.args_preview || payload.tool || "Tool use"),
+                                    approvalRule: remembered,
                                     // Etykiety, nie kody: index.ts wkłada je wprost w kartę, a front
                                     // odsyła klikniętą etykietę (patrz `decisionOf`).
                                     choices: ["Allow", "Deny", "Always allow"],
@@ -557,10 +567,16 @@ export const SlafyDriver = {
                 // obietnica, więc gate w `index.ts` i podpowiedź w personie zostają wspólne.
                 capabilities: { sessionModelSwitch: "unsupported", agentsMcp: true },
                 sendTurn,
-                // Zrywamy TYLKO nasz strumień — tura po stronie silnika dobiegnie końca
-                // (Hermes nie ma anulowania w locie). Odpowiedź wyląduje w historii bota
-                // i zobaczy ją następna tura. Prawdziwe przerwanie = osobny endpoint silnika.
-                interruptTurn: async (threadId) => active.get(threadId)?.abort.abort(),
+                interruptTurn: async (threadId) => {
+                    const running = active.get(threadId);
+                    if (!running)
+                        return;
+                    await fetch(`${engineBaseUrl()}/api/bots/${encodeURIComponent(engineBotId(threadId))}/interrupt`, {
+                        method: "POST",
+                        signal: AbortSignal.timeout(15_000),
+                    }).catch(() => { });
+                    running.abort.abort();
+                },
                 respondToRequest,
                 hasSession: (threadId) => active.has(threadId),
                 stopAll: async () => {

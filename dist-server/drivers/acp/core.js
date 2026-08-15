@@ -16,9 +16,10 @@
 import { spawn, execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { newEventId, newId } from "../../contracts.js";
+import { approvalRule } from "../../approval-rules.js";
 import { augmentedPath, resolveCliSpawn } from "../../env-path.js";
 import { killTree } from "../../kill-tree.js";
-import { autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../../turn-policy.js";
+import { approvalRuleAllowed, autoApproveAllowed, canUseIntegration, toolAllowed, turnPolicy } from "../../turn-policy.js";
 // multibot (F7): własne serwery MCP użytkownika, wspólne dla wszystkich driverów.
 import { connectors as customConnectors } from "../../mcp-connectors.js";
 import { appendNative } from "../native.js";
@@ -83,6 +84,18 @@ export function createAcpDriver(support) {
                         command: agents.command,
                         args: agents.args,
                         env: Object.entries(agents.env).map(([name, value]) => ({ name, value: String(value) })),
+                    });
+                }
+                // multibot (H3): ten sam komputer bota, co u claude'a i codexa — bez
+                // tego agent ACP widzi ekran użytkownika w panelu, ale nie ma czym na
+                // nim działać.
+                const computer = turn.integrations?.localComputer;
+                if (computer) {
+                    servers.push({
+                        name: "computer",
+                        command: computer.command,
+                        args: computer.args,
+                        env: Object.entries(computer.env).map(([name, value]) => ({ name, value: String(value) })),
                     });
                 }
                 // multibot (F7): własne konektory MCP użytkownika — tylko stdio, patrz
@@ -187,6 +200,7 @@ export function createAcpDriver(support) {
                     const toolCall = params.toolCall ?? {};
                     const kind = String(toolCall.kind ?? "");
                     const tool = kind === "execute" ? "shell" : kind === "edit" ? "edit" : kind || "tool";
+                    const remembered = approvalRule(DRIVER_KIND, tool, toolCall.rawInput ?? {});
                     if (!toolAllowed(threadId, tool)) {
                         const reject = optionFor("reject");
                         if (!reject)
@@ -208,14 +222,28 @@ export function createAcpDriver(support) {
                             result: allow ? { outcome: { outcome: "selected", optionId: allow } } : cancelled,
                         });
                     }
+                    if (approvalRuleAllowed(threadId, remembered)) {
+                        const allow = optionFor("allow");
+                        if (!allow)
+                            missing("allow");
+                        return send({
+                            jsonrpc: "2.0",
+                            id: msg.id,
+                            result: allow ? { outcome: { outcome: "selected", optionId: allow } } : cancelled,
+                        });
+                    }
                     const summary = String(toolCall.rawInput?.command ?? toolCall.title ?? tool).slice(0, 200);
                     const requestId = newId();
                     const finish = (behavior) => {
                         if (!asks.delete(requestId))
                             return;
                         clearTimeout(timer);
-                        const want = behavior === "allow" ? "allow" : "reject";
-                        const optionId = behavior === "cancel" ? null : optionFor(want);
+                        const allowed = behavior === "allow" || behavior === "always";
+                        const want = allowed ? "allow" : "reject";
+                        const persistent = behavior === "always"
+                            ? options.find((option) => /always|session/i.test(String(option.kind ?? "")) && typeof option.optionId === "string")?.optionId
+                            : null;
+                        const optionId = behavior === "cancel" ? null : persistent ?? optionFor(want);
                         if (behavior !== "cancel" && !optionId)
                             missing(want);
                         send({
@@ -227,7 +255,7 @@ export function createAcpDriver(support) {
                             ...base(threadId, turnId),
                             type: "request.resolved",
                             requestId,
-                            behavior: optionId && behavior === "allow" ? "allow" : "deny",
+                            behavior: optionId && allowed ? behavior : "deny",
                             source: optionId ? "user" : "system",
                         });
                     };
@@ -244,6 +272,7 @@ export function createAcpDriver(support) {
                         requestType: "permission",
                         tool,
                         summary,
+                        approvalRule: remembered,
                     });
                 };
                 const handleNotification = (msg) => {
@@ -465,7 +494,7 @@ export function createAcpDriver(support) {
                         const finish = turn?.asks.get(requestId);
                         if (!finish)
                             throw new Error("no such pending request");
-                        finish(decision.behavior === "allow" ? "allow" : "deny");
+                        finish(decision.behavior === "allow" || decision.behavior === "always" ? decision.behavior : "deny");
                     },
                     hasSession: (threadId) => active.has(threadId),
                     stopAll: async () => {

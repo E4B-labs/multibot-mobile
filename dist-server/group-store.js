@@ -6,6 +6,7 @@ const FILE = join(DATA_DIR, "groups.json");
 /** Small durable shadow for engine groups; engine remains source of turn execution. */
 export class GroupStore {
     groups;
+    hasSnapshot = false;
     file;
     constructor(file = FILE) {
         this.file = file;
@@ -13,6 +14,7 @@ export class GroupStore {
         try {
             const parsed = JSON.parse(readFileSync(file, "utf8"));
             this.groups = Array.isArray(parsed) ? parsed : [];
+            this.hasSnapshot = Array.isArray(parsed);
         }
         catch {
             this.groups = [];
@@ -21,6 +23,10 @@ export class GroupStore {
     }
     save() {
         writeFileSync(this.file, JSON.stringify(this.groups, null, 2));
+        this.hasSnapshot = true;
+    }
+    hasLocalRoster() {
+        return this.hasSnapshot;
     }
     list() {
         return this.groups.map((g) => ({ ...g, bot_ids: [...g.bot_ids], messages: [...g.messages] }));

@@ -10,6 +10,7 @@
 // wiedzy frontendu o tym, gdzie stoi silnik.
 import { request as httpRequest } from "node:http";
 import { ensureEngine } from "./supervisor.js";
+import { matchVncRoute } from "../computer-vnc-proxy.js";
 const PREFIX = "/api/engine";
 /** Nagłówki wyłącznie dla jednego skoku — kopiowanie ich psuje ramkowanie. */
 const HOP_BY_HOP = ["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection"];
@@ -141,6 +142,12 @@ export function mountEngineProxy(server) {
     });
     server.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        // multibot (H4): ten handler nie jest już jedyny — ekran komputera bota ma
+        // własny (server/computer-vnc-proxy.ts). Zabicie tu KAŻDEGO obcego gniazda
+        // ubijało jego upgrade, zanim zdążył odpowiedzieć: websockify zwracał 101,
+        // a klient nie dostawał nic.
+        if (matchVncRoute(url.pathname))
+            return;
         if (!url.pathname.startsWith(`${PREFIX}/`))
             return socket.destroy();
         // multibot (F5): WS silnika jest więcej niż jeden. `/api/engine/ws` →

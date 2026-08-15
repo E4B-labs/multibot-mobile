@@ -55,6 +55,10 @@ const TOOLS = [
                 tool_name: { type: "string" },
                 input: { type: "object" },
                 tool_use_id: { type: "string" },
+                permission_suggestions: {
+                    type: "array",
+                    items: { type: "object", additionalProperties: true },
+                },
             },
             required: ["tool_name", "input"],
         },
@@ -109,7 +113,7 @@ async function handle(msg) {
                 return dead();
             const ask = isQuestion
                 ? { t: "ask", id: askId, kind: "question", tool: "ask_user", input: { question: args.question, choices: args.choices } }
-                : { t: "ask", id: askId, tool: args.tool_name, input: args.input };
+                : { t: "ask", id: askId, tool: args.tool_name, input: args.input, suggestions };
             try {
                 conn.write(JSON.stringify(ask) + "\n");
             }
@@ -119,11 +123,11 @@ async function handle(msg) {
         });
         const text = isQuestion
             ? answer.message || "No answer was given — use your best judgment."
-            : JSON.stringify(answer.behavior === "allow"
+            : JSON.stringify(answer.behavior === "allow" || answer.behavior === "always"
                 ? {
                     behavior: "allow",
                     updatedInput: args.input ?? {},
-                    ...(answer.always && suggestions ? { updatedPermissions: suggestions } : {}),
+                    ...(answer.behavior === "always" && suggestions ? { updatedPermissions: suggestions } : {}),
                 }
                 : { behavior: "deny", message: answer.message || "Denied from MultiBot" });
         return send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }] } });

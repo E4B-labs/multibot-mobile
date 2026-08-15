@@ -30,6 +30,7 @@ export const CLI_TOOLS = [
         id: "codex",
         driverKind: "codex",
         displayName: "Codex",
+        installStrategy: "codex-native",
         // Official non-TTY OAuth: output carries URL + one-time code, then CLI
         // polls until browser authorization completes. No token crosses harness.
         loginCommand: "codex login --device-auth",

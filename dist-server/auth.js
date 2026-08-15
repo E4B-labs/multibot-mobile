@@ -51,9 +51,7 @@ function unauthorized(res) {
 function rejectUpgrade(socket) {
     socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
 }
-/** Mount last: wraps both the app request handler and every upgrade handler,
- * including the engine event and per-bot computer sockets. */
-export function mountAuth(server, getToken) {
+export function mountAuth(server, getToken, hasSession = () => false) {
     const sessions = new Set();
     const tracked = new WeakSet();
     const track = (socket) => {
@@ -68,6 +66,11 @@ export function mountAuth(server, getToken) {
     server.on("request", (req, res) => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
         const publicRoute = (req.method === "GET" && url.pathname === "/api/health") ||
+            // multibot (A1): ekran logowania musi wiedzieć, CZY jest się czym
+            // logować, zanim cokolwiek ma. Trasa oddaje wyłącznie publiczne
+            // identyfikatory projektu Firebase (te i tak jadą do przeglądarki) plus
+            // informację, czy to żądanie ma już sesję.
+            (req.method === "GET" && url.pathname === "/api/auth/status") ||
             (req.method === "POST" && /^\/webhooks\/[^/]+$/.test(url.pathname)) ||
             ((req.method === "GET" || req.method === "HEAD") &&
                 !url.pathname.startsWith("/api/") &&
@@ -76,10 +79,20 @@ export function mountAuth(server, getToken) {
         // again by the route itself. Requiring the user token would leak it into
         // spawned agent environments.
         const internallyAuthenticated = url.pathname.startsWith("/api/internal/");
-        if (!publicRoute && !internallyAuthenticated && !tokenMatches(requestToken(req), getToken())) {
+        // A client logging in with Google has no token yet — that is the point of
+        // logging in — so the exchange endpoint has to be reachable without one. It
+        // does its own verification of the Firebase ID token.
+        const loggingIn = req.method === "POST" &&
+            (url.pathname === "/api/auth/firebase/session" ||
+                // C1: a phone claiming a pairing code has no credential yet either —
+                // that is what it is trading the code for. The route rate-limits and
+                // single-uses the code itself.
+                url.pathname === "/api/pair/claim");
+        const authed = tokenMatches(requestToken(req), getToken()) || hasSession(req);
+        if (!publicRoute && !loggingIn && !internallyAuthenticated && !authed) {
             return unauthorized(res);
         }
-        if (!publicRoute && !internallyAuthenticated)
+        if (!publicRoute && !loggingIn && !internallyAuthenticated)
             track(req.socket);
         for (const handler of requests)
             handler(req, res);
@@ -87,7 +100,9 @@ export function mountAuth(server, getToken) {
     const upgrades = server.listeners("upgrade");
     server.removeAllListeners("upgrade");
     server.on("upgrade", (req, socket, head) => {
-        if (!tokenMatches(requestToken(req), getToken()))
+        // The screen socket rides the cookie too: a browser WebSocket cannot set an
+        // Authorization header, and a phone logging in with Google has no token.
+        if (!tokenMatches(requestToken(req), getToken()) && !hasSession(req))
             return rejectUpgrade(socket);
         track(socket);
         const protocols = String(req.headers["sec-websocket-protocol"] ?? "")

@@ -72,6 +72,15 @@ describe("mountAuth with device sessions", () => {
     });
   });
 
+  // Ekran logowania pyta o to bez zadnego poswiadczenia — inaczej nie wiedzialby,
+  // czy w ogole pokazac przycisk Google.
+  it("lets the login screen read auth status unauthenticated, GET only", async () => {
+    await withServer(() => false, async (base) => {
+      expect((await fetch(`${base}/api/auth/status`)).status).toBe(200);
+      expect((await fetch(`${base}/api/auth/status`, { method: "POST" })).status).toBe(401);
+    });
+  });
+
   // Without this a client can never log in: it has no token yet, which is the
   // entire point of logging in.
   it("lets the Firebase login exchange through unauthenticated", async () => {

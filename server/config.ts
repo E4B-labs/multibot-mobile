@@ -33,7 +33,15 @@ export interface AppConfig {
   /** multibot (A1): Firebase Google login. Absent entirely (no project id) =
    * server/firebase-auth.ts stays completely inert and the single bearer
    * access token above keeps working unchanged. */
-  firebase?: { projectId?: string; ownerUid?: string };
+  firebase?: {
+    projectId?: string;
+    /** Web API key projektu — publiczny z definicji, przeglądarka wymienia nim
+     *  token Google na token Firebase (`accounts:signInWithIdp`). */
+    apiKey?: string;
+    /** OAuth client ID (typ „Web application") — Google Identity Services. */
+    clientId?: string;
+    ownerUid?: string;
+  };
   /** multibot (A1): device sessions from Google login, keyed by
    * sha256(session id) hex — the raw session id (the cookie value) is never
    * persisted, only its hash. */

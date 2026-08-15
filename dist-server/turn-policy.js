@@ -1,13 +1,34 @@
 const active = new Map();
 export function setTurnPolicy(threadId, policy) {
-    active.set(threadId, { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } });
+    active.set(threadId, {
+        autonomy: policy.autonomy,
+        access: policy.access,
+        permissions: { ...policy.permissions },
+        approvalRules: policy.approvalRules?.map((rule) => ({ ...rule })) ?? [],
+    });
 }
 export function clearTurnPolicy(threadId) {
     active.delete(threadId);
 }
 export function turnPolicy(threadId) {
     const policy = active.get(threadId);
-    return policy ? { autonomy: policy.autonomy, access: policy.access, permissions: { ...policy.permissions } } : undefined;
+    return policy ? {
+        autonomy: policy.autonomy,
+        access: policy.access,
+        permissions: { ...policy.permissions },
+        approvalRules: policy.approvalRules?.map((rule) => ({ ...rule })) ?? [],
+    } : undefined;
+}
+export function approvalRuleAllowed(threadId, rule) {
+    return active.get(threadId)?.approvalRules?.some((saved) => saved.provider === rule.provider && saved.key === rule.key) ?? false;
+}
+export function rememberApprovalRule(threadId, rule) {
+    const policy = active.get(threadId);
+    if (!policy)
+        return;
+    const rules = (policy.approvalRules ??= []);
+    if (!rules.some((saved) => saved.provider === rule.provider && saved.key === rule.key))
+        rules.push({ ...rule });
 }
 export function toolsetFor(tool) {
     const name = tool.toLowerCase().replace(/[^a-z0-9]+/g, "_");

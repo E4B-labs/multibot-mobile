@@ -56,7 +56,16 @@ export function saveConfig(patch) {
     // multibot (F7): `mcpConnectors` dołącza do listy — merge po kluczu, więc
     // zapis jednego konektora nie kasuje reszty, a `undefined` w wartości kasuje
     // wpis (JSON.stringify pomija takie pole).
-    for (const key of ["auth", "xai", "composio", "box", "profile", "mcpConnectors"]) {
+    for (const key of [
+        "auth",
+        "xai",
+        "composio",
+        "box",
+        "profile",
+        "mcpConnectors",
+        "firebase",
+        "deviceSessions",
+    ]) {
         if (patch[key] && typeof patch[key] === "object") {
             disk[key] = { ...disk[key], ...patch[key] };
         }

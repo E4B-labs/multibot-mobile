@@ -20,6 +20,7 @@ const empty = () => ({
     autonomy: "approval",
     access: "approval",
     permissions: { ...DEFAULT_PERMISSIONS },
+    approvalRules: [],
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 },
 });
 function normalizedAccess(workspace) {
@@ -211,6 +212,35 @@ export class WorkspaceStore {
         workspace.access = workspace.autonomy === "autonomous" && Object.values(workspace.permissions).every(Boolean) ? "full" : "approval";
         this.save();
         return { ...workspace.permissions };
+    }
+    approvalRules(botId) {
+        return structuredClone(this.get(botId).approvalRules ?? []);
+    }
+    addApprovalRule(botId, value) {
+        const workspace = this.get(botId);
+        const rules = (workspace.approvalRules ??= []);
+        const existing = rules.find((rule) => rule.provider === value.provider && rule.key === value.key);
+        if (existing)
+            return structuredClone(existing);
+        const rule = {
+            id: newId(),
+            provider: text(value.provider, "provider", 40),
+            key: text(value.key, "key", 2_000),
+            label: text(value.label, "label", 240),
+            created_at: new Date().toISOString(),
+        };
+        rules.unshift(rule);
+        this.save();
+        return structuredClone(rule);
+    }
+    removeApprovalRule(botId, ruleId) {
+        const workspace = this.get(botId);
+        const rules = workspace.approvalRules ?? [];
+        const before = rules.length;
+        workspace.approvalRules = rules.filter((rule) => rule.id !== ruleId);
+        if (workspace.approvalRules.length !== before)
+            this.save();
+        return workspace.approvalRules.length !== before;
     }
     usage(botId) {
         return { ...this.get(botId).usage };
