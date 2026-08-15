@@ -16,10 +16,9 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<Host | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  // TEKSTY DO UZGODNIENIA Z KACPREM (PLAN-MOBILE-KOLEGA B5): ten ekran startowy
-  // musi być spójny z onboardingiem po stronie webu — Kacper robi to samo po
-  // stronie serwera, więc sformułowania „Postaw serwer" / „Zaloguj się" i
-  // instrukcja poniżej wymagają wspólnego ustalenia.
+  // TEKSTY WIĄŻĄCE (PLAN-UI.md U23, grupa E): aplikacja mobilna i onboarding
+  // webowy muszą pokazywać dokładnie te same zdania. Zmiana tekstu = najpierw
+  // PLAN-UI.md, potem kod. Przepisane co do znaku.
   const [serverHelp, setServerHelp] = useState(false);
 
   function startRename(host: Host) {
@@ -40,16 +39,14 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
         <Text style={styles.dim}>Loading hosts…</Text>
       ) : hosts.length === 0 ? (
         <View style={styles.onboard}>
-          <Text style={styles.onboardIntro}>
-            Połącz się ze swoim serwerem MultiBota, żeby rozmawiać z botami bezpośrednio z telefonu.
-          </Text>
+          <Text style={styles.onboardIntro}>Zacznij od jednej z dwóch rzeczy.</Text>
           <Pressable style={styles.onboardButton} onPress={() => setServerHelp(true)}>
             <Text style={styles.onboardButtonTitle}>Postaw serwer</Text>
-            <Text style={styles.onboardButtonHint}>Uruchom MultiBota 24/7 na wybranym urządzeniu</Text>
+            <Text style={styles.onboardButtonHint}>To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć.</Text>
           </Pressable>
           <Pressable style={styles.onboardButton} onPress={onAdd}>
             <Text style={styles.onboardButtonTitle}>Zaloguj się do serwera</Text>
-            <Text style={styles.onboardButtonHint}>Zeskanuj kod QR albo wklej adres i token</Text>
+            <Text style={styles.onboardButtonHint}>Serwer już gdzieś stoi. To urządzenie tylko się do niego łączy.</Text>
           </Pressable>
         </View>
       ) : (
@@ -132,9 +129,13 @@ export default function HostListScreen({ hosts, loading, onOpen, onAdd, onRemove
         <Pressable style={styles.sheetBackdrop} onPress={() => setServerHelp(false)}>
           <View style={[styles.sheet, styles.helpSheet]}>
             <Text style={styles.sheetTitle}>Postaw serwer</Text>
-            <Text style={styles.helpStep}>1. Zainstaluj i uruchom MultiBota na wybranym urządzeniu (telefon, mini-PC, VPS).</Text>
-            <Text style={styles.helpStep}>2. W ustawieniach serwera znajdź sekcję Token i skopiuj wygenerowany token.</Text>
-            <Text style={styles.helpStep}>3. Wróć tutaj, wybierz „Zaloguj się do serwera" i zeskanuj kod QR lub wklej adres z tokenem.</Text>
+            <Text style={styles.helpStep}>1. Uruchom MultiBota na komputerze albo telefonie, który ma być serwerem.</Text>
+            <Text style={styles.helpStep}>
+              2. W ustawieniach serwera wejdź w <Text style={styles.helpBold}>Połącz urządzenie</Text>. Pokaże kod QR.
+            </Text>
+            <Text style={styles.helpStep}>
+              3. Wróć tutaj, wybierz <Text style={styles.helpBold}>Zaloguj się do serwera</Text> i zeskanuj ten kod.
+            </Text>
             <Pressable style={styles.sheetCancel} onPress={() => setServerHelp(false)}>
               <Text style={styles.sheetCancelText}>Rozumiem</Text>
             </Pressable>
@@ -190,4 +191,5 @@ const styles = StyleSheet.create({
   onboardButtonHint: { color: "#fcfcfc99", fontSize: 13, marginTop: 4 },
   helpSheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   helpStep: { color: "#fcfcfc99", fontSize: 14, lineHeight: 21, marginBottom: 10 },
+  helpBold: { color: "#fcfcfc", fontWeight: "700" },
 });
