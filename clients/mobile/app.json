@@ -4,6 +4,9 @@
     "slug": "multibot-mobile",
     "scheme": "multibot",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070707",
@@ -18,7 +21,13 @@
       }
     },
     "android": {
-      "package": "com.openmausbot.mobile"
+      "package": "com.openmausbot.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -36,6 +45,15 @@
         }
       ],
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1d7db8a3-befe-4dc3-a347-293d98c0d031"
+      }
+    },
+    "owner": "slafy",
+    "updates": {
+      "url": "https://u.expo.dev/1d7db8a3-befe-4dc3-a347-293d98c0d031"
+    }
   }
 }
