@@ -4,7 +4,7 @@
     "slug": "multibot-mobile",
     "scheme": "multibot",
     "version": "0.1.0",
-    "runtimeVersion": "0.1.0",
+    "runtimeVersion": "8d291d16ced5fae324025ea27c674b2b59123af7",
     "platforms": [
       "android",
       "ios"

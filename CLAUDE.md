@@ -78,20 +78,28 @@ wynika podział, który decyduje, co w ogóle trzeba robić:
 Projekt EAS: `@slafy/multibot-mobile`, id `1d7db8a3-befe-4dc3-a347-293d98c0d031`,
 kanał `production`, keystore po stronie EAS.
 
-`runtimeVersion: "0.1.0"` (statyczny string, NIE `fingerprint`) — wzorzec
-przeniesiony z TaskTree. OTA dostarcza się do każdego APK z tym samym stringiem,
-niezależnie od systemu, na którym liczono build. Omija błąd, w którym
-`fingerprint` liczył inny hash na Windowsie (`aba46387…`) i na Linuxie EAS
-(`8d291d16…`), przez co telefon cicho ignorował update.
+`runtimeVersion: "8d291d16ced5fae324025ea27c674b2b59123af7"` (statyczny
+string, NIE `fingerprint`) — wzorzec przeniesiony z TaskTree. OTA dostarcza się
+do każdego APK z tym samym stringiem, niezależnie od systemu, na którym liczono
+build. Omija błąd, w którym `fingerprint` liczył inny hash na Windowsie
+(`aba46387…`) i na Linuxie EAS (`8d291d16…`), przez co telefon ignorował update.
+
+Wartość to odcisk (fingerprint) builda `de41d3c3` — celowo taka sama jak w
+zainstalowanym APK, żeby OTA trafiała do niego BEZ nowego builda. Przy
+kolejnym `eas build` można przejść na ładniejszą wersję semantyczną (np.
+`0.1.0`) — ale wtedy trzeba wgrać nowy APK, bo stary (runtime `8d291d16…`)
+nie przyjmie update'ów z innym stringiem.
 
 Zmiana natywna (nowa zależność, `plugins`, SDK) = nowy `eas build` ORAZ bump
-`runtimeVersion` (np. `0.1.0` → `0.1.1`). Bez bumpu EAS puści update, ale stary
-APK go nie przyjmie. Czysty JS = sam `eas update`, `runtimeVersion` bez zmian.
+`runtimeVersion`. Bez bumpu EAS puści update, ale stary APK go nie przyjmie.
+Czysty JS = sam `eas update`, `runtimeVersion` bez zmian.
 
-**Migracja z fingerprint:** ten APK (build `de41d3c3`) ma runtime
-`8d291d16ced5fae324025ea27c674b2b59123af7`. Po przejściu na `"0.1.0"` OTA do
-tego konkretnego APK milczy, dopóki nie wgra się nowego builda z runtime
-`0.1.0`. Stary APK zostaje na ostatnim dobrym JS — nie psuje się.
+**W aplikacji jest popup aktualizacji** (`clients/mobile/App.tsx`, wzorzec
+TaskTree): na starcie `Updates.checkForUpdateAsync()`; jak jest nowszy update,
+wyskakuje `Modal` z przyciskiem "Download & restart" →
+`Updates.fetchUpdateAsync()` + `Updates.reloadAsync()`. Działa tylko w produkcji
+(`!__DEV__ && Updates.isEnabled`). EAS domyślnie i tak ściąga update w tle i
+nakłada przy zimnym starcie — popup to jawne potwierdzenie dla użytkownika.
 
 ### Trzy pułapki EAS, wszystkie rozbrojone — nie cofaj tych zmian
 
