@@ -1,21 +1,16 @@
 {
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    // `logic.test.ts` chodzi pod runnerem Node'a, ktory wymaga rozszerzenia w
+    // imporcie — bez tego `tsc --noEmit` na tym projekcie nie przechodzi wcale.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  // `webui/` to osobny projekt webowy z własnym tsconfigiem, własnymi
+  // zależnościami i własnym aliasem `@/`. Sprawdzany komendą `npm run typecheck`
+  // wykonaną w tamtym katalogu. Bez tego wyłączenia sprawdzenie skorupy tonie
+  // w kilkuset błędach o nieznalezionych modułach interfejsu.
+  "exclude": ["node_modules", "webui", "android", "ios"]
 }

@@ -1,472 +1,0 @@
-[watch] working dir: D:\tmp\watch-hermes\QTcZPI-g7is-hd
-[watch] checking metadata/captions via yt-dlp…
-[youtube] Extracting URL: https://youtu.be/QTcZPI-g7is
-[youtube] QTcZPI-g7is: Downloading webpage
-[youtube] QTcZPI-g7is: Downloading android vr player API JSON
-[info] QTcZPI-g7is: Downloading subtitles: en-orig, en
-[info] QTcZPI-g7is: Downloading 1 format(s): 401+251
-[info] Writing video subtitles to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en-orig.vtt
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en-orig.vtt
-[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at  Unknown B/s (00:00:00)[download]    7.00KiB at  Unknown B/s (00:00:00)[download]   15.00KiB at  Unknown B/s (00:00:00)[download]   31.00KiB at    3.78MiB/s (00:00:00)[download]   63.00KiB at    4.73MiB/s (00:00:00)[download]  126.91KiB at    5.63MiB/s (00:00:00)[download] 100% of  126.91KiB in 00:00:00 at 1.06MiB/s
-[info] Writing video subtitles to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en.vtt
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en.vtt
-[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at  Unknown B/s (00:00:00)[download]    7.00KiB at  Unknown B/s (00:00:00)[download]   15.00KiB at    7.33MiB/s (00:00:00)[download]   31.00KiB at    3.36MiB/s (00:00:00)[download]   63.00KiB at    4.10MiB/s (00:00:00)[download]  126.91KiB at    5.16MiB/s (00:00:00)[download] 100% of  126.91KiB in 00:00:00 at 1.12MiB/s
-[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.info.json
-[SubtitlesConvertor] Converting subtitles
-[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
-[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
-[watch] downloading video via yt-dlp…
-[youtube] Extracting URL: https://youtu.be/QTcZPI-g7is
-[youtube] QTcZPI-g7is: Downloading webpage
-[youtube] QTcZPI-g7is: Downloading android vr player API JSON
-[info] QTcZPI-g7is: Downloading subtitles: en-orig, en
-[info] QTcZPI-g7is: Downloading 1 format(s): 398+251
-Deleting existing file D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en-orig.vtt
-[info] Writing video subtitles to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en-orig.vtt
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en-orig.vtt
-[download]    1.00KiB at  965.98KiB/s (00:00:00)[download]    3.00KiB at    1.90MiB/s (00:00:00)[download]    7.00KiB at    4.43MiB/s (00:00:00)[download]   15.00KiB at    9.50MiB/s (00:00:00)[download]   31.00KiB at    3.54MiB/s (00:00:00)[download]   63.00KiB at    4.54MiB/s (00:00:00)[download]  126.91KiB at    5.49MiB/s (00:00:00)[download] 100% of  126.91KiB in 00:00:00 at 1.11MiB/s
-Deleting existing file D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en.vtt
-[info] Writing video subtitles to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en.vtt
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.en.vtt
-[download]    1.00KiB at  Unknown B/s (00:00:00)[download]    3.00KiB at  Unknown B/s (00:00:00)[download]    7.00KiB at  Unknown B/s (00:00:00)[download]   15.00KiB at  Unknown B/s (00:00:00)[download]   31.00KiB at    3.36MiB/s (00:00:00)[download]   63.00KiB at    4.39MiB/s (00:00:00)[download]  126.91KiB at    5.39MiB/s (00:00:00)[download] 100% of  126.91KiB in 00:00:00 at 1.13MiB/s
-[info] Writing video metadata as JSON to: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.info.json
-[SubtitlesConvertor] Converting subtitles
-[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
-[SubtitlesConvertor] Subtitle file for vtt is already in the requested format
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.f398.mp4
-[download]   0.0% of   21.12MiB at  500.33KiB/s ETA 00:43[download]   0.0% of   21.12MiB at    1.47MiB/s ETA 00:14[download]   0.0% of   21.12MiB at    3.42MiB/s ETA 00:06[download]   0.1% of   21.12MiB at    7.33MiB/s ETA 00:02[download]   0.1% of   21.12MiB at    3.36MiB/s ETA 00:06[download]   0.3% of   21.12MiB at    4.73MiB/s ETA 00:04[download]   0.6% of   21.12MiB at    5.64MiB/s ETA 00:03[download]   1.2% of   21.12MiB at    7.55MiB/s ETA 00:02[download]   2.4% of   21.12MiB at    8.91MiB/s ETA 00:02[download]   4.7% of   21.12MiB at    9.99MiB/s ETA 00:02[download]   9.5% of   21.12MiB at    8.00MiB/s ETA 00:02[download]  18.9% of   21.12MiB at    6.71MiB/s ETA 00:02[download]  37.9% of   21.12MiB at    6.21MiB/s ETA 00:02[download]  45.6% of   21.12MiB at    6.13MiB/s ETA 00:01[download]  45.6% of   21.12MiB at  499.38KiB/s ETA 00:23[download]  45.6% of   21.12MiB at  999.68KiB/s ETA 00:11[download]  45.7% of   21.12MiB at    2.28MiB/s ETA 00:05[download]  45.7% of   21.12MiB at    4.88MiB/s ETA 00:02[download]  45.8% of   21.12MiB at    6.05MiB/s ETA 00:01[download]  45.9% of   21.12MiB at    6.15MiB/s ETA 00:01[download]  46.2% of   21.12MiB at    6.20MiB/s ETA 00:01[download]  46.8% of   21.12MiB at    5.93MiB/s ETA 00:01[download]  48.0% of   21.12MiB at    6.09MiB/s ETA 00:01[download]  50.4% of   21.12MiB at    6.28MiB/s ETA 00:01[download]  55.1% of   21.12MiB at    6.73MiB/s ETA 00:01[download]  64.6% of   21.12MiB at    6.22MiB/s ETA 00:01[download]  83.5% of   21.12MiB at    5.99MiB/s ETA 00:00[download]  91.4% of   21.12MiB at    5.96MiB/s ETA 00:00[download]  91.4% of   21.12MiB at  Unknown B/s ETA Unknown[download]  91.4% of   21.12MiB at  Unknown B/s ETA Unknown[download]  91.4% of   21.12MiB at  Unknown B/s ETA Unknown[download]  91.5% of   21.12MiB at    7.32MiB/s ETA 00:00  [download]  91.5% of   21.12MiB at   15.13MiB/s ETA 00:00[download]  91.7% of   21.12MiB at   10.25MiB/s ETA 00:00[download]  92.0% of   21.12MiB at    9.54MiB/s ETA 00:00[download]  92.6% of   21.12MiB at    8.89MiB/s ETA 00:00[download]  93.8% of   21.12MiB at    6.93MiB/s ETA 00:00[download]  96.1% of   21.12MiB at    6.28MiB/s ETA 00:00[download] 100.0% of   21.12MiB at    6.07MiB/s ETA 00:00[download] 100% of   21.12MiB in 00:00:03 at 5.80MiB/s   
-[download] Destination: D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.f251.webm
-[download]   0.0% of   11.91MiB at  499.56KiB/s ETA 00:24[download]   0.0% of   11.91MiB at    1.46MiB/s ETA 00:08[download]   0.1% of   11.91MiB at    3.41MiB/s ETA 00:03[download]   0.1% of   11.91MiB at    4.88MiB/s ETA 00:02[download]   0.3% of   11.91MiB at    7.57MiB/s ETA 00:01[download]   0.5% of   11.91MiB at    7.69MiB/s ETA 00:01[download]   1.0% of   11.91MiB at    7.29MiB/s ETA 00:01[download]   2.1% of   11.91MiB at    6.92MiB/s ETA 00:01[download]   4.2% of   11.91MiB at    6.84MiB/s ETA 00:01[download]   8.4% of   11.91MiB at    6.80MiB/s ETA 00:01[download]  16.8% of   11.91MiB at    6.78MiB/s ETA 00:01[download]  33.6% of   11.91MiB at    6.76MiB/s ETA 00:01[download]  67.1% of   11.91MiB at    6.23MiB/s ETA 00:00[download]  79.8% of   11.91MiB at    6.16MiB/s ETA 00:00[download]  79.8% of   11.91MiB at  500.04KiB/s ETA 00:04[download]  79.8% of   11.91MiB at    1.46MiB/s ETA 00:01[download]  79.8% of   11.91MiB at    3.42MiB/s ETA 00:00[download]  79.9% of   11.91MiB at    7.32MiB/s ETA 00:00[download]  80.0% of   11.91MiB at    7.57MiB/s ETA 00:00[download]  80.3% of   11.91MiB at    6.84MiB/s ETA 00:00[download]  80.8% of   11.91MiB at    6.20MiB/s ETA 00:00[download]  81.9% of   11.91MiB at    6.84MiB/s ETA 00:00[download]  84.0% of   11.91MiB at    7.09MiB/s ETA 00:00[download]  88.2% of   11.91MiB at    5.69MiB/s ETA 00:00[download]  96.6% of   11.91MiB at    6.06MiB/s ETA 00:00[download] 100.0% of   11.91MiB at    6.04MiB/s ETA 00:00[download] 100% of   11.91MiB in 00:00:02 at 5.75MiB/s   
-[Merger] Merging formats into "D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.mp4"
-Deleting original file D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.f398.mp4 (pass -k to keep)
-Deleting original file D:\tmp\watch-hermes\QTcZPI-g7is-hd\download\video.f251.webm (pass -k to keep)
-[watch] extracting scene-aware frames over full 798.4s (target 50, cap 33)…
-
-# watch: video report
-
-- **Source:** https://youtu.be/QTcZPI-g7is
-- **Title:** Cursor Just Released Grok Bot (An Insanely Easy AI Agent)
-- **Uploader:** Paul J Lipsky
-- **Duration:** 13:18 (798.4s)
-- **Resolution:** 1280x720 (av1)
-- **Detail:** balanced
-- **Frames:** 25 selected from 25 candidates (scene, full range, budget 50, cap 33)
-- **Cue frames:** 17 at transcript-flagged timestamps (transcript-cue)
-- **Frame size:** max 1024px wide, max 1998px tall
-- **Transcript:** 355 segments (via captions)
-
-> **Warning:** This is a 13-minute video. Frame coverage is sparse at this length under `balanced` detail — its cap spreads thin across the full clip. For better results, re-run with `--start HH:MM:SS --end HH:MM:SS` to zoom into a section, or use `--detail token-burner` to keep every scene-change frame across the whole video.
-
-## Frames
-
-Frames live at: `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames`
-
-**Read each frame path below with the Read tool to view the image.** Frames are in chronological order; `t=MM:SS` is the absolute timestamp in the source video.
-
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0001.jpg` (t=00:00, reason=first-frame)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0002.jpg` (t=00:02, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0003.jpg` (t=00:02, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0004.jpg` (t=00:02, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0005.jpg` (t=00:16, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0000.jpg` (t=00:20, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0001.jpg` (t=00:40, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0002.jpg` (t=01:00, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0006.jpg` (t=01:39, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0003.jpg` (t=01:40, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0004.jpg` (t=03:20, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0005.jpg` (t=04:20, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0006.jpg` (t=05:05, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0007.jpg` (t=05:08, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0008.jpg` (t=05:09, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0009.jpg` (t=05:23, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0007.jpg` (t=05:30, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0010.jpg` (t=05:44, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0011.jpg` (t=06:09, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0012.jpg` (t=06:10, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0008.jpg` (t=06:10, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0013.jpg` (t=06:26, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0014.jpg` (t=06:36, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0009.jpg` (t=06:40, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0015.jpg` (t=06:49, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0016.jpg` (t=06:59, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0010.jpg` (t=07:10, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0017.jpg` (t=07:27, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0018.jpg` (t=07:39, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0011.jpg` (t=07:40, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0012.jpg` (t=08:10, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0019.jpg` (t=08:39, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0013.jpg` (t=08:40, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0014.jpg` (t=09:00, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0015.jpg` (t=09:15, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0020.jpg` (t=09:36, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0021.jpg` (t=10:38, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0022.jpg` (t=11:06, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\cue_0016.jpg` (t=11:20, reason=transcript-cue)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0023.jpg` (t=12:15, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0024.jpg` (t=12:23, reason=scene-change)
-- `D:\tmp\watch-hermes\QTcZPI-g7is-hd\frames\frame_0025.jpg` (t=13:01, reason=scene-change)
-
-## Transcript
-
-_Source: captions._
-
-```
-[00:01] So, Cursor just came out with something new. It's called Grockbot. I got early
-[00:04] new. It's called Grockbot. I got early access to it, so I've been able to test
-[00:05] access to it, so I've been able to test it out for a couple of days, and I have
-[00:07] it out for a couple of days, and I have to say, this could be the thing that
-[00:09] to say, this could be the thing that finally gets regular people to start
-[00:11] finally gets regular people to start using AI agents because it's not only
-[00:13] using AI agents because it's not only really good, but also very intuitive.
-[00:16] really good, but also very intuitive. Opening up the desktop app, you'll see
-[00:18] Opening up the desktop app, you'll see that this UI feels very similar to a
-[00:20] that this UI feels very similar to a messenger app like iMessage. Everything
-[00:22] messenger app like iMessage. Everything you do in Grockbot centers around these
-[00:25] you do in Grockbot centers around these bots that you set up. For instance, here
-[00:27] bots that you set up. For instance, here I have one that helps me with my emails,
-[00:28] I have one that helps me with my emails, one that helps me outline my YouTube
-[00:30] one that helps me outline my YouTube videos. This one helps me negotiate
-[00:32] videos. This one helps me negotiate deals. And then I also have one that I
-[00:34] deals. And then I also have one that I just use for general purposes if it
-[00:37] just use for general purposes if it doesn't fit into one of the other
-[00:38] doesn't fit into one of the other categories. What's also pretty neat here
-[00:40] categories. What's also pretty neat here is you can start a chat with multiple
-[00:43] is you can start a chat with multiple bots. You're not limited to just one.
-[00:45] bots. You're not limited to just one. You can see that at the top, for
-[00:46] You can see that at the top, for instance, I have a new chat open here. I
-[00:48] instance, I have a new chat open here. I already have two of my bots selected. I
-[00:50] already have two of my bots selected. I can select even more if I wanted to. And
-[00:52] can select even more if I wanted to. And then all of these bots will work
-[00:54] then all of these bots will work together on whatever task I give them.
-[00:56] together on whatever task I give them. Or if you're already in the middle of a
-[00:58] Or if you're already in the middle of a chat, you can bring another bot into the
-[01:01] chat, you can bring another bot into the conversation just by typing in at and
-[01:03] conversation just by typing in at and selecting the bot here. And that will
-[01:05] selecting the bot here. And that will allow that bot to help with that task.
-[01:08] allow that bot to help with that task. So you're basically creating these
-[01:10] So you're basically creating these co-workers that each specialize in a
-[01:12] co-workers that each specialize in a different area. It's a little bit of a
-[01:14] different area. It's a little bit of a shift if you're used to using cloud
-[01:16] shift if you're used to using cloud co-work or chatgbt work where you sort
-[01:19] co-work or chatgbt work where you sort of think in terms of tasks. Here you
-[01:21] of think in terms of tasks. Here you need to start thinking in terms of
-[01:23] need to start thinking in terms of roles. Okay, but let's back up now and
-[01:25] roles. Okay, but let's back up now and I'll show you how to set up Grockbot and
-[01:27] I'll show you how to set up Grockbot and all the things that you can do with the
-[01:29] all the things that you can do with the bots. To get started, download Grockbot
-[01:31] bots. To get started, download Grockbot using the link in the description down
-[01:33] using the link in the description down below. That will be the desktop app.
-[01:35] below. That will be the desktop app. There's also an app for the iPhone as
-[01:37] There's also an app for the iPhone as well, which I'll show you in a couple
-[01:38] well, which I'll show you in a couple minutes. Once you download it, over here
-[01:41] minutes. Once you download it, over here on the left, you're not going to have as
-[01:42] on the left, you're not going to have as many bots that I have. So, to set up
-[01:44] many bots that I have. So, to set up your first one, you want to click on the
-[01:46] your first one, you want to click on the plus icon right here where it says new
-[01:48] plus icon right here where it says new chat. And then here inside this chat,
-[01:51] chat. And then here inside this chat, you can either select a bot that you've
-[01:53] you can either select a bot that you've already created or click right here
-[01:55] already created or click right here where it says create new bot. Now, you
-[01:57] where it says create new bot. Now, you can do this fully by having the AI set
-[02:00] can do this fully by having the AI set it up for you because all you have to do
-[02:03] it up for you because all you have to do is just talk to the bot and it will set
-[02:06] is just talk to the bot and it will set itself up. So here, for instance, it's
-[02:08] itself up. So here, for instance, it's asking me, what do I want to use the bot
-[02:10] asking me, what do I want to use the bot for? What do I want it to be around for?
-[02:13] for? What do I want it to be around for? And then I'm just going to describe down
-[02:14] And then I'm just going to describe down here what I'm looking for. So, I'm going
-[02:16] here what I'm looking for. So, I'm going to tell it, hey, I need your help with
-[02:19] to tell it, hey, I need your help with planning out a vacation. I want to put
-[02:21] planning out a vacation. I want to put together a couple of different
-[02:23] together a couple of different itineraries to different locations, and
-[02:26] itineraries to different locations, and then I want you to find me the best deal
-[02:28] then I want you to find me the best deal and monitor maybe for a couple of weeks.
-[02:30] and monitor maybe for a couple of weeks. Hopefully, the prices can come down for
-[02:31] Hopefully, the prices can come down for hotels or airlines. Basically, I want
-[02:34] hotels or airlines. Basically, I want the best deal possible on an awesome
-[02:36] the best deal possible on an awesome vacation. So, what I'm doing here is I'm
-[02:39] vacation. So, what I'm doing here is I'm brain dumping what it is I'm looking
-[02:41] brain dumping what it is I'm looking for, and then I'm just sending that
-[02:43] for, and then I'm just sending that along. And what I've noticed that
-[02:45] along. And what I've noticed that Grockbot is really good at is just
-[02:48] Grockbot is really good at is just figuring things out on its own. I'm not
-[02:51] figuring things out on its own. I'm not telling it how to check for deals and
-[02:53] telling it how to check for deals and what websites to use or even where I
-[02:56] what websites to use or even where I want to go. It's going to follow up with
-[02:59] want to go. It's going to follow up with questions and then it's just going to
-[03:00] questions and then it's just going to figure it out. So here it's saying where
-[03:02] figure it out. So here it's saying where you leaning a couple of places or vibes
-[03:05] you leaning a couple of places or vibes like Europe. I'll start sketching
-[03:07] like Europe. I'll start sketching itineraries from there. So I'll say
-[03:09] itineraries from there. So I'll say Europe. Now I'll select a few of these.
-[03:10] Europe. Now I'll select a few of these. I think Italy sounds good. But I'll
-[03:13] I think Italy sounds good. But I'll actually tell in the chat I'll say
-[03:14] actually tell in the chat I'll say Italy, Greece, UK, all of those sound
-[03:18] Italy, Greece, UK, all of those sound good. And then looking for around
-[03:22] good. And then looking for around Thanksgiving. So literally all I'm doing
-[03:25] Thanksgiving. So literally all I'm doing here is answering the questions that
-[03:26] here is answering the questions that it's giving me. And that's it. Okay. So
-[03:29] it's giving me. And that's it. Okay. So the bot has put together a plan based on
-[03:32] the bot has put together a plan based on all of the answers that I gave it. And
-[03:34] all of the answers that I gave it. And now it's starting to look for some
-[03:37] now it's starting to look for some ballpark fairs to all the locations that
-[03:40] ballpark fairs to all the locations that I was interested in. While that's
-[03:42] I was interested in. While that's happening, I want to point out to you
-[03:43] happening, I want to point out to you something up here at the top. Up here at
-[03:44] something up here at the top. Up here at the top, we have the name of the bot,
-[03:46] the top, we have the name of the bot, which right now is just new bot. If I
-[03:48] which right now is just new bot. If I click on this, this opens up a panel on
-[03:50] click on this, this opens up a panel on the right where I can rename it, give it
-[03:52] the right where I can rename it, give it a title, and give it a description. You
-[03:54] a title, and give it a description. You can either do that manually or you can
-[03:56] can either do that manually or you can just tell the bot in the chat to update
-[03:58] just tell the bot in the chat to update all that. So, I'll just tell it
-[04:00] all that. So, I'll just tell it something like, "Give yourself a clever
-[04:02] something like, "Give yourself a clever name and write a description for
-[04:04] name and write a description for yourself and title because you're going
-[04:06] yourself and title because you're going to help me with travel in the future as
-[04:08] to help me with travel in the future as well." All right, Atlas. Very clever
-[04:11] well." All right, Atlas. Very clever name. I love that. So, it finished that
-[04:13] name. I love that. So, it finished that coming up with this name and
-[04:14] coming up with this name and description, and now it's still looking
-[04:17] description, and now it's still looking for the flight information. All right,
-[04:18] for the flight information. All right, so it has identified some travel
-[04:21] so it has identified some travel itineraries for me, and it says, "Which
-[04:23] itineraries for me, and it says, "Which ones should I watch?" I'm going to have
-[04:25] ones should I watch?" I'm going to have it watch all three of them. And it's
-[04:27] it watch all three of them. And it's going to be able to do that even if my
-[04:29] going to be able to do that even if my computer is off and is closed because
-[04:31] computer is off and is closed because each bot gets its own always on computer
-[04:34] each bot gets its own always on computer with a browser files and loginins so it
-[04:37] with a browser files and loginins so it can keep working even when you're not
-[04:40] can keep working even when you're not working and when your computer is off.
-[04:41] working and when your computer is off. You can see a good example of that right
-[04:43] You can see a good example of that right here. I'm setting up this new bot called
-[04:45] here. I'm setting up this new bot called LinkedIn. He's going to help me do some
-[04:47] LinkedIn. He's going to help me do some research on LinkedIn into different
-[04:49] research on LinkedIn into different companies. But in order to do that, he's
-[04:52] companies. But in order to do that, he's saying that I should log into my
-[04:54] saying that I should log into my LinkedIn account so it can actually use
-[04:57] LinkedIn account so it can actually use the browser and navigate around
-[04:59] the browser and navigate around LinkedIn, find different companies to
-[05:01] LinkedIn, find different companies to reach out to, and actually reach out to
-[05:02] reach out to, and actually reach out to them for me. So, it went to
-[05:05] them for me. So, it went to linkedin.com. I can click right here now
-[05:07] linkedin.com. I can click right here now where it says take over to actually
-[05:09] where it says take over to actually enter in my password and login
-[05:11] enter in my password and login information because that's not something
-[05:13] information because that's not something I want to actually give one of my bots.
-[05:15] I want to actually give one of my bots. So, I can click right here where it says
-[05:16] So, I can click right here where it says sign in with email. Go ahead and sign
-[05:19] sign in with email. Go ahead and sign in. And now that I'm signed in, I can
-[05:21] in. And now that I'm signed in, I can click on the top right here where it
-[05:22] click on the top right here where it says I'm done. Continue. And then the
-[05:25] says I'm done. Continue. And then the bot can take back over. Now, like I said
-[05:27] bot can take back over. Now, like I said before, the bots are really good at just
-[05:29] before, the bots are really good at just sort of figuring out how to get
-[05:31] sort of figuring out how to get something done. In this case, it
-[05:32] something done. In this case, it determined that the best way to help me
-[05:35] determined that the best way to help me with this LinkedIn research and outreach
-[05:37] with this LinkedIn research and outreach is to actually use the browser. But it
-[05:40] is to actually use the browser. But it does have plugins available. So, if you
-[05:42] does have plugins available. So, if you click right down here on the bottom left
-[05:44] click right down here on the bottom left where it says plugins, you can see all
-[05:46] where it says plugins, you can see all those plugins here. But honestly, I
-[05:49] those plugins here. But honestly, I wouldn't ever come in here or worry
-[05:50] wouldn't ever come in here or worry about this because as you are chatting
-[05:53] about this because as you are chatting with the bots, if it needs access to
-[05:55] with the bots, if it needs access to something like your Gmail or your Google
-[05:57] something like your Gmail or your Google Drive or notion, it will just set that
-[05:59] Drive or notion, it will just set that up in the chat for you. So here, if I
-[06:03] up in the chat for you. So here, if I tell Lincoln that anytime it does
-[06:06] tell Lincoln that anytime it does research for me, I wanted to add it to a
-[06:08] research for me, I wanted to add it to a new page in Notion, you'll notice that
-[06:10] new page in Notion, you'll notice that it's now prompting me to connect Notion
-[06:13] it's now prompting me to connect Notion because I don't yet have it connected.
-[06:15] because I don't yet have it connected. And it's using the plugin for that. It's
-[06:18] And it's using the plugin for that. It's not using the browser because it knows
-[06:20] not using the browser because it knows that that's the most efficient way of
-[06:21] that that's the most efficient way of doing it is through the plugin. And I
-[06:23] doing it is through the plugin. And I can click right here where it says
-[06:24] can click right here where it says authorize. And that will then open up
-[06:27] authorize. And that will then open up Safari on my computer or whatever your
-[06:29] Safari on my computer or whatever your default browser is. I can log into my
-[06:31] default browser is. I can log into my notion account and authorize Grockbot to
-[06:35] notion account and authorize Grockbot to have access to it. Now, I showed you
-[06:36] have access to it. Now, I showed you before how sometimes a bot will ask you
-[06:38] before how sometimes a bot will ask you to take over its computer if you need to
-[06:41] to take over its computer if you need to do something like log in. But at any
-[06:44] do something like log in. But at any time, you can see exactly what the bot
-[06:46] time, you can see exactly what the bot is doing on its computer. And you can do
-[06:49] is doing on its computer. And you can do that by clicking on the top right here
-[06:51] that by clicking on the top right here on this computer icon. And right here is
-[06:53] on this computer icon. And right here is the bots screen. You can click on this
-[06:56] the bots screen. You can click on this and you can see what is happening on
-[06:58] and you can see what is happening on their computer. In this case, the bot is
-[07:01] their computer. In this case, the bot is just on the desktop. It's not doing
-[07:02] just on the desktop. It's not doing anything. But sometimes it might have
-[07:05] anything. But sometimes it might have Chrome open. It might have the file
-[07:07] Chrome open. It might have the file manager open or it might have its
-[07:08] manager open or it might have its terminal open. So you can always see
-[07:10] terminal open. So you can always see exactly what it's doing. You can also
-[07:12] exactly what it's doing. You can also teach the bot a task. So if you click on
-[07:14] teach the bot a task. So if you click on the top right here where it says teach a
-[07:16] the top right here where it says teach a task, it is now recording its own screen
-[07:20] task, it is now recording its own screen and you can show it step by step how you
-[07:23] and you can show it step by step how you want it to go through a certain workflow
-[07:25] want it to go through a certain workflow or task. Like I'll tell it to open up
-[07:27] or task. Like I'll tell it to open up Google Chrome, tell it to navigate to a
-[07:29] Google Chrome, tell it to navigate to a website, click here, click here, do
-[07:31] website, click here, click here, do that, do that, and it records all of
-[07:33] that, do that, and it records all of that and learns it so that it can then
-[07:35] that and learns it so that it can then repeat it on its own in the future. So
-[07:37] repeat it on its own in the future. So once you're done, you just click on
-[07:39] once you're done, you just click on stop, and then all of that is
-[07:40] stop, and then all of that is automatically being loaded into it as a
-[07:43] automatically being loaded into it as a skill for itself. And then anything a
-[07:45] skill for itself. And then anything a bot does for you can be done on a
-[07:47] bot does for you can be done on a schedule. So, in the case of Atlas,
-[07:50] schedule. So, in the case of Atlas, which was the bot that we had set up to
-[07:52] which was the bot that we had set up to help me find a very good deal on a
-[07:54] help me find a very good deal on a flight, I just described to it, hey, I
-[07:57] flight, I just described to it, hey, I want you to keep an eye on all the
-[07:59] want you to keep an eye on all the airlines and different hotels and find
-[08:02] airlines and different hotels and find me a good deal. And so, you see over
-[08:03] me a good deal. And so, you see over here on the right underneath routines,
-[08:07] here on the right underneath routines, it set that up to run on a schedule. You
-[08:10] it set that up to run on a schedule. You can always press on this plus icon to
-[08:12] can always press on this plus icon to create a new routine by hand, like
-[08:15] create a new routine by hand, like manually doing it. I wouldn't recommend
-[08:17] manually doing it. I wouldn't recommend that though. literally just describe in
-[08:19] that though. literally just describe in the chat what routine you want set up
-[08:22] the chat what routine you want set up and then it will do it. You click on the
-[08:24] and then it will do it. You click on the computer icon on the top right and
-[08:26] computer icon on the top right and underneath the bot screen, you'll see
-[08:29] underneath the bot screen, you'll see all the routines that that bot is
-[08:31] all the routines that that bot is running. But honestly, I don't see
-[08:33] running. But honestly, I don't see myself using Grockbot all that much. And
-[08:36] myself using Grockbot all that much. And by that I mean the Grockbot desktop app
-[08:39] by that I mean the Grockbot desktop app because everything you can do with
-[08:40] because everything you can do with Grockbot, you can do from your phone
-[08:43] Grockbot, you can do from your phone with the app. And I think this is a much
-[08:46] with the app. And I think this is a much better way to use it. So here inside my
-[08:49] better way to use it. So here inside my phone, you can see I'm here inside
-[08:52] phone, you can see I'm here inside Grockbot and you can see all the same
-[08:54] Grockbot and you can see all the same chats that are available on the desktop
-[08:57] chats that are available on the desktop app. And I can click on the top right
-[08:59] app. And I can click on the top right here and create a new bot or create a
-[09:01] here and create a new bot or create a new group chat with multiple bots.
-[09:04] new group chat with multiple bots. Opening up any of the chats, it shows
-[09:05] Opening up any of the chats, it shows you everything that we see on the
-[09:08] you everything that we see on the desktop. And you can even see the bot's
-[09:11] desktop. And you can even see the bot's computer and you can take it over from
-[09:14] computer and you can take it over from your phone, which is pretty incredible.
-[09:16] your phone, which is pretty incredible. And since the experience is exactly the
-[09:19] And since the experience is exactly the same on both devices, I think this is
-[09:21] same on both devices, I think this is going to be the modality that I end up
-[09:23] going to be the modality that I end up using a lot more. Just open it up, use
-[09:26] using a lot more. Just open it up, use the dictation tool to just speak into
-[09:29] the dictation tool to just speak into it, and just assign all of my bots
-[09:31] it, and just assign all of my bots different work. Okay, so what do I like
-[09:33] different work. Okay, so what do I like and what do I not like about Grockbot?
-[09:36] and what do I not like about Grockbot? I've already said this like four or five
-[09:37] I've already said this like four or five times, so I probably sound like a broken
-[09:39] times, so I probably sound like a broken record, but it is true. Grockbot just
-[09:42] record, but it is true. Grockbot just figures things out. You give it a task
-[09:44] figures things out. You give it a task and it will accomplish it. It is not
-[09:46] and it will accomplish it. It is not lazy at all like you see with other
-[09:49] lazy at all like you see with other models and other tools where it will
-[09:51] models and other tools where it will work and kind of give up and just say
-[09:53] work and kind of give up and just say like, "Oh, I wasn't able to do it." Now,
-[09:54] like, "Oh, I wasn't able to do it." Now, Grogbot will fight and it really wants
-[09:56] Grogbot will fight and it really wants to accomplish whatever task that you
-[09:59] to accomplish whatever task that you give it. I also really love the UI and
-[10:01] give it. I also really love the UI and just the way that it's set up, how we
-[10:04] just the way that it's set up, how we have these agents over here on the side
-[10:06] have these agents over here on the side that really feel like employees. Like if
-[10:09] that really feel like employees. Like if I want help with sales, I talk to this
-[10:12] I want help with sales, I talk to this bot. If I need help managing my inbox, I
-[10:14] bot. If I need help managing my inbox, I talk to this bot. They all have an
-[10:17] talk to this bot. They all have an assigned role. So, it feels like you're
-[10:20] assigned role. So, it feels like you're building a team of AI agents. We've seen
-[10:23] building a team of AI agents. We've seen that with other tools, but those have
-[10:25] that with other tools, but those have been more complicated to set up. This
-[10:28] been more complicated to set up. This one is up and running the moment that
-[10:30] one is up and running the moment that you open it up. It is one of the most
-[10:32] you open it up. It is one of the most intuitive tools I have ever used for
-[10:35] intuitive tools I have ever used for working with AI agents. You can even
-[10:39] working with AI agents. You can even just set up one bot that is your chief
-[10:42] just set up one bot that is your chief of staff and then that bot will delegate
-[10:45] of staff and then that bot will delegate all the tasks out to the other bots. So
-[10:47] all the tasks out to the other bots. So you never even have to talk to the other
-[10:49] you never even have to talk to the other bots. You can just talk to this one
-[10:51] bots. You can just talk to this one chief of staff bot. I also love that the
-[10:53] chief of staff bot. I also love that the experience on mobile is so good and
-[10:56] experience on mobile is so good and works exactly the same as the experience
-[10:59] works exactly the same as the experience on desktop, which means that I can
-[11:01] on desktop, which means that I can manage all these new employees from
-[11:03] manage all these new employees from wherever I am as long as I have my phone
-[11:05] wherever I am as long as I have my phone with me. But Grockbot isn't perfect.
-[11:08] with me. But Grockbot isn't perfect. There are some things that I hope that
-[11:09] There are some things that I hope that they add in the future. So, first of
-[11:11] they add in the future. So, first of all, when you are setting up a bot,
-[11:14] all, when you are setting up a bot, you'll notice that there is no way for
-[11:16] you'll notice that there is no way for you to choose which model is being used.
-[11:20] you to choose which model is being used. And that's because behind the scenes,
-[11:22] And that's because behind the scenes, it's just choosing the best model based
-[11:24] it's just choosing the best model based on the task, which I think for most
-[11:26] on the task, which I think for most people and for general consumers, that's
-[11:29] people and for general consumers, that's great. But for a lot of people like you
-[11:31] great. But for a lot of people like you and I, like if you're watching this
-[11:33] and I, like if you're watching this video, you probably want to choose which
-[11:35] video, you probably want to choose which model is being used. And the fact that
-[11:37] model is being used. And the fact that we can't make that choice and that
-[11:39] we can't make that choice and that there's no advanced mode is a little bit
-[11:41] there's no advanced mode is a little bit disappointing. I would like to see that
-[11:43] disappointing. I would like to see that added in the future. I would also love
-[11:46] added in the future. I would also love to see some kind of live mode. This
-[11:48] to see some kind of live mode. This button only does dictation. There's no
-[11:51] button only does dictation. There's no live with the bots, which is a feature I
-[11:55] live with the bots, which is a feature I use quite a lot with other tools. So, I
-[11:57] use quite a lot with other tools. So, I would really love to see that. I think
-[11:58] would really love to see that. I think it would work so well with Grockbot.
-[12:01] it would work so well with Grockbot. Again, have that one chief of staff just
-[12:04] Again, have that one chief of staff just use voice mode and just start rattling
-[12:05] use voice mode and just start rattling off all these tasks and it'll start
-[12:07] off all these tasks and it'll start assigning them to the other bots. That
-[12:10] assigning them to the other bots. That would be awesome. I'm sure they're
-[12:12] would be awesome. I'm sure they're working on that, but I hope it is added
-[12:14] working on that, but I hope it is added soon. But the biggest problem with
-[12:17] soon. But the biggest problem with Grockbot is that it's in beta right now
-[12:19] Grockbot is that it's in beta right now and it's only available if you have
-[12:21] and it's only available if you have Super Gro Heavy, which costs $300 a
-[12:25] Super Gro Heavy, which costs $300 a month. But that's as of the recording of
-[12:26] month. But that's as of the recording of this video. I'm sure in the future it's
-[12:29] this video. I'm sure in the future it's going to become available on the cheaper
-[12:31] going to become available on the cheaper plans. Hopefully in the very near
-[12:33] plans. Hopefully in the very near future, and once that does happen, I
-[12:35] future, and once that does happen, I will update the pin comment down below
-[12:37] will update the pin comment down below to let you guys know. So, unfortunately,
-[12:39] to let you guys know. So, unfortunately, most people, at least as of right now,
-[12:42] most people, at least as of right now, aren't going to be able to try out
-[12:43] aren't going to be able to try out Grockbot because of the price, but
-[12:45] Grockbot because of the price, but hopefully that changes soon. So, that's
-[12:47] hopefully that changes soon. So, that's Grogbot, a very impressive tool. And
-[12:50] Grogbot, a very impressive tool. And once it becomes more affordable, I think
-[12:52] once it becomes more affordable, I think this could finally be the product that
-[12:53] this could finally be the product that helps regular consumers understand what
-[12:56] helps regular consumers understand what agents are and why they are the future
-[12:59] agents are and why they are the future when it comes to using AI. It really
-[13:01] when it comes to using AI. It really feels like you are creating a team of AI
-[13:04] feels like you are creating a team of AI employees that can help you do your job
-[13:05] employees that can help you do your job or run your business for you. But that's
-[13:08] or run your business for you. But that's all I got for this video. If you found
-[13:09] all I got for this video. If you found it helpful and want to stay on top of
-[13:11] it helpful and want to stay on top of all the breaking AI news for different
-[13:13] all the breaking AI news for different tools like Grockbot, make sure to
-[13:15] tools like Grockbot, make sure to subscribe to the channel and I'll see
-[13:16] subscribe to the channel and I'll see you in the next video. Bye for now.
-```
-
----
-_Work dir: `D:\tmp\watch-hermes\QTcZPI-g7is-hd` — delete when done._

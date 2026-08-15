@@ -1,208 +1,81 @@
-# MultiBot
+# MultiBot na telefon
 
-**One private workspace for a fleet of AI bots.**
+Aplikacja na Androida do MultiBota. Osobne repo, osobny build, własne
+aktualizacje — tak samo jak TaskTree.
 
-MultiBot runs on your device or VPS. Give every bot its own name, model,
-memory, routines, browser computer, skills, and connected tools. Use the same
-workspace from desktop, phone, or any browser through the authenticated PWA.
+Serwer MultiBota mieszka w [`clewkord/multibot`](https://github.com/clewkord/multibot).
+Tutaj jest sama aplikacja.
 
-> MultiBot is an independent MIT-licensed fork. The historical OpenMausBot
-> name remains only in migration paths and internal data directories so existing
-> installations do not lose profiles or transcripts.
+---
 
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Node](https://img.shields.io/badge/Node-24+-339933?logo=node.js&logoColor=white)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Termux-1084fe)
-![License](https://img.shields.io/badge/license-MIT-38d591)
+## Jak to działa
 
-## What you get
+Aplikacja nosi interfejs MultiBota **w swojej paczce**. Nie pobiera go
+z serwera. WebView dostaje gotowy dokument, a `baseUrl` wskazuje na adres
+hosta — dzięki temu wywołania API ze środka interfejsu trafiają do serwera,
+a sam wygląd aktualizuje się przez `eas update`, bez wgrywania czegokolwiek
+na serwer.
 
-| Capability | MultiBot behavior |
+| Warstwa | Gdzie |
 |---|---|
-| Bot fleet | Named bots in one roster; pin, hide, duplicate, rename, and delete them like chats |
-| Provider choice | Claude Code, Codex, Grok, Gemini, Kimi Code, Qwen Code, and custom OpenAI-compatible endpoints |
-| Custom models | Enter key, base URL, and model id once; the model appears in the top picker |
-| Language | English/Polish selector in App Settings, persisted per browser |
-| Agent work | Streaming replies, tools, approvals, questions, files, screenshots, and interruptions |
-| Memory | Engine-backed facts, graph, markdown view, and retrieval per bot |
-| Routines | Cron/manual runs for every selected driver; engine routines also support webhooks |
-| Skills | Reusable skills, enable/disable, editing, deletion, and teach-a-task for engine bots |
-| Bot groups | `+` → `New group`; select bots and open one shared room |
-| Computers | One persistent browser per bot plus one shared browser profile, with live takeover |
-| Tools | MCP servers, Composio connectors, plugins, and per-bot permissions |
-| Remote use | Token-protected HTTP/WS, one-origin PWA, mobile layout, and Tailscale HTTPS path |
-| Always-on server | Windows startup task, Linux systemd, Docker, or Android Termux service |
+| Skorupa: lista hostów, parowanie, powiadomienia, popup aktualizacji | `src/` (React Native) |
+| Interfejs MultiBota | `webui/` (React + Vite + Tailwind) |
+| Interfejs spakowany do paczki | `src/webui-html.ts` — **plik generowany** |
 
-Full inventory and current limits: [`docs/FEATURES.md`](docs/FEATURES.md).
+---
 
-## Quick start
-
-The repository is private. Authenticate GitHub once before cloning. Every server
-generates an access token on first start, prints it once, and stores it locally.
-You do not create a token manually.
-
-### Windows PowerShell
-
-Requires Git, Node.js 24+, and pnpm. The packaged path installs a per-user
-server task; source mode is better for development.
-
-```powershell
-git clone https://github.com/clewkord/multibot.git
-Set-Location multibot
-corepack enable
-pnpm install --frozen-lockfile
-pnpm dev:server    # harness → http://127.0.0.1:8799
-pnpm dev           # UI → http://127.0.0.1:5199
-```
-
-For packaged always-on server:
-
-```powershell
-pnpm install:server:windows
-Start-Process http://127.0.0.1:8799
-```
-
-### macOS
+## Praca na co dzień
 
 ```sh
-git clone https://github.com/clewkord/multibot.git
-cd multibot
-corepack enable
-pnpm install --frozen-lockfile
-pnpm dev:server & pnpm dev
+npm install
+npm start                 # Expo Go albo build deweloperski
 ```
 
-Build desktop package with `pnpm package`. Native dictation requires Electron
-and macOS microphone/speech permissions.
-
-### Linux / VPS
-
-Docker path:
+Po zmianie w `webui/`:
 
 ```sh
-git clone https://github.com/clewkord/multibot.git
-cd multibot
-bash scripts/install-linux.sh --mode docker
+npm run webui             # buduje interfejs i pakuje go do src/webui-html.ts
 ```
 
-No Docker, systemd user service:
+Sprawdzenie przed wysłaniem:
 
 ```sh
-bash scripts/install-linux.sh
+npm run typecheck              # skorupa
+npm --prefix webui run typecheck   # interfejs
 ```
 
-### Android / Termux
+---
 
-Install Termux and Termux:Boot, then run:
+## Wydawanie
+
+| Zmiana | Komenda |
+|---|---|
+| JavaScript, style, zawartość `webui/` | `npx eas-cli@latest update --branch production -m "opis"` |
+| Nowa paczka natywna, `plugins`, uprawnienia, SDK | podnieś `runtimeVersion` w `app.json`, potem `npx eas-cli@latest build --platform android --profile production` |
+
+**Commituj przed `eas build`.** EAS pakuje do wysyłki pliki wzięte z gita, nie
+z dysku.
+
+---
+
+## Nowe funkcje z repo oryginalnego
 
 ```sh
-pkg install -y git openssh
-git clone https://github.com/clewkord/multibot.git
-cd multibot
-bash scripts/install-termux.sh
+git remote add original https://github.com/clewkord/multibot   # raz
+git fetch original
+npm run sync-webui
 ```
 
-Chat, workspace memory, routines, skills, and PWA shell work on Termux. The
-installer adds Termux:X11 Chromium and exposes its headless CDP browser as the
-bot computer; live view and takeover still work remotely from the PWA. CLI
-installation is automatic after selection; each provider login stays
-interactive in its own terminal (OAuth/subscription credentials never pass
-through MultiBot).
+Skrypt kopiuje interfejs z oryginału do `webui/src/`, pomijając pliki
+przerobione pod telefon. Wynik oglądasz przez `git diff`.
 
-From another device on the same Tailscale network, open the phone server after
-replacing `<PHONE_IP>` with its Tailscale address:
+---
 
-```text
-http://<PHONE_IP>:8799
-```
+## Reszta
 
-Get the generated server token without reading it into MultiBot logs:
+Pułapki, konfiguracja EAS i znane problemy: [`CLAUDE.md`](CLAUDE.md).
+Zadania: [`PLAN-MOBILE-KOLEGA.md`](PLAN-MOBILE-KOLEGA.md).
 
-```sh
-ssh -p 8022 <PHONE_IP> 'node -e "const fs=require(\"fs\"); const p=process.env.HOME+\"/.openmausbot/config.json\"; process.stdout.write(JSON.parse(fs.readFileSync(p,\"utf8\")).auth.token)"'
-```
-
-Paste token into the login screen. On Windows PowerShell, save it only in a
-temporary variable and open the URL with a fragment:
-
-```powershell
-$t = (ssh -p 8022 <PHONE_IP> 'node -e "const fs=require(\"fs\"),p=process.env.HOME+\"/.openmausbot/config.json\";process.stdout.write(JSON.parse(fs.readFileSync(p,\"utf8\")).auth.token)"').Trim()
-Start-Process ("http://<PHONE_IP>:8799/#access_token={0}" -f $t)
-```
-
-For full PWA installation and microphone access use HTTPS via Tailscale Serve
-on the device that runs the service. Plain Tailscale HTTP still supports chat,
-but browsers intentionally disable service workers and microphone there.
-
-### Remote HTTPS
-
-Keep harness and engine on loopback. For phone access from another device, use
-Tailscale:
-
-```sh
-tailscale serve --bg --yes http://127.0.0.1:8799
-```
-
-Plain `http://192.168.x.x` can serve chat, but browser security rules disable
-service-worker installation and microphone access. HTTPS or `localhost` gives
-the full PWA path.
-
-## Development
-
-```sh
-pnpm install --frozen-lockfile
-pnpm dev:engine    # Python engine → 127.0.0.1:8700
-pnpm dev:server    # Node harness → 127.0.0.1:8799
-pnpm dev           # React/Vite UI → 127.0.0.1:5199
-```
-
-The engine uses `engine/.venv` in development. See [`MULTIBOT.md`](MULTIBOT.md)
-for Python/Hermes setup, environment variables, data paths, and installers.
-
-## Security model
-
-- Engine always binds to loopback; only harness is network boundary.
-- HTTP and both WebSocket upgrade paths require bearer token.
-- API keys are write-only and stay in local config; never API responses, logs,
-  commits, or issue reports.
-- Static login assets and health are public; protected API requests return `401`.
-- First remote deployment should use HTTPS/Tailscale, not unauthenticated LAN.
-
-## Working with teammate
-
-Use short-lived branches and pull requests. Keep `main` releasable:
-
-```sh
-git switch main
-git pull --ff-only origin main
-git switch -c feat/<name>-<topic>
-pnpm typecheck && pnpm test && pnpm build
-git push -u origin HEAD
-gh pr create --base main --fill
-```
-
-Detailed ownership, conflict, secrets, and review rules live in
-[`docs/TEAM-WORKFLOW.md`](docs/TEAM-WORKFLOW.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Compare alternatives
-
-See [`docs/COMPARISON.md`](docs/COMPARISON.md) for sourced capability table
-against Hermes Agent, OpenClaw, and Grok (xAI). Short version: MultiBot is the
-workspace layer; Hermes is embedded agent runtime; OpenClaw is messaging
-gateway; Grok is hosted assistant.
-
-## Project status
-
-End-to-end path works: bot → streamed agent turn → tools → approval →
-browser/computer → transcript. Current release includes custom models,
-authenticated remote access, PWA install, groups, routines, memory, skills,
-onboarding, and one-command server installers.
-
-Known limits stay explicit: group rooms currently use shared engine transport
-for CLI shadows; native peer tools are unavailable to Codex/API providers (use
-`@bot` delegation); native store apps and arbitrary MCP OAuth are separate work.
-
-## License
-
-[MIT](LICENSE) © 2026 MultiBot contributors.
+Licencja: MIT. Projekt wywodzi się z
+[OpenMausBot](https://github.com/milind-soni/OpenMausBot) — patrz
+[`LICENSE`](LICENSE).

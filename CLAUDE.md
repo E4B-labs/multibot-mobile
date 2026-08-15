@@ -1,262 +1,155 @@
-## Zanim cokolwiek zrobisz w tym repo
-
-To repo jest forkiem `clewkord/multibot`. Kod oryginalny mieszka TAM, tutaj
-mieszka wyłącznie aplikacja na telefon (`clients/mobile/`).
-
-Na starcie każdej sesji, przed odczytaniem zadania:
-
-    git fetch original
-    git log --oneline HEAD..original/main
-
-Coś wyszło — scal to i dopiero wtedy pracuj. Zasada rozstrzygania konfliktów:
-`clients/mobile/` należy do tego repo, `server/`, `engine/` i `src/` należą do
-oryginału i tutaj się ich NIE edytuje, tylko przyjmuje.
-
-`clients/mobile/webui/` to ręczna kopia `src/`. Git jej nie zsynchronizuje —
-po merge'u ruszającym `src/` przenieś zmiany do `webui/` ręcznie.
-
-Projekt EAS tego repo jest WŁASNY i nie wolno go zmieniać na projekt
-oryginału. Jeden `projectId` w dwóch repozytoriach oznacza, że jedna apka
-nadpisuje drugą.
-
-# CLAUDE.md
+# CLAUDE.md — `multibot2`, aplikacja MultiBota na telefon
 
 Instrukcje dla agentów pracujących w tym repo. Rzeczy, których nie da się
 wyczytać z kodu, i pułapki, które kosztowały już cały dzień.
 
-Repo: `clewkord/multibot` (prywatne), gałąź `main`. To prywatny fork
-OpenMausBot z silnikiem Pythona wstawionym jako `engine/`.
+Repo: `clewkord/multibot2` (prywatne), gałąź `main`.
+**To repo JEST aplikacją na telefon.** Korzeń repo to projekt Expo, tak samo
+jak w TaskTree. Nie ma tu serwera, silnika ani wersji na komputer.
+
+Kod oryginalny MultiBota mieszka w `clewkord/multibot` i przychodzi tutaj
+tylko jednym kanałem — patrz sekcja 4.
 
 ---
 
-## 1. Produkcja stoi na telefonie
+## 1. Z czego składa się aplikacja
 
-Najczęstsze źródło pomyłek w tym projekcie.
-
-| Element | Gdzie |
+| Katalog | Co to |
 |---|---|
-| Serwer MultiBota | Samsung s10e, Termux, `100.78.241.9:8799` |
-| Dostęp | `ssh -p 8022 100.78.241.9` (Tailscale) |
-| Kod wdrożony | `~/multibot/dist-server/`, `~/multibot/dist/` |
-| Usługi | runit: `export SVDIR=$PREFIX/var/service; sv status multibot` |
-| Publiczny adres | szybki tunel Cloudflare, adres losowy przy każdym starcie |
+| `App.tsx`, `src/` | skorupa: lista hostów, parowanie, WebView, powiadomienia, popup aktualizacji |
+| `webui/` | kopia interfejsu MultiBota (React + Vite + Tailwind), przerobiona pod telefon |
+| `docs/branding/` | `inspiracje.png` i logo dostawców — wzór wzornictwa |
 
-`100.78.241.9` żyje TYLKO wewnątrz sieci Tailscale. Ktoś spoza niej dostanie
-timeout — to nie jest błąd aplikacji. Aktualny adres publiczny:
-
-```sh
-ssh -p 8022 100.78.241.9 'grep -o "https://[a-z0-9-]*\.trycloudflare\.com" $PREFIX/var/log/sv/cloudflared/current | tail -n 1'
-```
-
-**Dockera na telefonie nie ma i nie będzie** — nieukorzeniony Android nie da
-uprawnień jądra. Komputer bota chodzi natywnie:
-`MULTIBOT_COMPUTER_BACKEND=native` plus `scripts/computer-native.sh`
-(Xvnc `:1`, xfce4, Chromium z CDP, websockify; porty cdp 9223, novnc 6901).
-
-CLI dostawców (`claude`, `codex`) to wrappery na `proot-distro login debian`,
-gdzie `HOME=/root`. Ścieżki `/data/data/com.termux/...` są w prooct widoczne i
-binarki Termuksa się wykonują, ale Python liczy z `HOME` katalog user-site —
-dlatego `HOME` musi jechać jawnie (`server/engine/computer-mcp.ts`).
-
-Szczegóły dostępu zdalnego i logowania Google: `docs/REMOTE-ACCESS.md`.
+Skorupa jest w React Native. `webui/` jest zwykłą aplikacją webową i jedzie
+w WebView. To dwa różne światy i nie mieszają się: w `src/` nie ma HTML,
+w `webui/` nie ma komponentów React Native.
 
 ---
 
-## 2. Wdrożenie
+## 2. Wydawanie — wzorzec TaskTree
 
-```sh
-# serwer i harness
-pnpm build:server
-tar czf - dist-server | ssh -p 8022 100.78.241.9 'cd $HOME/multibot && tar xzf -'
-ssh -p 8022 100.78.241.9 'export SVDIR=$PREFIX/var/service; sv restart multibot'
+Projekt EAS: `multibot2-mobile`, id `ddb5cfa5-d72e-419f-acb7-e7c2dcddce14`,
+konto `slafy`, kanał `production`, pakiet `com.multibot2.mobile`.
 
-# interfejs web (to samo widać w przegladarce I w apce telefonowej)
-pnpm build
-tar czf - dist | ssh -p 8022 100.78.241.9 'cd $HOME/multibot && tar xzf -'
-```
+**Te cztery wartości są nietykalne.** Kacper ma drugą, produkcyjną aplikację
+na projekcie `1d7db8a3-befe-4dc3-a347-293d98c0d031`. Wpisanie tamtego
+`projectId` tutaj sprawia, że nasz `eas update` nadpisuje jego produkcję.
 
-Pliki statyczne czyta z dysku, więc po wgraniu `dist` restart jest zbędny.
-
-**Pułapka: `sv restart multibot` NIE przeładowuje silnika.** Silnik Pythona
-jest spawnowany jako proces odłączony, żeby rutyny przeżywały zamknięcie
-aplikacji. Zmieniłeś coś w `engine/` — najpierw zabij proces uvicorna, dopiero
-potem restartuj usługę. Pominięcie tego daje fałszywy wynik „naprawione".
-
----
-
-## 3. Aplikacja telefonowa to skorupa nad WebView
-
-`clients/mobile/src/screens/WebViewScreen.tsx` ładuje `source={{ uri }}`, gdzie
-`uri` to adres hosta. Cały interfejs MultiBota przychodzi z serwera. Z tego
-wynika podział, który decyduje, co w ogóle trzeba robić:
-
-| Zmiana | Co zrobić |
+| Zmiana | Komenda |
 |---|---|
-| Interfejs MultiBota (`src/`) | `pnpm build` + wgranie `dist`. **Apki się nie rusza.** |
-| Skorupa (`clients/mobile/src/`) | `npx eas-cli@latest update --branch production --message "..."` |
-| Nowa zależność natywna, zmiana `plugins` w `app.json` | `npx eas-cli@latest build --platform android --profile production` |
+| JavaScript, style, zawartość `webui/` | `npx eas-cli@latest update --branch production -m "opis"` |
+| Nowa paczka natywna, `plugins`, uprawnienia, SDK | podnieś `runtimeVersion`, potem `eas build --platform android --profile production` |
 
-Projekt EAS: `@slafy/multibot-mobile`, id `1d7db8a3-befe-4dc3-a347-293d98c0d031`,
-kanał `production`, keystore po stronie EAS.
-
-`runtimeVersion: "8d291d16ced5fae324025ea27c674b2b59123af7"` (statyczny
-string, NIE `fingerprint`) — wzorzec przeniesiony z TaskTree. OTA dostarcza się
-do każdego APK z tym samym stringiem, niezależnie od systemu, na którym liczono
-build. Omija błąd, w którym `fingerprint` liczył inny hash na Windowsie
-(`aba46387…`) i na Linuxie EAS (`8d291d16…`), przez co telefon ignorował update.
-
-Wartość to odcisk (fingerprint) builda `de41d3c3` — celowo taka sama jak w
-zainstalowanym APK, żeby OTA trafiała do niego BEZ nowego builda. Przy
-kolejnym `eas build` można przejść na ładniejszą wersję semantyczną (np.
-`0.1.0`) — ale wtedy trzeba wgrać nowy APK, bo stary (runtime `8d291d16…`)
-nie przyjmie update'ów z innym stringiem.
-
-Zmiana natywna (nowa zależność, `plugins`, SDK) = nowy `eas build` ORAZ bump
-`runtimeVersion`. Bez bumpu EAS puści update, ale stary APK go nie przyjmie.
-Czysty JS = sam `eas update`, `runtimeVersion` bez zmian.
-
-**W aplikacji jest popup aktualizacji** (`clients/mobile/App.tsx`, wzorzec
-TaskTree): na starcie `Updates.checkForUpdateAsync()`; jak jest nowszy update,
-wyskakuje `Modal` z przyciskiem "Download & restart" →
-`Updates.fetchUpdateAsync()` + `Updates.reloadAsync()`. Działa tylko w produkcji
-(`!__DEV__ && Updates.isEnabled`). EAS domyślnie i tak ściąga update w tle i
-nakłada przy zimnym starcie — popup to jawne potwierdzenie dla użytkownika.
+`runtimeVersion` to statyczny string `"1.0.0"`, nie polityka `fingerprint`.
+Statyczny, bo `fingerprint` liczył inny hash na Windowsie niż na serwerze EAS
+i telefon ignorował aktualizacje. Cena: **nikt nie pilnuje granicy za ciebie.**
+`eas update` po zmianie natywnej daje aplikację, która wstaje i wywala się na
+białym ekranie, bo JavaScript woła moduł, którego w paczce nie ma.
 
 ### Trzy pułapki EAS, wszystkie rozbrojone — nie cofaj tych zmian
 
-1. **`/android` i `/ios` w `clients/mobile/.gitignore`.** EAS robi `prebuild`,
-   który tworzy `android/`. `@expo/fingerprint` pomija katalog natywny tylko
-   wtedy, gdy git go ignoruje. Bez tych wpisów build pada na fazie
-   `CONFIGURE_EXPO_UPDATES` z `Runtime version mismatch`.
+1. **`/android` i `/ios` w `.gitignore`.** EAS robi `prebuild`, który tworzy
+   `android/`. `@expo/fingerprint` pomija katalog natywny tylko wtedy, gdy git
+   go ignoruje. Bez tych wpisów build pada na fazie `CONFIGURE_EXPO_UPDATES`
+   z `Runtime version mismatch`.
 2. **`platforms` wpisane jawnie w `app.json`.** Expo wylicza je z
-   zainstalowanych paczek: lokalnie wychodziło `["android","ios","web"]`, na
-   EAS `["android","ios"]` — ta sama awaria, druga przyczyna.
-3. **EAS pakuje do wysyłki pliki z gita.** Poprawka leżąca tylko na dysku nie
-   trafi do builda. Commituj PRZED `eas build`.
+   zainstalowanych paczek: lokalnie wychodzi `["android","ios","web"]`, na EAS
+   `["android","ios"]` — ta sama awaria, druga przyczyna.
+3. **EAS pakuje do wysyłki pliki wzięte z gita.** Poprawka leżąca tylko na
+   dysku nie trafi do builda. Commituj PRZED `eas build`.
 
 ### `UNKNOWN_ERROR` z EAS nic nie znaczy
 
-Prawdziwy powód siedzi w logu fazy. Wyciągnij go przez API (`builds.byId`,
-sesja z `~/.expo/state.json`) zamiast zgadywać — bez logu nie ruszaj
-konfiguracji.
+Prawdziwy powód siedzi w logu fazy w panelu buildu na `expo.dev`. Bez tego
+logu nie ruszaj konfiguracji — zgadywanie kosztuje po kilkanaście minut na
+próbę.
 
 ---
 
-## 4. Prompt systemowy ma DWIE ścieżki
+## 3. Popup aktualizacji
 
-- Drivery **codex / claude / acp** dostają prompt z `server/index.ts:552-586`
-  (pole `system` w `sendTurn`).
-- Driver **slafy** (silnik) **nie dostaje `system` w ogóle** — gateway celowo
-  pomija `instructions`, żeby nie przykryć SOUL.md. Jedyna droga do jego
-  tożsamości to `engine/server/bots.py`, `ensure_multibot_identity()` i stała
-  `_COMPUTER_IDENTITY` (marker `MULTIBOT_COMPUTER_IDENTITY_V1`).
+`App.tsx`, wzorzec przeniesiony z TaskTree: na starcie
+`Updates.checkForUpdateAsync()`, przy nowszej wersji `Modal` z przyciskiem,
+potem `fetchUpdateAsync()` i `reloadAsync()`. Działa tylko w produkcji
+(`!__DEV__ && Updates.isEnabled`).
 
-Zmiana promptu musi trafić w OBIE ścieżki, inaczej połowa botów jej nie zobaczy.
-
----
-
-## 5. Serwery MCP u codeksa
-
-Codex startuje serwery MCP równolegle z turą i zamyka listę narzędzi w
-`resolve_for_step`. Serwer, który do tej chwili nie wstał, jest pomijany, o ile
-nie jest wymagany:
-
-```
-omitting pending optional MCP server server_name=computer
-```
-
-Serwer komputera to Python i na telefonie wstaje ~4 s, więc przegrywał wyścig
-46 razy z rzędu. Łaska dla serwerów opcjonalnych to stała w kodzie codeksa,
-więc jedyną dźwignią jest `required: true`
-(`server/drivers/codex.ts::codexMcpConfig`).
-
-`thread/resume` **nie startuje serwerów MCP w ogóle**. Wątek założony bez
-komputera zostaje bez niego na zawsze. Jedyny sposób naprawy istniejącego bota
-to zmiana `COMPUTER_TOOLS_VERSION` (`server/engine/computer-mcp.ts`), która
-zmienia klucz w kursorze i wymusza nowy wątek. Cena: bot traci pamięć po
-stronie dostawcy, transkrypt harnessu zostaje.
-
-Log codeksa to SQLite `/root/.codex/logs_2.sqlite`, widoczny tylko w prooct,
-tabela `logs`, kolumny `ts, level, target, feedback_log_body`.
-
-**Zielona tura sama z siebie niczego nie dowodzi — to wyścig. Bez sprawdzenia
-logu wynik jest przypadkiem.**
+EAS i tak ściąga aktualizację w tle i nakłada przy zimnym starcie — popup jest
+po to, żeby użytkownik wiedział, że to się dzieje.
 
 ---
 
-## 6. Higiena repo
+## 4. Skąd biorą się nowe funkcje z `multibot`
 
-- **Plany.** `PLAN-00-INDEX.md` to spis wszystkiego, co ma powstać, z numerami
-  pozycji. Plany wykonawcze: `PLAN-COMPUTER-USE.md`, `PLAN-PAMIEC.md`,
-  `PLAN-UI.md`, `PLAN-BIZNES.md`, `PLAN-STOS.md`. Zanim zaczniesz zadanie,
-  sprawdź, czy nie ma go już na tej liście z podjętą decyzją — kilka rzeczy
-  zostało tam świadomie odrzuconych i nie otwiera się ich ponownie.
-- **Aplikacja na telefon mieszka w drugim repo.** `clewkord/multibot2` to fork
-  tego repo, prowadzony przez kolegę Kacpra, i tam idą wszystkie zmiany
-  aplikacji mobilnej. Tutaj `clients/mobile/` zostaje jako źródło, z którego
-  tamten fork się aktualizuje. Nie rób w tym repo zmian pod telefon bez
-  uzgodnienia — trafią do dwóch miejsc naraz. Zasady współpracy i pułapka
-  wspólnego projektu EAS: `PLAN-MOBILE-KOLEGA.md`.
-- Pliki upstreamu (OpenMausBot) zmieniamy wyłącznie małymi, dodającymi blokami
-  oznaczonymi komentarzem `// multibot:`. `server/contracts.ts` — zero zmian.
-- Bez nowych zależności npm w ich `package.json`. Bez reformatów.
-- Zasada graceful-absence: wyłączony silnik ma dawać zachowanie stockowego
-  OpenMausBot, nigdy wywróconą turę.
-- Drill merge'a upstreamu na końcu każdej większej zmiany.
-- **W drzewie roboczym bywają cudze niezacommitowane zmiany.** Commituj
-  wyłącznie własne pliki, nigdy `git add -A`.
-- Gałęzie, PR-y i podział pracy: `docs/TEAM-WORKFLOW.md`. Trzymaj się tego
-  dokumentu zamiast wymyślać własny obieg.
-- Komentarze i commity po polsku, pełnymi zdaniami, z powodem — nie z opisem
-  tego, co i tak widać w diffie.
-
----
-
-## 7. Weryfikacja przed „skończone"
+Nie przez `git merge`. To repo nie ma już `server/` ani `engine/`, więc
+scalanie chciałoby je przywrócić przy każdym podejściu.
 
 ```sh
-pnpm build:server
-npx vitest run server/
-cd engine && ./.venv/bin/python -m pytest    # 233+ testów
+git remote add original https://github.com/clewkord/multibot   # raz
+node scripts/sync-webui.mjs
+```
+
+Skrypt kopiuje `src/` z `original/main` do `webui/src/` i **pomija pliki
+należące do telefonu** — lista stoi jawnie na górze skryptu, każda pozycja
+z powodem. Wymaga czystego drzewa gita; brudne — odmawia i nic nie rusza.
+
+Wynik oglądasz przez `git diff` i commitujesz albo cofasz przez
+`git checkout .`. Nie ma stanu, którego nie da się odwrócić.
+
+Zmiany po stronie **serwera** (nowe trasy API) nie wymagają tu niczego,
+dopóki `webui/` ich nie woła. Zmiany w interfejsie wymagają uruchomienia
+skryptu.
+
+---
+
+## 5. Weryfikacja przed „skończone"
+
+```sh
+npm install && npx tsc --noEmit          # skorupa
+cd webui && npm install && npm run build # interfejs
 ```
 
 Każde „działa" ma pod sobą wyjście komendy. Bez wyjścia to nie twierdzenie,
-tylko nadzieja. Czerwone testy zgłaszasz razem z wyjściem; testu nie
-„poprawiasz", żeby przeszedł, chyba że sam test jest błędny — wtedy piszesz
-dlaczego.
-
-Zmiana zachowania zostawia jeden sprawdzalny check: mały test albo `assert`.
-Bez frameworków i fikstur.
+tylko nadzieja.
 
 Zrobione 2 z 3 rzeczy — piszesz wprost które i dlaczego trzeciej nie.
 
 ---
 
-## 8. Bezpieczeństwo
+## 6. Bezpieczeństwo
 
-- Token dostępu (`auth.token` w `~/.openmausbot/config.json`, 64 znaki) daje
-  PEŁNĄ kontrolę: boty, pliki, terminal komputera bota, klucze API dostawców.
-  Nie ma kont ani ograniczonych uprawnień. Nie wypisuj go do logów, transkryptów
-  ani komend, których wyjście gdzieś trafia.
-- Rotacja: UI (`AppSettingsPanel`) albo `POST /api/auth/token/rotate`. Zrywa
-  wszystkie sesje.
-- Publiczny tunel = każdy może zapukać. Za bramką stoi wszystko powyżej.
-  Dlatego tunel nie wstaje domyślnie na ślepo.
-- Przed pushem przeskanuj diff: `sk-`, `ghp_`, `AKIA`,
-  `-----BEGIN.*PRIVATE KEY-----`, `.env`, pliki powyżej 50 MB. Trafienie
-  blokuje push — wypchnięty sekret zostaje w historii na zawsze.
+Token dostępu do hosta (64 znaki) daje PEŁNĄ kontrolę nad serwerem MultiBota:
+boty, pliki, terminal komputera bota, klucze API dostawców. Nie ma kont ani
+ograniczonych uprawnień.
+
+Token leży w `expo-secure-store` i trafia do WebView we fragmencie adresu
+(`#access_token=`), który nigdy nie idzie po sieci. Nie wypisuj go do logów,
+transkryptów ani komend, których wyjście gdzieś trafia.
+
+Przed pushem przeskanuj diff: `sk-`, `ghp_`, `AKIA`,
+`-----BEGIN.*PRIVATE KEY-----`, `.env`, pliki powyżej 50 MB.
 
 ---
 
-## 9. Znane otwarte problemy
+## 7. Higiena
 
-- **`screenshot` na telefonie nie wraca.** Tura wisiała ponad 25 minut z
-  `busy=True` po wywołaniu narzędzia. Samo narzędzie startuje. Podejrzenie:
-  zrzut 1920x1080 przez CDP na s10e albo zakleszczenie w
-  `engine/server/computer.py`. Niezdiagnozowane.
-- **Logowanie Google w aplikacji mobilnej** — Android blokuje OAuth w WebView
-  (`disallowed_useragent`). Potrzebny natywny `expo-auth-session`.
-- **Parowanie kodem QR** — serwer gotowy (`POST /api/pair/start`, `/claim`),
-  brak ekranu z kodem w UI.
-- **Nazwany tunel Cloudflare** wymaga własnej domeny; świadomie zostajemy przy
-  szybkim tunelu, więc logowanie Google jest na razie niedostępne.
+- Komentarze i commity po polsku, pełnymi zdaniami, z powodem — nie z opisem
+  tego, co i tak widać w diffie.
+- W drzewie roboczym bywają cudze niezacommitowane zmiany. Commituj wyłącznie
+  własne pliki, nigdy `git add -A`.
+- Plan pracy: `PLAN-MOBILE-KOLEGA.md` (zadania B1–B5) i `PLAN-MOBILE-REPO.md`
+  (kształt repo).
+
+---
+
+## 8. Znane otwarte problemy
+
+- **Powiadomienia push nie działają end-to-end.** Klient jest gotowy
+  (`src/lib/push.ts`), ale po stronie serwera w `multibot` nie ma ani trasy
+  przyjmującej token urządzenia, ani wysyłki do Expo. Robota Kacpra, pozycja
+  U28 w jego planach.
+- **Parowanie kodem QR** — trasy serwera gotowe (`POST /api/pair/start`,
+  `/api/pair/claim`), ale nie ma ekranu, który ten kod POKAZUJE. Do tego czasu
+  wpisywanie adresu ręcznie zostaje równorzędną drogą, nie awaryjną.
+- **Logowanie Google** — Android odrzuca OAuth w WebView
+  (`disallowed_useragent`). Wymagałoby natywnego `expo-auth-session`.
+  Decyzja Kacpra: zostajemy przy tokenie.
