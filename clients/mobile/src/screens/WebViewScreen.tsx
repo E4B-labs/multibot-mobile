@@ -86,6 +86,13 @@ export default function WebViewScreen({ host, onBack }: Props) {
         <Text style={styles.errorTitle}>Can&apos;t reach {host.name}</Text>
         <Text style={styles.errorBody}>{failed}</Text>
         <Text style={styles.errorBody}>{host.url}</Text>
+        {/* Najczestsza przyczyna nie jest bledem apki: telefon i host sa w
+            innych sieciach. Adres `100.x` zyje tylko w tailnecie, wiec bez
+            wlaczonego Tailscale polaczenie stoi, az wyjdzie termin. */}
+        <Text style={styles.errorHint}>
+          A 100.x address only works with Tailscale on. Check that this phone is connected to the same
+          tailnet as the host.
+        </Text>
         <Pressable
           style={styles.backButton}
           onPress={() => {
@@ -155,6 +162,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#070707", padding: 24, gap: 10 },
   errorTitle: { color: "#fcfcfc", fontSize: 18, fontWeight: "700" },
   errorBody: { color: "#fcfcfc99", fontSize: 14, textAlign: "center" },
+  errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
   backButton: { marginTop: 12, backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   backButtonText: { color: "#070707", fontWeight: "700" },
   floatingBack: { position: "absolute", top: 8, left: 8, backgroundColor: "#070707cc", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
