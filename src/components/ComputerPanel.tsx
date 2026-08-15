@@ -63,6 +63,24 @@ export function stripVncChrome(doc: Document | null | undefined): void {
   if (doc?.body) doc.body.style.backgroundColor = "#000";
 }
 
+/** noVNC rysuje kursor zdalny jako nakładkę (`.noVNC_cursor`). Gdy użytkownik
+ *  odda sterowanie (`owner === "agent"`), ten kursor zostaje tam, gdzie go
+ *  zostawił człowiek, i wygląda, jakby wciąż sterował — mylące. Chowamy go
+ *  dokładnie w chwili oddania, nie po następnej klatce. */
+const CURSOR_HIDE_ID = "__mb_vnc_cursor_hide__";
+export function setRemoteCursorHidden(doc: Document | null | undefined, hidden: boolean): void {
+  if (!doc) return;
+  let style = doc.getElementById(CURSOR_HIDE_ID) as HTMLStyleElement | null;
+  if (hidden && !style) {
+    style = doc.createElement("style");
+    style.id = CURSOR_HIDE_ID;
+    style.textContent = "#noVNC_cursor, .noVNC_cursor { display: none !important; }";
+    (doc.head || doc.documentElement).appendChild(style);
+  } else if (!hidden && style) {
+    style.remove();
+  }
+}
+
 const POLL_MS = 4000;
 // server lease (computer-control.ts LEASE_MS) is 30s; renew at a third of
 // that so a slow tick never lets it lapse
@@ -78,6 +96,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   const [fullscreen, setFullscreen] = useState(false);
   const ownerRef = useRef<ControlOwner>("agent");
   ownerRef.current = owner;
+  const screenRef = useRef<HTMLIFrameElement>(null);
 
   // poll the harness for the container's state; ready/provisioning/
   // recovering/error only — never a user-facing "off"
@@ -144,6 +163,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  // Chowaj kursor zdalny dokładnie w chwili oddania sterowania — nie czekaj na
+  // przeładowanie iframe'a (efekt wyżej działa tylko przy onLoad).
+  useEffect(() => {
+    setRemoteCursorHidden(screenRef.current?.contentDocument, owner === "agent");
+  }, [owner, computerState, fullscreen]);
+
   const acquireControl = () => {
     setControlPending(true);
     api(`/api/bots/${bot.id}/computer/control/acquire`, { method: "POST" })
@@ -177,9 +202,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     computerState === "ready" ? (
       <div className="relative h-full w-full">
         <iframe
+          ref={screenRef}
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner)}
-          onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
+          onLoad={(e) => {
+            stripVncChrome(e.currentTarget.contentDocument);
+            setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
+          }}
           className="h-full w-full border-0"
         />
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
