@@ -37,19 +37,23 @@ Każde "działa" ma pod sobą wyjście komendy.
 
 ## 1. Co to jest i jak jest zbudowane
 
-`multibot2` to fork `clewkord/multibot` z commita `fe96bd6`, plus osiem
-własnych commitów kolegi:
+`multibot2` to fork `clewkord/multibot`. Wspólna historia kończy się na
+`c5cf900` — czyli **cała dotychczasowa praca nad aplikacją siedzi w OBU
+repozytoriach**: przerobiona skorupa hostów, popup aktualizacji, statyczny
+`runtimeVersion`, kopia interfejsu w `clients/mobile/webui`, przekierowanie
+WebView na `/m/`.
+
+Rozjazd zaczyna się na dwóch commitach, które są tylko w `multibot2`:
 
 ```
 015efa8 popraw wersje expo-asset na ~12.0.13 (zgodna z expo@54)
 ffd3e5d multibot2: nowa, prosta apka (UI w bundle, bez serwowania z hosta)
-c5cf900 przekieruj WebView mobile na /m/ (osobna kopia UI)
-ec84082 popraw skrypt builda kopii mobile (vite build zamiast tsc -b)
-4a15f03 dodaj kopie UI (100%) do clients/mobile/webui
-e0f009a dodaj popup aktualizacji (mechanizm TaskTree) do mobile
-af13218 zmien runtimeVersion na statyczny (wzorzec TaskTree)
-cf80ec5 feat(mobile): przerob shell hostow na praktyczniejszy
 ```
+
+Czyli oba repozytoria robią dziś to samo i od dziś trzeba to rozdzielić:
+**aplikacja rozwija się w `multibot2`, `multibot` przestaje ją dotykać.**
+Katalog `clients/mobile/` w `multibot` zostaje jako źródło, z którego fork się
+aktualizuje.
 
 Architektura aplikacji telefonowej po tych zmianach:
 
@@ -72,27 +76,32 @@ dosypywać z oryginału (sekcja 3).
 
 **To trzeba naprawić zanim kolega puści pierwsze `eas update`.**
 
-Sprawdzone: `clients/mobile/app.json` w OBU repozytoriach ma dziś te same
-wartości.
+Sprawdzone 15 sierpnia 2026 w obu repozytoriach naraz.
 
-| Pole | Wartość w OBU repo |
-|---|---|
-| `extra.eas.projectId` | `1d7db8a3-befe-4dc3-a347-293d98c0d031` |
-| `slug` | `multibot-mobile` |
-| `owner` | `slafy` |
-| `android.package` | `com.openmausbot.mobile` |
-| kanał `production` w `eas.json` | ten sam |
+| Pole | `multibot` | `multibot2` |
+|---|---|---|
+| `extra.eas.projectId` | `1d7db8a3-befe-4dc3-a347-293d98c0d031` | **to samo** |
+| `slug` | `multibot-mobile` | **to samo** |
+| `owner` | `slafy` | **to samo** |
+| `android.package` | `com.openmausbot.mobile` | **to samo** |
+| kanał w `eas.json` | `production` | **ten sam** |
+| `runtimeVersion` | `8d291d16ced5fae324025ea27c674b2b59123af7` | `1.0.0` |
 
-Czyli `eas update --branch production` puszczony z `multibot2` **publikuje do
-produkcyjnej aplikacji Kacpra**. Ten sam błąd wywrócił już TaskTree Desktop —
-dwa klony jednego projektu wysyłały aktualizacje w to samo miejsce i wygrywał
-ten, kto puścił ostatni.
+Jeden projekt EAS, jeden kanał, dwa repozytoria. `eas update --branch
+production` puszczony z `multibot2` **publikuje w produkcyjnej aplikacji
+Kacpra**. Ten sam błąd wywrócił już TaskTree Desktop — dwa klony jednego
+projektu wysyłały aktualizacje w to samo miejsce i wygrywał ten, kto puścił
+ostatni.
 
-Dziś przed katastrofą chroni przypadek, nie projekt: `multibot2` ma
-`runtimeVersion: "1.0.0"` (commit `af13218`), a build zainstalowany na
-telefonie Kacpra powstał z `runtimeVersion.policy: "fingerprint"` i ma
-`8d291d16…`. Wersje się nie zgadzają, więc aktualizacja do niego nie dojdzie.
-Pierwszy nowy build z `multibot2` ten przypadek kasuje.
+Dziś przed katastrofą chroni jedna różnica w ostatnim wierszu, i to
+przypadkiem, nie z projektu. Aplikacja zainstalowana u Kacpra ma runtime
+`8d291d16…` — dokładnie po to, żeby przyjmowała aktualizacje bez nowego APK.
+`multibot2` publikuje jako `1.0.0`, więc tam nie dochodzi.
+
+Ta ochrona zniknie w chwili, gdy ktokolwiek zrówna te dwie wartości — a zrówna
+je pierwszy `eas build` z `multibot2`, bo naturalnym odruchem jest wpisać tam
+to, co widać w drugim repo. Dlatego to jest zadanie numer jeden, przed
+jakąkolwiek zmianą w kodzie.
 
 ### Naprawa (B1) — osobny projekt EAS, jednorazowo
 
