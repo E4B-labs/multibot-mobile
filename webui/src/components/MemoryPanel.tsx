@@ -195,6 +195,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   const [savingFact, setSavingFact] = useState(false);
   const [editingMarkdown, setEditingMarkdown] = useState(false);
   const [markdownDraft, setMarkdownDraft] = useState("");
+  const [confirmDeleteMd, setConfirmDeleteMd] = useState(false);
 
   // Panel jest keyowany bot.id w Shell, więc mount = jeden bot. Ensure jak w
   // RoutinesPanel: bot silnika powstaje leniwie przy pierwszej wiadomości, więc
@@ -252,6 +253,15 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   const saveWorkspaceMarkdown = () => {
     api(`${memoryRoot}/markdown`, { method: "PUT", body: JSON.stringify({ content: markdownDraft }) })
       .then((md: { content: string }) => { setMarkdown(md.content); setEditingMarkdown(false); })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  // MEMORY.md to jeden dokument — „usuń notatkę" = wyczyść całość przez PUT
+  // pustym contentem (trasa /markdown już istnieje). Dwukrokowe potwierdzenie,
+  // bo WebView nie ma pewnego window.confirm.
+  const deleteWorkspaceMarkdown = () => {
+    api(`${memoryRoot}/markdown`, { method: "PUT", body: JSON.stringify({ content: "" }) })
+      .then(() => { setMarkdown(""); setConfirmDeleteMd(false); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
@@ -369,7 +379,17 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                   {/* Read-only: zapis MEMORY.md z UI wywróciłby drift guard local service
                       (engine/server/memory.py §c) — silnik świadomie nie daje trasy. */}
                   <ChatMarkdown text={markdown} />
-                  <button onClick={() => { setMarkdownDraft(markdown); setEditingMarkdown(true); }} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Edit notes</button>
+                  <div className="mt-3 flex gap-2">
+                    <button onClick={() => { setMarkdownDraft(markdown); setEditingMarkdown(true); }} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Edit notes</button>
+                    {confirmDeleteMd ? (
+                      <>
+                        <button onClick={deleteWorkspaceMarkdown} className="rounded-lg bg-danger px-3 py-2 text-[13px] text-white">Delete?</button>
+                        <button onClick={() => setConfirmDeleteMd(false)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteMd(true)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-danger">Delete</button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
