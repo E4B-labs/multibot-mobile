@@ -16,6 +16,7 @@ import {
   Puzzle,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
@@ -503,6 +504,16 @@ export function Sidebar() {
           <div className="w-14" />
         ) : (
           <div className="flex items-center gap-2">
+            {/* Przycisk zamykania draweru — tylko mobile (md:hidden). Na szerokim
+               ekranie pasek boczny jest trwały i tego przycisku nie potrzeba. */}
+            <button
+              onClick={() => document.body.classList.remove("mb-drawer-open")}
+              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink md:hidden"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              aria-label={polish ? "Zamknij menu" : "Close menu"}
+            >
+              <X size={20} />
+            </button>
             <span className="size-3 rounded-full bg-[#ff5f57]" />
             <span className="size-3 rounded-full bg-[#febc2e]" />
             <span className="size-3 rounded-full bg-[#28c840]" />
@@ -596,7 +607,12 @@ export function Sidebar() {
         </button>
         <div className="flex items-center">
           <button
-            onClick={() => dispatch({ type: "toggleAppSettings" })}
+            onClick={() => {
+              // Na mobile drawer i panel ustawień się nakładają (scrim przykrywa
+              // panel), więc zamykamy drawer, by otwarty panel był używalny.
+              document.body.classList.remove("mb-drawer-open");
+              dispatch({ type: "toggleAppSettings" });
+            }}
             className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
           >
             <InitialsAvatar initials={profileInitials(state.config?.profile)} size={28} />
@@ -605,7 +621,10 @@ export function Sidebar() {
             </span>
           </button>
           <button
-            onClick={() => dispatch({ type: "toggleAppSettings" })}
+            onClick={() => {
+              document.body.classList.remove("mb-drawer-open");
+              dispatch({ type: "toggleAppSettings" });
+            }}
             className="rounded-md p-2 text-ink-secondary hover:bg-raised hover:text-ink"
             title={polish ? "Ustawienia aplikacji" : "App settings"}
           >
