@@ -492,16 +492,7 @@ export function Sidebar() {
   }, [addMenuOpen]);
 
   return (
-    <aside className="fixed inset-0 z-[60] bg-black/40 md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
-      {/* Rozmyte, kolorowe tło (bokeh) — tylko mobile; widać je lekko na
-          krawędziach ekranu wokół karty. */}
-      <div className="absolute inset-0 overflow-hidden md:hidden" aria-hidden>
-        <div className="absolute -left-20 -top-24 size-72 rounded-full bg-orange-500/45 blur-3xl" />
-        <div className="absolute -right-16 top-1/4 size-80 rounded-full bg-fuchsia-600/35 blur-3xl" />
-        <div className="absolute -bottom-24 left-8 size-80 rounded-full bg-sky-500/35 blur-3xl" />
-        <div className="absolute bottom-12 right-0 size-64 rounded-full bg-emerald-500/25 blur-3xl" />
-      </div>
-
+    <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu. */}
       <div className="relative mx-2 my-2 flex h-[calc(100%-1rem)] w-[calc(100%-1rem)] flex-col overflow-hidden rounded-[28px] bg-[#0d0d0f] shadow-2xl shadow-black/60 md:mx-0 md:my-0 md:h-full md:w-full md:rounded-none">
         {/* Header */}
