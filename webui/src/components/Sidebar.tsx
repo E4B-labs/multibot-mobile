@@ -599,7 +599,12 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={() => dispatch({ type: "togglePlugins", open: true })}
+          onClick={() => {
+            // Jak przy zębatce: na mobile drawer i panel się nakładają, więc
+            // zamykamy drawer, by modal wtyczek był na wierzchu i używalny.
+            document.body.classList.remove("mb-drawer-open");
+            dispatch({ type: "togglePlugins", open: true });
+          }}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
         >
           <Puzzle size={20} className="text-ink-secondary" />

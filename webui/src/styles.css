@@ -111,6 +111,14 @@ body {
   body.mb-drawer-open .multibot-shell > div.relative > aside:first-child {
     transform: translateX(0);
   }
+  /* Modal wtyczek na mobile: pełny ekran (fixed z-[70]), odsunięty o safe-area,
+     by nie wchodził pod paski systemu. Na desktopie (md:absolute) nie gra. */
+  .plugins-overlay {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
   .multibot-shell main,
   .multibot-shell > div.relative > div {
     width: 100%;
