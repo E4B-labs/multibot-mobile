@@ -119,6 +119,15 @@ body {
     padding-left: var(--safe-left);
     padding-right: var(--safe-right);
   }
+  /* Surowy pasek przewijania WebView (Android) pokazuje się jako biały bloczek
+     przy breaku — ukrywamy go w czacie, zostawiając przewijanie aktywne. */
+  .chat-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .chat-scroll::-webkit-scrollbar {
+    display: none;
+  }
   .multibot-shell main,
   .multibot-shell > div.relative > div {
     width: 100%;

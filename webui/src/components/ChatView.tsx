@@ -346,7 +346,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto px-5 [overflow-anchor:none]"
+        className="chat-scroll flex-1 min-h-0 overflow-y-auto px-5 [overflow-anchor:none]"
         onWheel={(e) => {
           if (e.deltaY < 0) setFollow(false);
           else if (atEnd()) setFollow(true);
