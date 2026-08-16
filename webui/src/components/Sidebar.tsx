@@ -331,6 +331,7 @@ export function Sidebar() {
             <button
               onClick={() => setUserMenuOpen((v) => !v)}
               className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              style={{ minHeight: 0 }}
               aria-label={polish ? "Menu użytkownika" : "User menu"}
               aria-expanded={userMenuOpen}
             >
