@@ -194,6 +194,9 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   const [newFact, setNewFact] = useState("");
   const [savingFact, setSavingFact] = useState(false);
   const [editingMarkdown, setEditingMarkdown] = useState(false);
+  // Kasowanie notatek jest nieodwracalne, a panel nie ma miejsca na okno
+  // potwierdzenia — pierwszy klik uzbraja przycisk, drugi kasuje.
+  const [clearArmed, setClearArmed] = useState(false);
   const [markdownDraft, setMarkdownDraft] = useState("");
 
   // Panel jest keyowany bot.id w Shell, więc mount = jeden bot. Ensure jak w
@@ -249,9 +252,9 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
-  const saveWorkspaceMarkdown = () => {
-    api(`${memoryRoot}/markdown`, { method: "PUT", body: JSON.stringify({ content: markdownDraft }) })
-      .then((md: { content: string }) => { setMarkdown(md.content); setEditingMarkdown(false); })
+  const saveWorkspaceMarkdown = (content = markdownDraft) => {
+    api(`${memoryRoot}/markdown`, { method: "PUT", body: JSON.stringify({ content }) })
+      .then((md: { content: string }) => { setMarkdown(md.content); setEditingMarkdown(false); setClearArmed(false); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
@@ -361,14 +364,28 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
             )}
 
             {tab === "markdown" && editingMarkdown ? (
-              <div className="mt-3 rounded-xl bg-card p-3"><textarea className={cn(inputCls, "min-h-[260px] resize-y font-mono text-[12px]")} value={markdownDraft} onChange={(e) => setMarkdownDraft(e.target.value)} /><button onClick={saveWorkspaceMarkdown} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink"><Check size={13} /> {polish ? "Zapisz notatki" : "Save notes"}</button></div>
+              <div className="mt-3 rounded-xl bg-card p-3"><textarea className={cn(inputCls, "min-h-[260px] resize-y font-mono text-[12px]")} value={markdownDraft} onChange={(e) => setMarkdownDraft(e.target.value)} /><button onClick={() => saveWorkspaceMarkdown()} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink"><Check size={13} /> {polish ? "Zapisz notatki" : "Save notes"}</button></div>
             ) : tab === "markdown" &&
               (markdown.trim() ? (
                 <div className="mt-3 rounded-xl bg-card p-4 text-[13px]">
                   {/* Read-only: zapis MEMORY.md z UI wywróciłby drift guard local service
                       (engine/server/memory.py §c) — silnik świadomie nie daje trasy. */}
                   <ChatMarkdown text={markdown} />
-                  <button onClick={() => { setMarkdownDraft(markdown); setEditingMarkdown(true); }} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">{polish ? "Edytuj notatki" : "Edit notes"}</button>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button onClick={() => { setMarkdownDraft(markdown); setEditingMarkdown(true); setClearArmed(false); }} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">{polish ? "Edytuj notatki" : "Edit notes"}</button>
+                    <button
+                      onClick={() => (clearArmed ? saveWorkspaceMarkdown("") : setClearArmed(true))}
+                      onBlur={() => setClearArmed(false)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px]",
+                        clearArmed ? "bg-danger text-white" : "bg-raised text-ink-secondary hover:text-danger",
+                      )}
+                      title={polish ? "Usuń MEMORY.md" : "Delete MEMORY.md"}
+                    >
+                      <Trash2 size={13} />
+                      {clearArmed ? (polish ? "Na pewno?" : "Sure?") : polish ? "Usuń notatki" : "Delete notes"}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
