@@ -125,14 +125,14 @@ function Shell() {
   const { state } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
-  // Domyślnie czat, nie drawer: przy (re)otwarciu apki zamykamy panel boczny,
-  // nawet gdy użytkownik zostawił go otwartego i klasa `mb-drawer-open`
-  // przetrwała w dokumencie WebView (Android nie zawsze przeładowuje widok).
+  // Drawer to panel startowy aplikacji: przy (re)otwarciu apki otwieramy
+  // panel boczny (klasa `mb-drawer-open`), nawet gdy Android nie przeładował
+  // WebView i stan dokumentu przetrwał w tle.
   useEffect(() => {
-    const close = () => document.body.classList.remove("mb-drawer-open");
-    close();
+    const open = () => document.body.classList.add("mb-drawer-open");
+    open();
     const onVis = () => {
-      if (document.visibilityState === "visible") close();
+      if (document.visibilityState === "visible") open();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
