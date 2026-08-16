@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Maximize2, Settings, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { authFetch } from "@/lib/auth";
+import { authFetch, getAuthToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { TeachCard } from "./SkillsPanel";
 
@@ -45,13 +45,20 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
 
 /** The noVNC iframe src. view_only=1 iff the agent (not this viewer) holds
  *  the input lease — H5: "When the user does not hold the lease the iframe
- *  is view_only=1." */
-export function computerVncSrc(botId: string, controlOwner: ControlOwner): string {
+ *  is view_only=1."
+ *
+ *  `token` (opcjonalny) dokleja się do ścieżki websockify, nie do adresu
+ *  strony: strona i jej pliki idą publicznie, a iframe w WebView telefonu nie
+ *  niesie ciasteczka sesji. noVNC buduje adres WebSocketu z parametru `path`,
+ *  więc bearer jedzie tamtędy jako `?token=` i dociera do upgrade'u. Bez tego
+ *  ekran komputera w aplikacji był czarny — WebSocket dostawał 401. */
+export function computerVncSrc(botId: string, controlOwner: ControlOwner, token = ""): string {
   // `vnc_lite.html`, nie `vnc.html`: pełna strona noVNC dokłada własny pasek
   // sterowania (logo, rozłącz, ustawienia), a to jest ekran komputera bota, nie
   // klient VNC — sterowanie ma UI panelu. Lite umie dokładnie to, czego
   // potrzebujemy: `path`, `scale`, `view_only`.
-  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=api/bots/${botId}/computer/vnc/websockify`;
+  const ws = `api/bots/${botId}/computer/vnc/websockify${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
 }
 
@@ -178,7 +185,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       <div className="relative h-full w-full">
         <iframe
           title={polish ? "Ekran bota" : "Bot screen"}
-          src={computerVncSrc(bot.id, owner)}
+          src={computerVncSrc(bot.id, owner, getAuthToken())}
           onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
           className="h-full w-full border-0"
         />

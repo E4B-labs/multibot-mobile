@@ -40,6 +40,14 @@ describe("computerVncSrc", () => {
     expect(computerVncSrc("bot-1", "agent")).toMatch(/[?&]view_only=1(&|$)/);
     expect(computerVncSrc("bot-1", "user")).not.toMatch(/view_only/);
   });
+
+  it("puts the bearer on the websockify path, never on the page url", () => {
+    // Iframe w WebView telefonu nie niesie ciasteczka sesji, a noVNC nie ustawi
+    // nagłówka — token musi dojechać ścieżką, którą noVNC otwiera jako WebSocket.
+    const src = computerVncSrc("bot-1", "user", "tajny/token");
+    expect(src).toContain("path=api/bots/bot-1/computer/vnc/websockify?token=tajny%2Ftoken");
+    expect(computerVncSrc("bot-1", "user")).not.toContain("token=");
+  });
 });
 
 describe("stripVncChrome", () => {
