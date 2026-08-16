@@ -190,7 +190,9 @@ export function Composer({ bot }: { bot: Bot }) {
   const slashCandidates = useMemo(() => {
     if (slashQ === null || slashDismissed) return [];
     const modelCommand: SlashSkill = { name: "model", command: "/model", description: "Switch provider and model" };
-    const commands = [modelCommand, ...(slafyDriver && slashSkills ? slashSkills : [])];
+    // `/goal` też należy do harnessu, nie do silnika — działa u każdego bota.
+    const goalCommand: SlashSkill = { name: "goal", command: "/goal", description: "Goal the bot pursues across many turns" };
+    const commands = [modelCommand, goalCommand, ...(slafyDriver && slashSkills ? slashSkills : [])];
     return commands.filter((s) => !slashQ || s.name.toLowerCase().includes(slashQ)).slice(0, 6);
   }, [slashQ, slashDismissed, slashSkills, slafyDriver]);
   const slashOpen = slashCandidates.length > 0;
