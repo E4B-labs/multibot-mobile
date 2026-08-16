@@ -6,9 +6,10 @@ import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
 import { Composer } from "./Composer";
+import { DrawerToggle } from "./DrawerToggle";
 // multibot: TTS głośniczek przy wiadomościach bota (tylko driver slafy)
 import { SpeakButton } from "./SpeakButton";
-import { ModelPicker } from "./ModelPicker";
+import { ModelPicker, modelLabelText } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
 import { authFetch } from "@/lib/auth";
@@ -206,25 +207,44 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3">
-        <button
-          onClick={() => dispatch({ type: "toggleSettings" })}
-          className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 hover:bg-raised/50"
-          title={polish ? "Ustawienia bota" : "Bot settings"}
-        >
-          <MausAvatar
-            color={bot.color}
-            shape={bot.mascotShape}
-            state={stateForBot(bot)}
-            size={28}
-            motion={mascotMotion?.kind ?? "none"}
-            motionKey={mascotMotion?.nonce ?? 0}
-          />
-          <span className="text-[15px] font-semibold text-ink">{bot.name}</span>
-          {bot.busy && <Loader2 size={14} className="animate-spin text-ink-secondary" />}
-        </button>
-        <div className="flex items-center gap-2">
+      {/* Header — `sticky top-0` keeps this bar in view while the conversation
+          scrolls. The hamburger (DrawerToggle, only on mobile) opens the drawer
+          and sits inline as the first element, so it shares the bar's height. */}
+      <div className="chat-header sticky top-0 z-20 bg-app flex items-center justify-between gap-2 px-3 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <DrawerToggle />
+          <button
+            onClick={() => dispatch({ type: "toggleSettings" })}
+            className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-raised/50"
+            title={polish ? "Ustawienia bota" : "Bot settings"}
+          >
+            <MausAvatar
+              color={bot.color}
+              shape={bot.mascotShape}
+              state={stateForBot(bot)}
+              size={44}
+              motion={mascotMotion?.kind ?? "none"}
+              motionKey={mascotMotion?.nonce ?? 0}
+            />
+            <div className="flex min-w-0 flex-col items-start">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[16px] font-semibold text-ink">{bot.name}</span>
+                {bot.busy && <Loader2 size={16} className="animate-spin text-ink-secondary" />}
+              </div>
+              {(() => {
+                const inst = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
+                const label = modelLabelText(inst, bot.modelSelection.model);
+                return label ? (
+                  <span className="truncate text-[13px] text-ink-secondary">{label}</span>
+                ) : null;
+              })()}
+            </div>
+          </button>
+        </div>
+        {/* gap-1, nie gap-2: ikony urosły z 18 na 22 px, a nazwa bota po lewej
+            ma tylko tyle miejsca, ile zostanie po prawej grupie. Odstęp
+            odrabiamy powiększonym paddingiem samych przycisków. */}
+        <div className="flex shrink-0 items-center gap-1">
           {bot.busy && (
             <button
               onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
@@ -239,45 +259,45 @@ export function ChatView({ bot }: { bot: Bot }) {
           <button
             onClick={() => dispatch({ type: "toggleComputer" })}
             className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
+              "rounded-lg px-1 py-3 hover:bg-raised",
               state.computerOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
             title={polish ? "Komputer bota" : "Bot's computer"}
           >
-            <Monitor size={18} />
+            <Monitor size={22} />
           </button>
           <button
             onClick={() => dispatch({ type: "toggleMemory" })}
             className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
+              "rounded-lg px-1 py-3 hover:bg-raised",
               state.memoryOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
             title={polish ? "Pamięć bota" : "Bot memory"}
             aria-label={polish ? "Pamięć bota" : "Bot memory"}
           >
-            <Brain size={18} />
+            <Brain size={22} />
           </button>
           <button
             onClick={() => dispatch({ type: "toggleRoutines" })}
             className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
+              "rounded-lg px-1 py-3 hover:bg-raised",
               state.routinesOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
             title={polish ? "Rutyny bota" : "Bot routines"}
             aria-label={polish ? "Rutyny bota" : "Bot routines"}
           >
-            <CalendarClock size={18} />
+            <CalendarClock size={22} />
           </button>
           <button
             onClick={() => dispatch({ type: "toggleSkills" })}
             className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
+              "rounded-lg px-1 py-3 hover:bg-raised",
               state.skillsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
             )}
             title={polish ? "Skille bota" : "Bot skills"}
             aria-label={polish ? "Skille bota" : "Bot skills"}
           >
-            <Wand2 size={18} />
+            <Wand2 size={22} />
           </button>
         </div>
       </div>
@@ -294,7 +314,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-5 [overflow-anchor:none]"
+        className="flex-1 min-h-0 overflow-y-auto px-5 [overflow-anchor:none]"
         onWheel={(e) => {
           if (e.deltaY < 0) setFollow(false);
           else if (atEnd()) setFollow(true);

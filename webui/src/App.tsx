@@ -121,35 +121,6 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-// multibot: mobile-only hamburger that opens the sidebar drawer. Toggling
-// `mb-drawer-open` on <body> is what the G5 media query in styles.css watches.
-// This lives only in the mobile web UI copy — no native injection needed.
-function MobileDrawerToggle() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const sync = () => setOpen(document.body.classList.contains("mb-drawer-open"));
-    const id = window.setInterval(sync, 200);
-    return () => window.clearInterval(id);
-  }, []);
-  return (
-    <>
-      <button
-        onClick={() => document.body.classList.toggle("mb-drawer-open")}
-        className="fixed left-2 top-2 z-[70] flex h-10 w-10 items-center justify-center rounded-xl border border-hairline/40 bg-card text-ink md:hidden"
-        aria-label="Menu"
-      >
-        ☰
-      </button>
-      {open && (
-        <div
-          onClick={() => document.body.classList.remove("mb-drawer-open")}
-          className="fixed inset-0 z-[55] bg-black/50 md:hidden"
-        />
-      )}
-    </>
-  );
-}
-
 function Shell() {
   const { state } = useStore();
   const polish = useLanguage() === "pl";
@@ -160,7 +131,6 @@ function Shell() {
       <UpdateBanner />
       {/* multibot: Cmd/Ctrl+K command palette — fixed overlay, renders null until opened */}
       <CmdK />
-      <MobileDrawerToggle />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
       {state.groupOpen ? (

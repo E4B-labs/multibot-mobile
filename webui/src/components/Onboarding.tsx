@@ -203,7 +203,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app py-6 pt-[calc(var(--safe-top)+1.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)]">
       <div role="dialog" aria-modal="true" aria-label="Multibot setup" className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
         {step === 0 && <div className="flex flex-col">
           <MausAvatar color="green" state="happy" size={72} />

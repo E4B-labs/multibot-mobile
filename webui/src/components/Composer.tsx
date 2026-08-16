@@ -362,7 +362,7 @@ export function Composer({ bot }: { bot: Bot }) {
   };
 
   return (
-    <div className="px-5 pb-5 pt-2">
+    <div className="sticky bottom-0 z-20 bg-app px-5 pb-5 pt-2">
       {!secureContext && !window.ogb && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           Dictation needs a secure context: use HTTPS or localhost. Plain HTTP on a LAN cannot access the microphone.

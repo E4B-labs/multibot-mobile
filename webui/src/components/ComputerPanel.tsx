@@ -265,7 +265,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-app">
+        <div className="fixed inset-0 z-50 flex flex-col bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             <div className="flex items-center gap-2">
