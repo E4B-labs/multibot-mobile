@@ -140,6 +140,21 @@ body {
   .chat-scroll::-webkit-scrollbar-corner {
     background: transparent;
   }
+  /* Wiadomości zawijają się zamiast wymuszać poziomy pasek przewijania:
+     dlugi tekst, kod, adresy i tabele łamią się w szerokości bulgii. */
+  .chat-scroll {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-scroll pre,
+  .chat-scroll code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .chat-scroll img,
+  .chat-scroll table {
+    max-width: 100%;
+  }
   .multibot-shell main,
   .multibot-shell > div.relative > div {
     width: 100%;
