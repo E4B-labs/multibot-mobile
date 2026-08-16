@@ -58,6 +58,22 @@ białym ekranie, bo JavaScript woła moduł, którego w paczce nie ma.
 3. **EAS pakuje do wysyłki pliki wzięte z gita.** Poprawka leżąca tylko na
    dysku nie trafi do builda. Commituj PRZED `eas build`.
 
+### Przed KAŻDYM `eas update` sprawdź, co stoi na kanale
+
+```sh
+npx eas-cli@latest update:list --branch production --limit 1
+```
+
+Na tym kanale publikuje więcej niż jedna osoba, a `eas update` bierze to, co
+masz na dysku, i kładzie na wierzch. Publikacja z bazy starszej niż to, co
+telefon już dostał, cicho cofa cudzą pracę — kosztowało to już jeden pełny
+rollback. Najnowszy wpis nie jest twoim ostatnim znanym stanem: zatrzymaj się
+i dociągnij `main`, zanim wydasz cokolwiek.
+
+Bundle interfejsu też nie jedzie sam. `webui/src` trafia do aplikacji dopiero
+przez `npm run webui`, który przebudowuje `webui/` i zapisuje `src/webui-html.ts`.
+Bez tego kroku publikujesz stary ekran mimo poprawionego źródła.
+
 ### `UNKNOWN_ERROR` z EAS nic nie znaczy
 
 Prawdziwy powód siedzi w logu fazy w panelu buildu na `expo.dev`. Bez tego
