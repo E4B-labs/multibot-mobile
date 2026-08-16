@@ -326,44 +326,6 @@ export function Sidebar() {
           >
             <X size={20} />
           </button>
-          {/* Avatar użytkownika — rozwija menu Ustawienia + Wtyczki */}
-          <div className="relative" data-user-menu>
-            <button
-              onClick={() => setUserMenuOpen((v) => !v)}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
-              style={{ minHeight: 0 }}
-              aria-label={polish ? "Menu użytkownika" : "User menu"}
-              aria-expanded={userMenuOpen}
-            >
-              {profileInitials(state.config?.profile) || "R"}
-            </button>
-            {userMenuOpen && (
-              <div className="absolute left-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
-                <button
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    document.body.classList.remove("mb-drawer-open");
-                    dispatch({ type: "togglePlugins", open: true });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
-                >
-                  <Puzzle size={15} className="text-ink-secondary" />
-                  {polish ? "Wtyczki" : "Plugins"}
-                </button>
-                <button
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    document.body.classList.remove("mb-drawer-open");
-                    dispatch({ type: "toggleAppSettings" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
-                >
-                  <Settings size={15} className="text-ink-secondary" />
-                  {polish ? "Ustawienia" : "Settings"}
-                </button>
-              </div>
-            )}
-          </div>
           <div className="flex-1" />
           {/* Szukaj — kliknięcie lupki rozwija popover z paletą wyszukiwania */}
           <div data-search-menu>
@@ -444,12 +406,49 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Footer — status (menu Ustawienia/Wtyczki przeniesione pod avatar) */}
-        <div className="px-3 pb-3 pt-2">
+        {/* Footer — avatar (lewy dół) rozwija menu Ustawienia + Wtyczki */}
+        <div className="flex items-center gap-3 px-3 pb-3 pt-2">
+          <div className="relative" data-user-menu>
+            <button
+              onClick={() => setUserMenuOpen((v) => !v)}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              style={{ minHeight: 0 }}
+              aria-label={polish ? "Menu użytkownika" : "User menu"}
+              aria-expanded={userMenuOpen}
+            >
+              {profileInitials(state.config?.profile) || "R"}
+            </button>
+            {userMenuOpen && (
+              <div className="absolute bottom-11 left-0 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    document.body.classList.remove("mb-drawer-open");
+                    dispatch({ type: "togglePlugins", open: true });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <Puzzle size={15} className="text-ink-secondary" />
+                  {polish ? "Wtyczki" : "Plugins"}
+                </button>
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    document.body.classList.remove("mb-drawer-open");
+                    dispatch({ type: "toggleAppSettings" });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <Settings size={15} className="text-ink-secondary" />
+                  {polish ? "Ustawienia" : "Settings"}
+                </button>
+              </div>
+            )}
+          </div>
           {engineOffline && (
             <div
               title="Local service offline — custom-model bots can't run. Check App Settings."
-              className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
+              className="flex items-center gap-2 text-[12px] text-ink-secondary"
             >
               <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
               Service offline
