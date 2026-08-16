@@ -111,7 +111,7 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
     <div
       data-bot-menu
       style={{ top, left }}
-      className="fixed z-40 w-[228px] overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
+      className="fixed z-40 w-[228px] select-none overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
     >
       {[
         item(
@@ -164,8 +164,9 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         e.preventDefault();
         onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
       }}
+      style={{ WebkitTouchCallout: "none" }}
       className={cn(
-        "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left",
+        "flex w-full select-none items-center gap-3 rounded-2xl px-3 py-3 text-left",
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
