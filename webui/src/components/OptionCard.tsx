@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useStore, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { useLanguage } from "@/lib/language";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
@@ -13,6 +14,7 @@ export function OptionCard({
   message: Message;
 }) {
   const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [custom, setCustom] = useState("");
   const card = message.card;
   if (!card || card.dismissed) return null;
@@ -68,7 +70,7 @@ export function OptionCard({
           value={custom}
           onChange={(e) => setCustom(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && answer(custom)}
-          placeholder="Type your own answer"
+          placeholder={polish ? "Wpisz własną odpowiedź" : "Type your own answer"}
           className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none focus:border-hairline"
         />
       )}

@@ -5,9 +5,11 @@
 import { useState } from "react";
 import { ArrowDownToLine, RefreshCw, Sparkles, X } from "lucide-react";
 import { useUpdaterState } from "@/lib/updater";
+import { useLanguage } from "@/lib/language";
 
 export function UpdateBanner() {
   const s = useUpdaterState();
+  const polish = useLanguage() === "pl";
   // dismissal is per status+version, so the popup returns for the next
   // update (and when an available one finishes downloading)
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -18,20 +20,20 @@ export function UpdateBanner() {
 
   const title =
     s.status === "available"
-      ? `MultiBot ${s.version} is available`
+      ? polish ? `MultiBot ${s.version} jest dostępny` : `MultiBot ${s.version} is available`
       : s.status === "downloading"
-        ? `Downloading ${s.version ?? "update"}…`
+        ? `${polish ? "Pobieranie" : "Downloading"} ${s.version ?? (polish ? "aktualizacji" : "update")}…`
         : s.status === "downloaded"
-          ? `${s.version} is ready`
-          : "Update check failed";
+          ? `${s.version} ${polish ? "jest gotowy" : "is ready"}`
+          : polish ? "Sprawdzanie aktualizacji nieudane" : "Update check failed";
   const subtitle =
     s.status === "available"
-      ? "A newer version is ready to download."
+      ? polish ? "Nowsza wersja jest gotowa do pobrania." : "A newer version is ready to download."
       : s.status === "downloading"
         ? `${Math.round(s.percent ?? 0)}%`
         : s.status === "downloaded"
-          ? "Restart to finish updating."
-          : (s.message ?? "Something went wrong.");
+        ? polish ? "Uruchom ponownie, aby zakończyć aktualizację." : "Restart to finish updating."
+        : (s.message ?? (polish ? "Coś poszło nie tak." : "Something went wrong."));
 
   return (
     <div className="animate-panel-in fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-50 w-[300px] rounded-xl border border-hairline/40 bg-panel p-3.5 shadow-2xl shadow-black/50">
@@ -49,7 +51,7 @@ export function UpdateBanner() {
           <button
             onClick={() => setDismissed(key)}
             className="shrink-0 rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-            title="Dismiss"
+            title={polish ? "Zamknij" : "Dismiss"}
           >
             <X size={14} />
           </button>
@@ -72,7 +74,7 @@ export function UpdateBanner() {
               onClick={() => void updater.download()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent py-1.5 text-[13px] font-medium text-white"
             >
-              <ArrowDownToLine size={13} /> Download
+              <ArrowDownToLine size={13} /> {polish ? "Pobierz" : "Download"}
             </button>
           )}
           {s.status === "downloaded" && (
@@ -80,7 +82,7 @@ export function UpdateBanner() {
               onClick={() => void updater.install()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent py-1.5 text-[13px] font-medium text-white"
             >
-              <RefreshCw size={13} /> Restart to update
+              <RefreshCw size={13} /> {polish ? "Uruchom ponownie i zaktualizuj" : "Restart to update"}
             </button>
           )}
           {s.status === "error" && (

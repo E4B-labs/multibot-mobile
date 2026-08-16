@@ -41,10 +41,10 @@ export function EngineAutonomy({ bot }: { bot: Bot }) {
 
   return (
     <div className="rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Access</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Dostęp" : "Access"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Zakres działania tego bota" : "What this bot may do"}</div>
       {status === "offline" ? (
-        <div className="mt-3 text-[13px] text-ink-secondary">Service offline</div>
+        <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Usługa offline" : "Service offline"}</div>
       ) : status === "ready" ? (
         <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-inset p-1">
           {(Object.keys(labels) as Access[]).map((item) => (

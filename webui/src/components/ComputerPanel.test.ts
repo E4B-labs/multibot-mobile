@@ -41,12 +41,14 @@ describe("computerVncSrc", () => {
     expect(computerVncSrc("bot-1", "user")).not.toMatch(/view_only/);
   });
 
-  it("puts the bearer on the websockify path, never on the page url", () => {
-    // Iframe w WebView telefonu nie niesie ciasteczka sesji, a noVNC nie ustawi
-    // nagłówka — token musi dojechać ścieżką, którą noVNC otwiera jako WebSocket.
-    const src = computerVncSrc("bot-1", "user", "tajny/token");
-    expect(src).toContain("path=api/bots/bot-1/computer/vnc/websockify?token=tajny%2Ftoken");
-    expect(computerVncSrc("bot-1", "user")).not.toContain("token=");
+  // H4: mobile WebView has no session cookie, so the bearer rides the
+  // websockify path as ?token= — never on the page URL.
+  it("appends the bearer to the websockify path, not to the page", () => {
+    const src = computerVncSrc("bot-1", "user", "secret token/=");
+    expect(src).toBe(
+      "/api/bots/bot-1/computer/vnc/vnc_lite.html?scale=true&path=api/bots/bot-1/computer/vnc/websockify?token=secret%20token%2F%3D",
+    );
+    expect(computerVncSrc("bot-1", "user", "")).not.toMatch(/token=/);
   });
 });
 

@@ -185,7 +185,7 @@ function RoutineForm({
           className={inputCls}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Morning digest"
+          placeholder={polish ? "Poranny skrót" : "Morning digest"}
         />
       </label>
 
@@ -195,7 +195,7 @@ function RoutineForm({
           className={cn(inputCls, "min-h-[96px] resize-none")}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="What should the bot do each run?"
+          placeholder={polish ? "Co bot ma robić przy każdym uruchomieniu?" : "What should the bot do each run?"}
         />
       </label>
 
@@ -329,23 +329,36 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
 
   const lastRunLine = (r: Routine) => {
     const run = r.last_runs[0];
-    if (!run) return "No runs yet";
+    if (!run) return polish ? "Brak uruchomień" : "No runs yet";
     const when = new Date(run.at).toLocaleString();
-    return run.error ? `Last run ${when} — ${run.error}` : `Last run ${when}${run.status ? ` — ${run.status}` : ""}`;
+    return run.error
+      ? `${polish ? "Ostatnie uruchomienie" : "Last run"} ${when} — ${run.error}`
+      : `${polish ? "Ostatnie uruchomienie" : "Last run"} ${when}${run.status ? ` — ${run.status}` : ""}`;
   };
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="w-[26px]" />
+        <span className="w-[52px]" />
         <span className="text-[15px] font-semibold text-ink">{polish ? "Rutyny" : "Routines"}</span>
-        <button
-          onClick={() => dispatch({ type: "toggleRoutines", open: false })}
-          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-        >
-          <X size={18} />
-        </button>
+        {/* multibot: dodawanie rutyny siedzi w nagłówku sekcji, jak na projekcie */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setEditing("new")}
+            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+            title={polish ? "Nowa rutyna" : "New routine"}
+            aria-label={polish ? "Nowa rutyna" : "New routine"}
+          >
+            <Plus size={18} />
+          </button>
+          <button
+            onClick={() => dispatch({ type: "toggleRoutines", open: false })}
+            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
@@ -387,23 +400,20 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
           </div>
         ) : (
           <>
-            <button
-              onClick={() => setEditing("new")}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover"
-            >
-              <Plus size={14} />
-              New routine
-            </button>
-
+            {/* multibot: dodawanie przeniesione do „+" w nagłówku sekcji */}
             {routines.map((r) => {
               return (
                 <div key={r.id} className="mt-3 rounded-xl bg-card p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    {/* multibot: wiersz z ikoną zegara po lewej — ten sam znak,
+                        którym oznaczona jest rutyna w transkrypcie */}
+                    <div className="flex min-w-0 gap-2.5">
+                      <CalendarClock size={16} className="mt-1 shrink-0 text-ink-secondary" />
+                      <div className="min-w-0">
                       <div className="truncate text-[15px] font-medium text-ink">{r.name || r.id}</div>
                       <div className="mt-0.5 text-[13px] text-ink-secondary">
                         {scheduleSentence(r.schedule, polish)}
-                        {!r.enabled && " · disabled"}
+                        {!r.enabled && ` · ${polish ? "wyłączona" : "disabled"}`}
                       </div>
                       {nextRunLine(r, polish) && (
                         <div className="mt-0.5 text-[12px] text-ink-secondary">{nextRunLine(r, polish)}</div>
@@ -411,13 +421,14 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                       <div className="mt-0.5 truncate text-[12px] text-ink-secondary" title={lastRunLine(r)}>
                         {lastRunLine(r)}
                       </div>
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
                       <button
                         onClick={() => runNow(r.id)}
                         disabled={busy === `run:${r.id}`}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-50"
-                        title="Run now (fires within a minute)"
+                        title={polish ? "Uruchom teraz (w ciągu minuty)" : "Run now (fires within a minute)"}
                       >
                         {busy === `run:${r.id}` ? (
                           <Loader2 size={15} className="animate-spin" />
@@ -430,7 +441,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                       <button
                         onClick={() => setEditing(r)}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink"
-                        title="Edit"
+                        title={polish ? "Edytuj" : "Edit"}
                       >
                         <Pencil size={15} />
                       </button>
@@ -438,7 +449,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                         onClick={() => remove(r.id)}
                         disabled={busy === `delete:${r.id}`}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-danger disabled:opacity-50"
-                        title="Delete"
+                        title={polish ? "Usuń" : "Delete"}
                       >
                         {busy === `delete:${r.id}` ? (
                           <Loader2 size={15} className="animate-spin" />
@@ -450,7 +461,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                   </div>
 
                   {ranId === r.id && (
-                    <div className="mt-2 text-[12px] text-success">Queued — runs within a minute</div>
+                    <div className="mt-2 text-[12px] text-success">{polish ? "W kolejce — uruchomi się w ciągu minuty" : "Queued — runs within a minute"}</div>
                   )}
 
                 </div>

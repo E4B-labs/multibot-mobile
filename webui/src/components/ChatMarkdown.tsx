@@ -8,6 +8,7 @@ import { memo, useEffect, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
+import { useLanguage } from "@/lib/language";
 
 // tiny highlight cache so revisiting a thread doesn't re-tokenize settled
 // blocks; keys are content-hashed, capped, never written while streaming
@@ -23,6 +24,7 @@ const hash = (s: string) => {
 };
 
 function CodeBlock({ code, lang, streaming }: { code: string; lang: string; streaming: boolean }) {
+  const polish = useLanguage() === "pl";
   const [html, setHtml] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -69,7 +71,7 @@ function CodeBlock({ code, lang, streaming }: { code: string; lang: string; stre
         <button
           onClick={copy}
           className="rounded p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-          title="Copy code"
+          title={polish ? "Kopiuj kod" : "Copy code"}
         >
           {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </button>

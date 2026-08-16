@@ -1,11 +1,14 @@
 import { track } from "@/lib/analytics";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Square, Wand2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
+import { useLanguage } from "@/lib/language";
+import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
+import { AttachmentCard } from "./AttachmentCard";
 
 /** The active @mention query at the caret: the text between an `@` that
  * starts a word and the caret. null = no mention being typed. */
@@ -37,16 +40,64 @@ interface SlashSkill {
   description: string;
 }
 
+// multibot: paleta "/" nie kończy się na skillach silnika — pokazuje też akcje
+// harnessu, wtyczki, agentów i rutyny. Wzór wiersza z Grok Bota: nazwa, podpis
+// kontekstowy i etykieta typu przy prawej krawędzi. Skille i `/model` nadal
+// TYLKO wstawiają tekst (brak `run`), reszta odpala dispatch. Rutyna wyłącznie
+// OTWIERA panel — uruchomienie ma skutki uboczne i nie może wyjść z pickera.
+export type SlashKind = "action" | "skill" | "plugin" | "agent" | "routine";
+
+export interface SlashRow {
+  id: string;
+  /** Tekst wiersza; dla skilli to zarazem komenda do wstawienia ("/model"). */
+  label: string;
+  hint: string;
+  kind: SlashKind;
+  icon?: ReactNode;
+  run?: () => void;
+}
+
+const SLASH_KINDS: SlashKind[] = ["action", "skill", "plugin", "agent", "routine"];
+const SLASH_TYPE: Record<SlashKind, [string, string]> = {
+  action: ["Action", "Akcja"],
+  skill: ["Skill", "Umiejętność"],
+  plugin: ["Plugin", "Wtyczka"],
+  agent: ["Agent", "Agent"],
+  routine: ["Routine", "Rutyna"],
+};
+const SLASH_ICON: Record<SlashKind, ReactNode> = {
+  action: <SlidersHorizontal size={15} />,
+  skill: <Wand2 size={15} />,
+  plugin: <Puzzle size={15} />,
+  agent: <Wrench size={15} />,
+  routine: <CalendarClock size={15} />,
+};
+// Podpis rutyny to zdanie z presetu, nigdy surowy cron — tak samo jak karty w
+// RoutinesPanel.
+const SLASH_SCHEDULE: Record<PresetOrUnknown, [string, string]> = {
+  manual: ["Manual", "Ręczna"],
+  hourly: ["Every hour", "Co godzinę"],
+  daily: ["Daily", "Codziennie"],
+  weekly: ["Weekly", "Co tydzień"],
+  monthly: ["Monthly", "Co miesiąc"],
+  unknown: ["Scheduled", "Zaplanowana"],
+};
+
+/** Filtr palety plus limit na kategorię: bez limitu same akcje i skille zjadają
+ * całą listę i wtyczki, agenci ani rutyny nigdy się nie pokazują. Kolejność
+ * kategorii stała, w obrębie kategorii zachowana z wejścia. */
+export function slashVisible(rows: SlashRow[], query: string): SlashRow[] {
+  const q = query.trim().toLowerCase();
+  const hit = rows.filter((row) => !q || row.label.replace(/^\//, "").toLowerCase().includes(q));
+  return SLASH_KINDS.flatMap((kind) => hit.filter((row) => row.kind === kind).slice(0, 5));
+}
+
 interface PendingAttachment {
   id: string;
   file: File;
   preview?: string;
   status: "ready" | "uploading" | "error";
 }
-
-const fileSize = (size: number) => size >= 1024 * 1024
-  ? `${(size / 1024 / 1024).toFixed(1)} MB`
-  : `${Math.max(1, Math.round(size / 1024))} KB`;
 
 type ReasoningLevel = "default" | "low" | "medium" | "high" | "xhigh" | "max";
 const REASONING_LEVELS: Array<{ id: ReasoningLevel; label: string }> = [
@@ -66,6 +117,7 @@ function reasoningLevels(model: string) {
 
 export function Composer({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
@@ -78,7 +130,7 @@ export function Composer({ bot }: { bot: Bot }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [reasoning, setReasoning] = useState<ReasoningLevel>("low");
   const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc'd this @
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
@@ -187,19 +239,126 @@ export function Composer({ bot }: { bot: Bot }) {
       alive = false;
     };
   }, [engineSlashQ, slashSkills]);
+  // multibot: wtyczki z tego samego katalogu, z którego żyje panel wtyczek;
+  // status połączenia to druga runda, dokładnie jak w PluginsPanel. W palecie
+  // pokazujemy tylko realnie podpięte: własne serwery MCP i połączone karty
+  // Composio — cały katalog to setki pozycji, których nikt tu nie szuka.
+  const [slashPlugins, setSlashPlugins] = useState<
+    Array<{ slug: string; label: string; logo: string | null; custom: boolean }> | null
+  >(null);
+  useEffect(() => {
+    if (slashQ === null || slashPlugins !== null) return;
+    let alive = true;
+    const get = (path: string) =>
+      authFetch(path).then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))));
+    void (async () => {
+      try {
+        const catalog = await get("/api/connectors/catalog");
+        const cards: Array<{ slug: string; label: string; logo: string | null; source?: string }> = catalog.cards ?? [];
+        const slugs = cards.filter((c) => c.source !== "custom").map((c) => c.slug).slice(0, 40);
+        const services: Record<string, { connected?: boolean }> =
+          catalog.configured && slugs.length ? (await get(`/api/connectors?services=${slugs.join(",")}`)).services ?? {} : {};
+        const rows = cards
+          .filter((c) => c.source === "custom" || services[c.slug]?.connected)
+          .map((c) => ({ slug: c.slug, label: c.label, logo: c.logo, custom: c.source === "custom" }));
+        if (alive) setSlashPlugins(rows);
+      } catch {
+        if (alive) setSlashPlugins([]); // graceful absence: brak katalogu = brak wierszy
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [slashQ, slashPlugins]);
+
+  // multibot: rutyny są per bot, więc cache trzyma id bota — bez tego
+  // przełączenie bota zostawiłoby w palecie cudzą listę.
+  const [slashRoutines, setSlashRoutines] = useState<
+    { botId: string; rows: Array<{ id: string; name: string; schedule: string | null }> } | null
+  >(null);
+  useEffect(() => {
+    if (slashQ === null || slashRoutines?.botId === bot.id) return;
+    let alive = true;
+    authFetch(`/api/bots/${bot.id}/routines`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((rows) => alive && setSlashRoutines({ botId: bot.id, rows: Array.isArray(rows) ? rows : [] }))
+      .catch(() => alive && setSlashRoutines({ botId: bot.id, rows: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [slashQ, slashRoutines, bot.id]);
+
   const slashCandidates = useMemo(() => {
     if (slashQ === null || slashDismissed) return [];
-    const modelCommand: SlashSkill = { name: "model", command: "/model", description: "Switch provider and model" };
-    // `/goal` też należy do harnessu, nie do silnika — działa u każdego bota.
-    const goalCommand: SlashSkill = { name: "goal", command: "/goal", description: "Goal the bot pursues across many turns" };
-    const commands = [modelCommand, goalCommand, ...(slafyDriver && slashSkills ? slashSkills : [])];
-    return commands.filter((s) => !slashQ || s.name.toLowerCase().includes(slashQ)).slice(0, 6);
-  }, [slashQ, slashDismissed, slashSkills, slafyDriver]);
+    // multibot: akcje to wyłącznie dispatche, które store naprawdę zna
+    // (te same, którymi steruje paleta Cmd+K); panele botowe otwierają się na
+    // bocie z tego czatu, bo Shell renderuje je dla zaznaczonego bota.
+    const here = polish ? "Ten czat" : "Current chat";
+    const app = polish ? "Aplikacja" : "App";
+    const rows: SlashRow[] = [
+      { id: "model", label: "/model", hint: polish ? "Zmień dostawcę i model" : "Switch provider and model", kind: "action" },
+      { id: "goal", label: "/goal", hint: polish ? "Cel: bot goni go przez wiele tur" : "Goal: the bot pursues it across turns", kind: "action" },
+      { id: "a-settings", label: polish ? "Ustawienia bota" : "Bot settings", hint: here, kind: "action", run: () => dispatch({ type: "toggleSettings", open: true }) },
+      { id: "a-computer", label: polish ? "Komputer bota" : "Bot's computer", hint: here, kind: "action", run: () => dispatch({ type: "toggleComputer", open: true }) },
+      { id: "a-memory", label: polish ? "Pamięć" : "Memory", hint: here, kind: "action", run: () => dispatch({ type: "toggleMemory", open: true }) },
+      { id: "a-skills", label: polish ? "Umiejętności" : "Skills", hint: here, kind: "action", run: () => dispatch({ type: "toggleSkills", open: true }) },
+      { id: "a-routines", label: polish ? "Rutyny" : "Routines", hint: here, kind: "action", run: () => dispatch({ type: "toggleRoutines", open: true }) },
+      { id: "a-plugins", label: polish ? "Wtyczki" : "Plugins", hint: app, kind: "action", run: () => dispatch({ type: "togglePlugins", open: true }) },
+      { id: "a-app", label: polish ? "Ustawienia aplikacji" : "App settings", hint: app, kind: "action", run: () => dispatch({ type: "toggleAppSettings", open: true }) },
+      { id: "a-new-bot", label: polish ? "Nowy bot" : "New bot", hint: polish ? "Panel boczny" : "Sidebar", kind: "action", run: () => dispatch({ type: "newBot" }) },
+      ...(slafyDriver && slashSkills ? slashSkills : []).map((skill) => ({
+        id: `s-${skill.name}`,
+        label: skill.command,
+        hint: skill.description,
+        kind: "skill" as const,
+      })),
+      ...(slashPlugins ?? []).map((plugin) => ({
+        id: `p-${plugin.slug}`,
+        label: plugin.label,
+        hint: plugin.custom ? "MCP" : polish ? "połączone" : "connected",
+        kind: "plugin" as const,
+        icon: plugin.logo ? <img src={plugin.logo} alt="" className="size-4 rounded" /> : undefined,
+        run: () => dispatch({ type: "togglePlugins", open: true }),
+      })),
+      ...state.bots.filter((peer) => !peer.hidden).map((peer) => ({
+        id: `b-${peer.id}`,
+        label: peer.name,
+        hint: peer.id === bot.id ? (polish ? "Bieżący" : "Current") : (polish ? "Przełącz" : "Switch to bot"),
+        kind: "agent" as const,
+        icon: <MausAvatar color={peer.color} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} />,
+        run: () => dispatch({ type: "select", id: peer.id }),
+      })),
+      ...(slashRoutines?.rows ?? []).map((routine) => ({
+        id: `r-${routine.id}`,
+        label: routine.name,
+        hint: SLASH_SCHEDULE[parseSchedule(routine.schedule).preset][polish ? 1 : 0],
+        kind: "routine" as const,
+        run: () => dispatch({ type: "toggleRoutines", open: true }),
+      })),
+    ];
+    return slashVisible(rows, slashQ);
+  }, [slashQ, slashDismissed, slashSkills, slafyDriver, slashPlugins, slashRoutines, state.bots, bot.id, dispatch, polish]);
   const slashOpen = slashCandidates.length > 0;
-  useEffect(() => setSlashHighlight(0), [slashQ]);
+  // multibot: lista dojeżdża asynchronicznie (wtyczki, rutyny), więc reset
+  // podświetlenia idzie też po zmianie jej długości
+  useEffect(() => setSlashHighlight(0), [slashQ, slashCandidates.length]);
+  // podświetlenie musi zostać w widoku — lista jest wyższa niż okno dropdownu
+  const slashListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    slashListRef.current?.children[slashHighlight]?.scrollIntoView({ block: "nearest" });
+  }, [slashHighlight]);
 
-  const pickSlash = (skill: SlashSkill) => {
-    const next = `${skill.command} `;
+  const pickSlash = (row: SlashRow | undefined) => {
+    if (!row) return; // lista mogła się skrócić, zanim Enter doszedł
+    // multibot: wiersze z akcją wykonują dispatch i czyszczą pole; pusty tekst
+    // sam zamyka picker (slashQuery("") === null)
+    if (row.run) {
+      row.run();
+      setText("");
+      if (inputRef.current) inputRef.current.style.height = "auto";
+      return;
+    }
+    const next = `${row.label} `;
     setText(next);
     setCaret(next.length);
     setSlashDismissed(true); // wybór kończy komendę — następny Enter wysyła
@@ -298,7 +457,8 @@ export function Composer({ bot }: { bot: Bot }) {
         ...(reasoning !== "default" ? { reasoning } : {}),
       });
       track("message_sent", { driver: bot.modelSelection?.instanceId });
-      setText("");
+setText("");
+      if (inputRef.current) inputRef.current.style.height = "auto";
       for (const item of attachments) if (item.preview) URL.revokeObjectURL(item.preview);
       previewUrls.current.clear();
       setAttachments([]);
@@ -364,7 +524,7 @@ export function Composer({ bot }: { bot: Bot }) {
   };
 
   return (
-    <div className="sticky bottom-0 z-20 bg-app px-5 pb-5 pt-2">
+    <div className="px-5 pb-5 pt-2">
       {!secureContext && !window.ogb && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           Dictation needs a secure context: use HTTPS or localhost. Plain HTTP on a LAN cannot access the microphone.
@@ -384,13 +544,14 @@ export function Composer({ bot }: { bot: Bot }) {
         <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
-        {/* multibot: F8 — picker skilli po "/", ten sam dropdown co @mention */}
+        {/* multibot: F8 — picker po "/", ten sam dropdown co @mention; pięć
+            kategorii mieści się dzięki przewijaniu i etykiecie typu po prawej */}
         {slashOpen && (
-          <div className="absolute bottom-full left-10 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg">
-            {slashCandidates.map((skill, i) => (
+          <div ref={slashListRef} className="absolute bottom-full left-10 z-20 mb-2 max-h-72 w-80 overflow-y-auto rounded-xl border border-hairline/40 bg-raised shadow-lg">
+            {slashCandidates.map((row, i) => (
               <button
-                key={skill.name}
-                onClick={() => pickSlash(skill)}
+                key={row.id}
+                onClick={() => pickSlash(row)}
                 onMouseEnter={() => setSlashHighlight(i)}
                 className={cn(
                   "flex w-full items-center gap-2.5 px-3 py-2 text-left",
@@ -398,13 +559,16 @@ export function Composer({ bot }: { bot: Bot }) {
                 )}
               >
                 <span className="flex size-6 shrink-0 items-center justify-center text-ink-secondary">
-                  <Wand2 size={15} />
+                  {row.icon ?? SLASH_ICON[row.kind]}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-medium text-ink">{skill.command}</span>
-                  {skill.description && (
-                    <span className="block truncate text-xs text-ink-secondary">{skill.description}</span>
+                  <span className="block truncate text-[14px] font-medium text-ink">{row.label}</span>
+                  {row.hint && (
+                    <span className="block truncate text-xs text-ink-secondary">{row.hint}</span>
                   )}
+                </span>
+                <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[10px] text-ink-secondary">
+                  {SLASH_TYPE[row.kind][polish ? 1 : 0]}
                 </span>
               </button>
             ))}
@@ -424,25 +588,28 @@ export function Composer({ bot }: { bot: Bot }) {
               >
                 <MausAvatar color={peer.color} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={24} />
                 <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{peer.name}</span>
-                <span className="shrink-0 text-xs text-ink-secondary">Agent</span>
+                <span className="shrink-0 text-xs text-ink-secondary">{polish ? "Bot" : "Agent"}</span>
               </button>
             ))}
           </div>
         )}
         {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2" aria-label="Attachments ready to send">
+          <div className="mb-2 flex flex-wrap gap-2" aria-label={polish ? "Załączniki gotowe do wysłania" : "Attachments ready to send"}>
+            {/* multibot: szkic używa tej samej karty co wysłany plik — inaczej
+                ten sam załącznik wyglądał inaczej przed wysłaniem i po nim.
+                Podmieniamy tylko ikonę (miniatura obrazka) i akcję (usuń). */}
             {attachments.map((item) => (
-              <div key={item.id} className="flex max-w-64 items-center gap-2 rounded-xl border border-hairline/40 bg-raised px-2 py-1.5 text-xs text-ink">
-                {item.preview ? <img src={item.preview} alt="" className="size-9 rounded-lg object-cover" /> : <FileIcon size={18} className="shrink-0 text-ink-secondary" />}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{item.file.name}</span>
-                  <span className="text-ink-secondary">{fileSize(item.file.size)}</span>
-                </span>
-                {item.status === "uploading" ? <Loader2 size={14} className="animate-spin text-ink-secondary" /> : (
-                  <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`} className="rounded-full p-1 text-ink-secondary hover:bg-raised-hover hover:text-ink">
-                    <X size={13} />
-                  </button>
-                )}
+              <div key={item.id} className="w-64">
+                <AttachmentCard
+                  name={item.file.name}
+                  size={item.file.size}
+                  icon={item.preview ? <img src={item.preview} alt="" className="size-9 shrink-0 rounded-lg object-cover" /> : undefined}
+                  action={item.status === "uploading" ? <Loader2 size={16} className="shrink-0 animate-spin text-ink-secondary" /> : (
+                    <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`} className="shrink-0 rounded-md p-1.5 text-ink-secondary hover:bg-raised-hover hover:text-ink">
+                      <X size={16} />
+                    </button>
+                  )}
+                />
               </div>
             ))}
           </div>
@@ -450,9 +617,9 @@ export function Composer({ bot }: { bot: Bot }) {
         {attachOpen && (
           <div id="attachment-menu" className="absolute bottom-full left-0 z-30 mb-2 min-w-44 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl" role="menu">
             {[
-              { label: "Camera", icon: Camera, action: () => cameraRef.current?.click() },
-              { label: "Photos", icon: Images, action: () => photosRef.current?.click() },
-              { label: "Files", icon: FileIcon, action: () => filesRef.current?.click() },
+              { label: polish ? "Aparat" : "Camera", icon: Camera, action: () => cameraRef.current?.click() },
+              { label: polish ? "Zdjęcia" : "Photos", icon: Images, action: () => photosRef.current?.click() },
+              { label: polish ? "Pliki" : "Files", icon: FileIcon, action: () => filesRef.current?.click() },
             ].map(({ label, icon: Icon, action }) => (
               <button key={label} type="button" role="menuitem" onClick={action} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-raised">
                 <Icon size={16} className="text-ink-secondary" /> {label}
@@ -460,7 +627,7 @@ export function Composer({ bot }: { bot: Bot }) {
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-full border border-hairline/40 bg-raised/60 py-2 pl-2 pr-2">
+        <div className="flex items-end gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-2 pr-2">
         <button
           type="button"
           onClick={() => setAttachOpen((open) => !open)}
@@ -469,16 +636,20 @@ export function Composer({ bot }: { bot: Bot }) {
           aria-controls="attachment-menu"
           disabled={bot.busy || uploading}
           className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-          title="Attach"
+          title={polish ? "Dołącz" : "Attach"}
         >
           <Plus size={20} />
         </button>
-        <input
+        <textarea
           ref={inputRef}
+          rows={1}
           value={text}
           onChange={(e) => {
-            setText(e.target.value);
-            setCaret(e.target.selectionStart ?? e.target.value.length);
+            const el = e.target;
+            setText(el.value);
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+            setCaret(el.selectionStart ?? el.value.length);
             setDismissedAt(null);
             setSlashDismissed(false); // multibot: F8 — Esc chowa picker tylko do następnej zmiany
           }}
@@ -523,25 +694,31 @@ export function Composer({ bot }: { bot: Bot }) {
                 return;
               }
             }
-            if (e.key === "Enter") void send();
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
             if (e.key === "Escape" && attachOpen) setAttachOpen(false);
             if (e.key === "Escape" && recording) setRecording(false);
           }}
           placeholder={
-            recording ? "Listening…" : bot.busy ? `${bot.name} is working…` : `Message ${bot.name}`
+            recording ? polish ? "Słucham…" : "Listening…" : bot.busy ? polish ? `${bot.name} pracuje…` : `${bot.name} is working…` : polish ? `Wiadomość do ${bot.name}` : `Message ${bot.name}`
           }
-          className="w-full bg-transparent text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none"
+          // multibot: pole rosło bez sufitu — wysokość leci na `scrollHeight`,
+          // a `overflow-hidden` nie dawał czego przewijać, więc długa
+          // wiadomość (albo Shift+Enter w kółko) wypychała czat z ekranu.
+          // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
+          // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
+          // przez `max-height`.
+          className="max-h-64 w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-snug text-ink placeholder:text-ink-secondary focus:outline-none"
         />
         <div className="relative shrink-0">
           <button
             onClick={() => setReasoningOpen((open) => !open)}
             aria-expanded={reasoningOpen}
-            aria-label="Reasoning effort"
+            aria-label={polish ? "Poziom rozumowania" : "Reasoning effort"}
             className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"
-            title={`Reasoning: ${availableReasoning.find((item) => item.id === reasoning)?.label ?? "Default"}`}
+            title={`${polish ? "Rozumowanie" : "Reasoning"}: ${availableReasoning.find((item) => item.id === reasoning)?.label ?? (polish ? "Domyślny" : "Default")}`}
           >
             <Brain size={15} />
-            <span>{availableReasoning.find((item) => item.id === reasoning)?.label ?? "Default"}</span>
+            <span>{availableReasoning.find((item) => item.id === reasoning)?.label ?? (polish ? "Domyślny" : "Default")}</span>
           </button>
           {reasoningOpen && (
             <div className="absolute bottom-full right-0 z-30 mb-2 min-w-32 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl">
@@ -565,7 +742,7 @@ export function Composer({ bot }: { bot: Bot }) {
           <button
             onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
             className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink"
-            title="Stop"
+            title={polish ? "Zatrzymaj" : "Stop"}
           >
             <Square size={14} className="fill-current" />
           </button>
@@ -578,7 +755,7 @@ export function Composer({ bot }: { bot: Bot }) {
                 ? "animate-pulse bg-danger/20 text-danger"
                 : "text-ink-secondary hover:bg-raised hover:text-ink",
             )}
-            title={recording ? "Stop dictation (Esc)" : "Dictate"}
+            title={recording ? polish ? "Zatrzymaj dyktowanie (Esc)" : "Stop dictation (Esc)" : polish ? "Dyktuj" : "Dictate"}
           >
             <Mic size={18} />
           </button>

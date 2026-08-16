@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw, X } from "lucide-react";
 import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { useLanguage } from "@/lib/language";
 
 interface ToolkitCard {
   slug: string;
@@ -83,6 +84,7 @@ function ConnectorForm({
   onSaved: () => void;
   onClose: () => void;
 }) {
+  const polish = useLanguage() === "pl";
   const [id, setId] = useState(draft.id);
   const [name, setName] = useState(draft.name);
   const [type, setType] = useState<TransportType>(draft.type);
@@ -131,11 +133,11 @@ function ConnectorForm({
   return (
     <div className="border-t border-hairline/40 bg-card px-4 py-3">
       <div className="text-[13px] font-medium text-ink">
-        {draft.locked ? `Edit ${draft.id}` : "New connector"}
+        {draft.locked ? `${polish ? "Edytuj" : "Edit"} ${draft.id}` : polish ? "Nowy konektor" : "New connector"}
       </div>
       {draft.locked && (
         <div className="mt-1 text-[12px] text-warning">
-          Re-enter secrets when editing — saving overwrites the whole connector.
+          {polish ? "Przy edycji wpisz sekrety ponownie — zapis nadpisuje cały konektor." : "Re-enter secrets when editing — saving overwrites the whole connector."}
         </div>
       )}
       <div className="mt-2 flex gap-1.5">
@@ -149,7 +151,7 @@ function ConnectorForm({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
+          placeholder={polish ? "Nazwa" : "Name"}
           className={cn(FIELD, "flex-1")}
         />
       </div>
@@ -176,7 +178,7 @@ function ConnectorForm({
             className={cn(FIELD, "mt-2")}
           />
           <div className="mt-1 text-[11px] text-ink-secondary">
-            Command and arguments, separated by spaces.
+            {polish ? "Polecenie i argumenty rozdziel spacjami." : "Command and arguments, separated by spaces."}
           </div>
         </>
       ) : (
@@ -189,13 +191,13 @@ function ConnectorForm({
       )}
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[12px] text-ink-secondary">
-          {type === "stdio" ? "Environment variables" : "Headers"}
+          {type === "stdio" ? polish ? "Zmienne środowiskowe" : "Environment variables" : polish ? "Nagłówki" : "Headers"}
         </span>
         <button
           onClick={() => setPairs((p) => [...p, { k: "", v: "" }])}
           className="text-[12px] text-ink-secondary underline hover:text-ink"
         >
-          Add {type === "stdio" ? "variable" : "header"}
+          {polish ? "Dodaj" : "Add"} {type === "stdio" ? polish ? "zmienną" : "variable" : polish ? "nagłówek" : "header"}
         </button>
       </div>
       {pairs.map((row, i) => (
@@ -209,7 +211,7 @@ function ConnectorForm({
           <input
             value={row.v}
             onChange={(e) => setPairs((p) => p.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)))}
-            placeholder="Value"
+            placeholder={polish ? "Wartość" : "Value"}
             className={cn(FIELD, "flex-[2]")}
           />
           <button
@@ -227,14 +229,134 @@ function ConnectorForm({
           disabled={saving}
           className="w-[92px] rounded-lg bg-raised py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
         >
-          {saving ? <Loader2 size={13} className="mx-auto animate-spin" /> : "Save"}
+          {saving ? <Loader2 size={13} className="mx-auto animate-spin" /> : polish ? "Zapisz" : "Save"}
         </button>
         <button
           onClick={onClose}
           className="rounded-lg px-3 py-1.5 text-[13px] text-ink-secondary hover:text-ink"
         >
-          Cancel
+          {polish ? "Anuluj" : "Cancel"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// multibot (Google Workspace): guided preset samohostowanego workspace-mcp.
+// Spec (ścieżka venvu, katalog credentials) buduje serwer — tu tylko client id
+// + secret z Google Cloud. OAuth dzieje się w czacie: pierwsze wywołanie
+// narzędzia zwraca botowi URL autoryzacji, token ląduje we wspólnym katalogu.
+type GwStatus = { installed: boolean; configured: boolean; connected: boolean; installHint: string };
+
+function GoogleWorkspaceSection() {
+  const polish = useLanguage() === "pl";
+  const [status, setStatus] = useState<GwStatus | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api("/api/connectors/google-workspace")
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = () => {
+    setBusy(true);
+    setError(null);
+    api("/api/connectors/google-workspace", {
+      method: "PUT",
+      body: JSON.stringify({ clientId, clientSecret: secret }),
+    })
+      .then((r) => {
+        setStatus(r);
+        setSecret("");
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  const logout = () => {
+    setBusy(true);
+    api("/api/connectors/google-workspace/credentials", { method: "DELETE" })
+      .then(setStatus)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  if (!status) return null;
+  return (
+    <div className="border-t border-hairline/40 bg-card">
+      <div className="flex items-center gap-3 px-4 pb-1 pt-3">
+        <ServiceIcon card={{ slug: "google-workspace", label: "Google Workspace", blurb: "", logo: null, domain: "google.com" }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
+            Google Workspace
+            {status.connected && <span className="size-1.5 rounded-full bg-success" />}
+          </div>
+          <div className="truncate text-[12px] text-ink-secondary">
+            {polish
+              ? "Gmail, Drive, Kalendarz i więcej — serwer MCP na tym hoście."
+              : "Gmail, Drive, Calendar and more — MCP server on this host."}
+          </div>
+        </div>
+        {status.configured && (
+          <button
+            disabled={busy || !status.connected}
+            onClick={logout}
+            title={polish ? "Usuń zapisane tokeny Google" : "Remove stored Google tokens"}
+            className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:text-danger disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={13} className="mx-auto animate-spin" /> : polish ? "Wyloguj" : "Log out"}
+          </button>
+        )}
+      </div>
+      {!status.installed && (
+        <div className="mx-4 mb-2 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+          {polish ? "Serwer nie jest zainstalowany. W terminalu hosta:" : "Server not installed. In the host terminal:"}
+          <code className="mt-1 block break-all text-[11px] text-ink">{status.installHint}</code>
+        </div>
+      )}
+      <div className="px-4 pb-3">
+        {status.configured ? (
+          <div className="text-[12px] text-ink-secondary">
+            {status.connected
+              ? polish
+                ? "Połączono. Wszystkie boty korzystają z tego samego logowania Google."
+                : "Connected. Every bot shares the same Google login."
+              : polish
+                ? "Konektor zapisany — poproś bota o akcję (np. „sprawdź maila\"), kliknij link autoryzacji w czacie."
+                : "Connector saved — ask a bot for an action (e.g. \"check my email\"), tap the authorization link in chat."}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <input
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="Google OAuth Client ID"
+              className={FIELD}
+            />
+            <input
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              type="password"
+              placeholder={polish ? "Client Secret (Google Cloud)" : "Client Secret (Google Cloud)"}
+              className={FIELD}
+            />
+            {error && <div className="text-[12px] text-danger">{error}</div>}
+            <button
+              disabled={busy || !clientId.trim() || !secret.trim()}
+              onClick={save}
+              className="self-start rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : polish ? "Zainstaluj konektor" : "Install connector"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -242,6 +364,7 @@ function ConnectorForm({
 
 export function PluginsPanel() {
   const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [cards, setCards] = useState<ToolkitCard[] | null>(null);
   const [source, setSource] = useState<"api" | "curated">("curated");
   const [configured, setConfigured] = useState(true);
@@ -336,12 +459,12 @@ export function PluginsPanel() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <div className="text-[17px] font-semibold text-ink">Connected apps</div>
+          <div className="text-[17px] font-semibold text-ink">{polish ? "Połączone aplikacje" : "Connected apps"}</div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 40))}
               className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-              title="Refresh connection status"
+              title={polish ? "Odśwież status połączeń" : "Refresh connection status"}
             >
               <RefreshCw size={15} className={cn(refreshing && "animate-spin")} />
             </button>
@@ -354,12 +477,12 @@ export function PluginsPanel() {
           </div>
         </div>
         <div className="mt-1 text-[13px] text-ink-secondary">
-          Apps your bots can use through Composio Connect.
+          {polish ? "Aplikacje dostępne botom przez Composio Connect." : "Apps your bots can use through Composio Connect."}
         </div>
 
         {!configured && (
           <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[13px] text-warning">
-            No Composio Connect key yet —{" "}
+            {polish ? "Brak klucza Composio Connect — " : "No Composio Connect key yet — "}
             <button
               className="underline"
               onClick={() => {
@@ -367,14 +490,14 @@ export function PluginsPanel() {
                 dispatch({ type: "toggleAppSettings", open: true });
               }}
             >
-              add one in App Settings
+              {polish ? "dodaj go w ustawieniach aplikacji" : "add one in App Settings"}
             </button>{" "}
-            to connect apps.
+            {polish ? "aby połączyć aplikacje." : "to connect apps."}
           </div>
         )}
         {configured && source === "curated" && (
           <div className="mt-3 text-[12px] text-ink-secondary">
-            Showing a curated set.{" "}
+            {polish ? "Wyświetlam wybrany zestaw. " : "Showing a curated set. "}
             <button
               className="underline hover:text-ink"
               onClick={() => {
@@ -382,9 +505,9 @@ export function PluginsPanel() {
                 dispatch({ type: "toggleAppSettings", open: true });
               }}
             >
-              Add a Composio API key
+              {polish ? "Dodaj klucz API Composio" : "Add a Composio API key"}
             </button>{" "}
-            to browse the full catalog.
+            {polish ? "aby przeglądać pełny katalog." : "to browse the full catalog."}
           </div>
         )}
         {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
@@ -392,14 +515,14 @@ export function PluginsPanel() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search apps"
+          placeholder={polish ? "Szukaj aplikacji" : "Search apps"}
           className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
         />
 
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-hairline/40">
           {cards === null ? (
             <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-secondary">
-              <Loader2 size={14} className="animate-spin" /> Loading catalog…
+              <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie katalogu…" : "Loading catalog…"}
             </div>
           ) : (
             composioCards.map((card, i) => {
@@ -434,9 +557,9 @@ export function PluginsPanel() {
                     {busy ? (
                       <Loader2 size={13} className="mx-auto animate-spin" />
                     ) : connected ? (
-                      "Disconnect"
+                      polish ? "Odłącz" : "Disconnect"
                     ) : (
-                      "Connect"
+                      polish ? "Połącz" : "Connect"
                     )}
                   </button>
                 </div>
@@ -444,8 +567,12 @@ export function PluginsPanel() {
             })
           )}
           {cards !== null && composioCards.length === 0 && (
-            <div className="py-8 text-center text-[13px] text-ink-secondary">No apps match.</div>
+            <div className="py-8 text-center text-[13px] text-ink-secondary">{polish ? "Brak pasujących aplikacji." : "No apps match."}</div>
           )}
+
+          {/* multibot (Google Workspace): guided preset nad własnymi
+              konektorami — zapis spod tad trafia do tego samego rejestru. */}
+          <GoogleWorkspaceSection />
 
           {/* multibot (F7): sekcja własnych serwerów MCP pod katalogiem
               Composio. Trasy /api/connectors/custom/* to harness, nie
@@ -456,16 +583,16 @@ export function PluginsPanel() {
             <div className="border-t border-hairline/40 bg-card">
               <div className="flex items-center justify-between px-4 pb-1 pt-3">
                 <div>
-                  <div className="text-[13px] font-semibold text-ink">Custom connectors</div>
+                  <div className="text-[13px] font-semibold text-ink">{polish ? "Własne konektory" : "Custom connectors"}</div>
                   <div className="text-[12px] text-ink-secondary">
-                    Your own MCP servers — stdio, HTTP or SSE.
+                    {polish ? "Twoje serwery MCP — stdio, HTTP lub SSE." : "Your own MCP servers — stdio, HTTP or SSE."}
                   </div>
                 </div>
                 <button
                   onClick={() => setDraft({ id: "", name: "", type: "stdio", locked: false })}
                   className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover"
                 >
-                  Add connector
+                  {polish ? "Dodaj konektor" : "Add connector"}
                 </button>
               </div>
               {customCards.map((card) => {
@@ -492,14 +619,14 @@ export function PluginsPanel() {
                       }
                       className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
                     >
-                      Edit
+                      {polish ? "Edytuj" : "Edit"}
                     </button>
                     <button
                       disabled={busy}
                       onClick={() => removeCustom(card.slug)}
                       className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:text-danger disabled:opacity-50"
                     >
-                      {busy ? <Loader2 size={13} className="mx-auto animate-spin" /> : "Remove"}
+                      {busy ? <Loader2 size={13} className="mx-auto animate-spin" /> : polish ? "Usuń" : "Remove"}
                     </button>
                   </div>
                 );

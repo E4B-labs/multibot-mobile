@@ -1,7 +1,7 @@
 // App-level settings, in the right-side slot: who you are + credentials
 // shared by all bots. Per-bot settings (name, persona, model, computer)
 // live in SettingsPanel; contextual Box-token entry stays in ComputerPanel.
-import { Loader2, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Plus, QrCode, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
@@ -32,20 +32,6 @@ const slug = (value: string) =>
 // Import tworzy bota harnessu i jego profil silnika atomowo. 502/503 z przelotki
 // = konwencja "Engine offline" (jak EngineAutonomy), reszta błędów = `detail`.
 
-/** Mirror of engine `importer.inspect()` (engine/server/importer.py). */
-interface InspectOut {
-  name: string;
-  has_soul: boolean;
-  has_memory: boolean;
-  memory_facts: number;
-  has_markdown_memory: boolean;
-  cron_jobs: number;
-  has_env: boolean;
-  skills: number;
-  source: string;
-  profiles?: string[];
-}
-
 // Jak w RoutinesPanel: własny helper, bo silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`; do tego `status`, żeby odróżnić
 // 502/503 (Engine offline) od 409/422 (komunikat dla usera).
@@ -63,168 +49,6 @@ async function api(path: string, init?: RequestInit): Promise<any> {
   return body;
 }
 
-function summary(p: InspectOut): string {
-  const parts = [
-    p.skills > 0 && `${p.skills} skill${p.skills === 1 ? "" : "s"}`,
-    p.has_memory && `${p.memory_facts} memory facts`,
-    p.has_markdown_memory && "markdown memory",
-    p.cron_jobs > 0 && `${p.cron_jobs} cron jobs`,
-    p.has_soul && "SOUL.md",
-    p.has_env && ".env",
-  ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : "empty profile";
-}
-
-export function ProfileImport() {
-  const { dispatch } = useStore();
-  const [source, setSource] = useState("");
-  const [busy, setBusy] = useState<"inspect" | "import" | null>(null);
-  // found[0] = źródło; przy ROOT-cie dalej idą podprofile z `profiles/`
-  const [found, setFound] = useState<InspectOut[] | null>(null);
-  const [isRoot, setIsRoot] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [done, setDone] = useState<{ id: string; name: string } | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fail = (e: unknown) => {
-    const status = (e as { status?: number }).status;
-    if (status === 502 || status === 503 || status === undefined) setOffline(true);
-    else setError(e instanceof Error ? e.message : String(e));
-  };
-
-  const select = (p: InspectOut) => {
-    setSelected(p.source);
-    setDone(null);
-  };
-
-  const inspect = () => {
-    setBusy("inspect");
-    setError(null);
-    setOffline(false);
-    setFound(null);
-    setSelected(null);
-    setDone(null);
-    api("/api/engine/import/inspect", { method: "POST", body: JSON.stringify({ source }) })
-      .then(async (root: InspectOut) => {
-        // Podprofil bez markerów profilu → 422; pomijamy zamiast wywracać listę.
-        const subs = root.profiles?.length
-          ? (
-              await Promise.all(
-                root.profiles.map(
-                  (p) =>
-                    api("/api/engine/import/inspect", {
-                      method: "POST",
-                      body: JSON.stringify({ source: `${root.source}/profiles/${p}` }),
-                    }).catch(() => null) as Promise<InspectOut | null>,
-                ),
-              )
-            ).filter((p): p is InspectOut => p !== null)
-          : [];
-        setIsRoot(subs.length > 0);
-        setFound([root, ...subs]);
-        if (!subs.length) select(root);
-      })
-      .catch(fail)
-      .finally(() => setBusy(null));
-  };
-
-  const doImport = () => {
-    if (!selected) return;
-    setBusy("import");
-    setError(null);
-    setOffline(false);
-    api("/api/profiles/import", {
-      method: "POST",
-      body: JSON.stringify({ source: selected, name: found?.find((p) => p.source === selected)?.name ?? "Imported profile" }),
-    })
-      .then(({ bot }: { bot: any }) => {
-        dispatch({ type: "botAdded", bot });
-        setDone(bot);
-      })
-      .catch(fail)
-      .finally(() => setBusy(null));
-  };
-
-  const inputClass =
-    "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
-
-  return (
-    <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Import existing profile</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Copy an existing profile into the local service — SOUL, memory and chat history come along.
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        <input
-          className={inputClass}
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          placeholder="Path to an existing profile"
-        />
-        <button
-          onClick={inspect}
-          disabled={!source.trim() || busy !== null}
-          className="shrink-0 rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-40"
-        >
-          {busy === "inspect" ? "Inspecting…" : "Inspect"}
-        </button>
-      </div>
-
-      {offline && (
-        <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
-          <span className="size-1.5 rounded-full bg-raised-hover" />
-          Service offline
-        </div>
-      )}
-
-      {found && (
-        <div className="mt-3 flex flex-col gap-1.5">
-          {found.map((p, i) => (
-            <button
-              key={p.source}
-              onClick={() => select(p)}
-              className={cn(
-                "rounded-lg bg-inset px-3 py-2 text-left hover:bg-raised",
-                selected === p.source && "ring-2 ring-accent-border",
-              )}
-            >
-              <div className="text-[13px] text-ink">
-                {isRoot && i === 0 ? `${p.name} (default profile)` : p.name}
-              </div>
-              <div className="mt-0.5 text-[12px] text-ink-secondary">{summary(p)}</div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selected && !done && (
-        <div className="mt-3 flex items-end gap-2">
-          <div className="flex-1 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
-            A new bot and its local profile will be created automatically.
-          </div>
-          <button
-            onClick={doImport}
-            disabled={busy !== null}
-            className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
-          >
-            {busy === "import" ? "Importing…" : "Import"}
-          </button>
-        </div>
-      )}
-
-      {done && (
-        <div className="mt-3 text-[13px] text-ink-secondary">
-          Imported as local bot <span className="text-ink">&ldquo;{done.name}&rdquo;</span> — SOUL,
-          memory, routines, chat history and skills are connected to this bot.
-        </div>
-      )}
-
-      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
-    </div>
-  );
-}
 
 // multibot: F11 — status silnika slafy: jeden GET przy każdym otwarciu panelu
 // (mount = otwarcie, panel renderuje się warunkowo w App.tsx), zero pollingu.
@@ -233,6 +57,7 @@ export function ProfileImport() {
 // Kropka: bg-success = działa, bg-raised-hover = konwencja "Engine offline"
 // z local service status/import components.
 function EngineStatusRow() {
+  const polish = useLanguage() === "pl";
   const [online, setOnline] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
@@ -243,14 +68,54 @@ function EngineStatusRow() {
   }, []);
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Local service</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Usługa lokalna" : "Local service"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Background service for custom models, routines and skills.
+        {polish
+          ? "Silnik MultiBota. Trzyma boty przy życiu, gdy program jest zamknięty — rutyny i zaplanowane zadania działają dzięki niemu."
+          : "MultiBot's engine. Keeps bots alive when the app is closed — routines and scheduled tasks run because of it."}
       </div>
       <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
-        <span className={cn("size-1.5 rounded-full", online ? "bg-success" : "bg-raised-hover")} />
-        {online === null ? "Checking…" : online ? "Running" : "Service offline"}
+        <span className={cn("size-1.5 rounded-full", online ? "bg-success animate-pulse" : "bg-raised-hover")} />
+        {online === null ? (polish ? "Sprawdzanie…" : "Checking…") : online ? (polish ? "Działa" : "Running") : (polish ? "Usługa offline" : "Service offline")}
       </div>
+    </div>
+  );
+}
+
+type DeviceResources = {
+  ram: { totalBytes: number; freeBytes: number };
+  cpu: { count: number; load: number };
+  disk: { totalBytes: number; freeBytes: number } | null;
+  temperatures: Array<{ name: string; celsius: number }>;
+};
+
+function bytes(value: number | undefined): string {
+  if (!value) return "—";
+  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function MachineResources() {
+  const polish = useLanguage() === "pl";
+  const [resources, setResources] = useState<DeviceResources | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => authFetch("/api/device/resources")
+      .then((response) => response.json())
+      .then((value) => alive && setResources(value as DeviceResources))
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zasoby urządzenia" : "Machine resources"}</div>
+      {resources ? <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px] text-ink-secondary">
+        <span>RAM <b className="font-medium text-ink">{bytes(resources.ram.totalBytes - resources.ram.freeBytes)} / {bytes(resources.ram.totalBytes)}</b></span>
+        <span>CPU <b className="font-medium text-ink">{Math.round(resources.cpu.load * 100)}% · {resources.cpu.count} {polish ? "rdzeni" : "cores"}</b></span>
+        <span>{polish ? "Dysk" : "Disk"} <b className="font-medium text-ink">{resources.disk ? `${bytes(resources.disk.totalBytes - resources.disk.freeBytes)} / ${bytes(resources.disk.totalBytes)}` : "—"}</b></span>
+        {resources.temperatures.length > 0 && <span>{polish ? "Temperatura" : "Temperature"} <b className="font-medium text-ink">{Math.round(resources.temperatures[0].celsius)}°C</b></span>}
+      </div> : <div className="mt-3 flex items-center gap-2 text-[12.5px] text-ink-secondary"><Loader2 size={14} className="animate-spin" />{polish ? "Sprawdzanie…" : "Checking…"}</div>}
     </div>
   );
 }
@@ -261,6 +126,7 @@ function ProfileFields() {
   const { state, dispatch } = useStore();
   const [name, setName] = useState(state.config?.profile?.name ?? "");
   const [email, setEmail] = useState(state.config?.profile?.email ?? "");
+  const polish = useLanguage() === "pl";
   // adopt late-arriving config exactly once per open (config loads async)
   useEffect(() => {
     setName(state.config?.profile?.name ?? "");
@@ -283,7 +149,7 @@ function ProfileFields() {
     "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[14px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
   return (
     <div className="flex flex-col gap-3">
-      <input value={name} onChange={(e) => setName(e.target.value)} onBlur={save} placeholder="Your name" className={inputClass} />
+      <input value={name} onChange={(e) => setName(e.target.value)} onBlur={save} placeholder={polish ? "Twoje imię" : "Your name"} className={inputClass} />
       <input
         type="email"
         value={email}
@@ -297,6 +163,7 @@ function ProfileFields() {
 }
 
 function AccessTokenSettings() {
+  const polish = useLanguage() === "pl";
   const [token, setToken] = useState("");
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -304,7 +171,7 @@ function AccessTokenSettings() {
 
   useEffect(() => {
     authFetch("/api/auth/token")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to load token"))))
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(polish ? "Nie można pobrać tokenu" : "Unable to load token"))))
       .then((body) => setToken(typeof body.token === "string" ? body.token : ""))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -314,9 +181,9 @@ function AccessTokenSettings() {
     setBusy(true);
     setError(null);
     authFetch("/api/auth/token/rotate", { method: "POST" })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Unable to rotate token"))))
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(polish ? "Nie można odświeżyć tokenu" : "Unable to rotate token"))))
       .then((body) => {
-        if (typeof body.token !== "string") throw new Error("Server returned no token");
+        if (typeof body.token !== "string") throw new Error(polish ? "Serwer nie zwrócił tokenu" : "Server returned no token");
         setToken(body.token);
         setAuthToken(body.token);
       })
@@ -326,29 +193,50 @@ function AccessTokenSettings() {
 
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Server access</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">Token required when connecting from another device.</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Dostęp do serwera" : "Server access"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Token jest wymagany przy połączeniu z innego urządzenia." : "Token required when connecting from another device."}</div>
       <div className="mt-3 flex gap-2">
         <input
           readOnly
           type={shown ? "text" : "password"}
           value={token}
-          placeholder="Loading…"
+          placeholder={polish ? "Ładowanie…" : "Loading…"}
           className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink outline-none"
         />
         <button onClick={() => setShown((value) => !value)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
-          {shown ? "Hide" : "Show"}
+          {shown ? polish ? "Ukryj" : "Hide" : polish ? "Pokaż" : "Show"}
         </button>
       </div>
       <button onClick={rotate} disabled={busy} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">
-        {busy ? "Generating…" : "Generate new token"}
+        {busy ? polish ? "Generowanie…" : "Generating…" : polish ? "Wygeneruj nowy token" : "Generate new token"}
       </button>
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
     </div>
   );
 }
 
+function PairDeviceSettings() {
+  const polish = useLanguage() === "pl";
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: number; pairUrl: string; qrSvg: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const start = () => {
+    setBusy(true);
+    api("/api/pair/start", { method: "POST" }).then(setPairing).catch(() => {}).finally(() => setBusy(false));
+  };
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="flex items-center gap-2 text-[15px] font-medium text-ink"><QrCode size={16} />{polish ? "Połącz urządzenie" : "Connect a device"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Pokaż kod QR, aby telefon połączył się z tym serwerem." : "Show a QR code so a phone can connect to this server."}</div>
+      {pairing ? <div className="mt-3 flex items-center gap-4">
+        <div className="size-32 shrink-0 overflow-hidden rounded-lg bg-white p-2" dangerouslySetInnerHTML={{ __html: pairing.qrSvg }} />
+        <div className="min-w-0"><div className="text-[11px] text-ink-secondary">{polish ? "Kod jednorazowy · 5 minut" : "One-time code · 5 minutes"}</div><div className="mt-1 text-2xl font-semibold tracking-[0.2em] text-ink">{pairing.code}</div><div className="mt-1 break-all text-[11px] text-ink-secondary">{pairing.pairUrl}</div></div>
+      </div> : <button onClick={start} disabled={busy} className="mt-3 flex items-center gap-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}{polish ? "Pokaż kod QR" : "Show QR code"}</button>}
+    </div>
+  );
+}
+
 function InstallAppSettings() {
+  const polish = useLanguage() === "pl";
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   useEffect(() => {
@@ -377,25 +265,25 @@ function InstallAppSettings() {
   const isAppleMobile = /iPhone|iPad|iPod/.test(userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const installHint = isAppleMobile
-    ? "iPhone/iPad Safari: Share → Add to Home Screen."
+    ? polish ? "Safari na iPhonie/iPadzie: Udostępnij → Dodaj do ekranu początkowego." : "iPhone/iPad Safari: Share → Add to Home Screen."
     : /Android/.test(userAgent)
-      ? "Android Chrome: ⋮ → Install app or Add to Home screen."
+      ? polish ? "Chrome na Androidzie: ⋮ → Zainstaluj aplikację lub Dodaj do ekranu głównego." : "Android Chrome: ⋮ → Install app or Add to Home screen."
       : /Firefox/.test(userAgent)
-        ? "Firefox: open this page in Chrome or Edge to install it as an app."
-        : "Chrome/Edge: use the install icon in the address bar or browser menu.";
+        ? polish ? "Firefox: otwórz tę stronę w Chrome lub Edge, aby zainstalować aplikację." : "Firefox: open this page in Chrome or Edge to install it as an app."
+        : polish ? "Chrome/Edge: użyj ikony instalacji przy pasku adresu lub w menu przeglądarki." : "Chrome/Edge: use the install icon in the address bar or browser menu.";
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Install app</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zainstaluj aplikację" : "Install app"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
         {installed
-          ? "Multibot is installed on this device."
-          : "Use Multibot as a full-screen app on phone or computer."}
+          ? polish ? "MultiBot jest zainstalowany na tym urządzeniu." : "Multibot is installed on this device."
+          : polish ? "Używaj MultiBota jako aplikacji pełnoekranowej na telefonie lub komputerze." : "Use Multibot as a full-screen app on phone or computer."}
       </div>
       {installEvent ? (
         <button onClick={() => void install()} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
-          Install Multibot
+          {polish ? "Zainstaluj MultiBota" : "Install Multibot"}
         </button>
-      ) : !installed ? (
+      ) : isAppleMobile && !installed ? (
         <div className="mt-3 text-[12px] text-ink-secondary">
           {installHint}
         </div>
@@ -431,7 +319,10 @@ function CustomModels() {
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Record<string, { reachable: boolean; tools: string; error?: string }>>({});
   const [error, setError] = useState<string | null>(null);
+  const polish = useLanguage() === "pl";
   const inputClass =
     "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
 
@@ -458,13 +349,13 @@ function CustomModels() {
     const name = displayName.trim();
     const url = baseUrl.trim();
     const modelId = model.trim();
-    if (busy || !name || !url || !modelId || !apiKey.trim()) return;
+    if (busy || !name || !url || !modelId) return;
     setBusy(true);
     setError(null);
     const id = slug(name);
     api(`/api/models/custom/${encodeURIComponent(id)}`, {
       method: "PUT",
-      body: JSON.stringify({ displayName: name, baseUrl: url, model: modelId, apiKey: apiKey.trim() }),
+      body: JSON.stringify({ displayName: name, baseUrl: url, model: modelId, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }),
     })
       .then(() => {
         setDisplayName("");
@@ -491,11 +382,19 @@ function CustomModels() {
       .finally(() => setBusy(false));
   };
 
+  const probe = (id: string) => {
+    setChecking(id);
+    api(`/api/models/custom/${encodeURIComponent(id)}/probe`, { method: "POST" })
+      .then((result) => setChecks((current) => ({ ...current, [id]: result })))
+      .catch((e) => setChecks((current) => ({ ...current, [id]: { reachable: false, tools: "unknown", error: String(e) } })))
+      .finally(() => setChecking(null));
+  };
+
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Models</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Modele" : "Models"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
-        Add custom models by URL. Keys are stored locally and never shown again.
+        {polish ? "Adres zgodny z OpenAI. Lokalne Ollama, vLLM i LM Studio nie wymagają klucza." : "OpenAI-compatible URL. Local Ollama, vLLM and LM Studio need no key."}
       </div>
       {models.length > 0 && (
         <div className="mt-3 flex flex-col gap-2">
@@ -504,11 +403,24 @@ function CustomModels() {
               <div className="min-w-0">
                 <div className="truncate text-[13px] font-medium text-ink">{item.displayName}</div>
                 <div className="truncate text-[11px] text-ink-secondary">
-                  {item.model} · {item.baseUrl} · {item.hasKey ? "key saved" : "no key"}
+                  {item.model} · {item.baseUrl} · {item.hasKey ? polish ? "klucz zapisany" : "key saved" : polish ? "brak klucza" : "no key"}
                 </div>
+                {checks[item.id] && (
+                  <div className="text-[11px] text-ink-secondary">
+                    {checks[item.id].reachable ? polish ? "endpoint OK" : "endpoint OK" : polish ? "endpoint niedostępny" : "endpoint unavailable"} · {polish ? "narzędzia" : "tools"} {checks[item.id].tools}
+                  </div>
+                )}
               </div>
               <button
-                aria-label={`Remove ${item.displayName}`}
+                aria-label={`${polish ? "Sprawdź" : "Check"} ${item.displayName}`}
+                onClick={() => probe(item.id)}
+                disabled={checking !== null}
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-50"
+              >
+                {checking === item.id ? <Loader2 size={13} className="animate-spin" /> : polish ? "Sprawdź" : "Check"}
+              </button>
+              <button
+                aria-label={`${polish ? "Usuń" : "Remove"} ${item.displayName}`}
                 onClick={() => remove(item.id)}
                 className="shrink-0 rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-danger"
               >
@@ -519,24 +431,30 @@ function CustomModels() {
         </div>
       )}
       <div className="mt-3 flex flex-col gap-2">
-        <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Name" />
+        <div className="flex gap-2">
+          {["Ollama|http://localhost:11434/v1", "vLLM|http://localhost:8000/v1", "LM Studio|http://localhost:1234/v1"].map((preset) => {
+            const [label, url] = preset.split("|");
+            return <button key={label} onClick={() => { setDisplayName(label); setBaseUrl(url); }} className="rounded-lg bg-raised px-2.5 py-1.5 text-[12px] text-ink-secondary hover:text-ink">{label}</button>;
+          })}
+        </div>
+        <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={polish ? "Nazwa" : "Name"} />
         <input className={inputClass} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="Base URL · https://…/v1" />
-        <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model id · local/model" />
+        <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} placeholder={polish ? "Identyfikator modelu · local/model" : "Model id · local/model"} />
         <div className="flex gap-2">
           <input
             type="password"
             className={inputClass}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API key"
+            placeholder={polish ? "Klucz API (opcjonalny lokalnie)" : "API key (optional for local)"}
             autoComplete="off"
           />
           <button
             onClick={save}
-            disabled={busy || !displayName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()}
+            disabled={busy || !displayName.trim() || !baseUrl.trim() || !model.trim()}
             className="flex w-[78px] shrink-0 items-center justify-center gap-1 rounded-lg bg-raised px-2 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <><Plus size={13} />Add</>}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <><Plus size={13} />{polish ? "Dodaj" : "Add"}</>}
           </button>
         </div>
       </div>
@@ -546,7 +464,7 @@ function CustomModels() {
 }
 
 function CommandLineTools() {
-  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; authenticated?: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean; loginMode?: "stdin" | "device" };
+  type CliRow = { id: string; displayName: string; enabled: boolean; detected: boolean; authenticated?: boolean; reason?: string; version?: string; installCommand?: string | null; loginCommand?: string | null; loginAvailable?: boolean; loginMode?: "stdin" | "device"; loginHint?: string };
   type LoginSession = { toolId: string; jobId: string; output: string[]; done: boolean; mode: "stdin" | "device"; error?: string };
   type InstallSession = { toolId: string; jobId: string; output: string[]; done: boolean; error?: string };
   const [cli, setCli] = useState<CliRow[]>([]);
@@ -554,6 +472,8 @@ function CommandLineTools() {
   const [installing, setInstalling] = useState<string | null>(null);
   const [installJob, setInstallJob] = useState<InstallSession | null>(null);
   const [login, setLogin] = useState<LoginSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const polish = useLanguage() === "pl";
   const deviceLogin = (() => {
     if (login?.mode !== "device") return null;
     const output = login.output.join("\n").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
@@ -564,7 +484,7 @@ function CommandLineTools() {
   })();
 
   useEffect(() => {
-    void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {});
+    void api("/api/cli-tools").then(({ tools }) => setCli(tools)).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const toggle = (tool: CliRow) => {
@@ -690,18 +610,25 @@ function CommandLineTools() {
   return (
     <>
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Command-line tools</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">Allow tools that can run bots on this device.</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Narzędzia CLI" : "Command-line tools"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Pozwól botom korzystać z narzędzi na tym urządzeniu." : "Allow tools that can run bots on this device."}</div>
       <div className="mt-3 flex flex-col gap-1">
-        {cli.length === 0 ? (
-          <div className="py-2 text-[13px] text-ink-secondary">No command-line tools detected.</div>
+        {loading ? (
+          <div className="flex items-center gap-2 py-2 text-[13px] text-ink-secondary">
+            <Loader2 size={14} className="animate-spin" />
+            {polish ? "Sprawdzanie narzędzi…" : "Checking for tools…"}
+          </div>
+        ) : cli.length === 0 ? (
+          <div className="py-2 text-[13px] text-danger">{polish ? "Nie wykryto narzędzi CLI." : "No command-line tools detected."}</div>
         ) : cli.map((item) => (
           <div key={item.id}>
             <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-raised/60">
               <div className="min-w-0">
                 <div className="truncate text-[13px] text-ink">{item.displayName}</div>
                 <div className="truncate text-[11px] text-ink-secondary">
-                  {item.detected ? `${item.version ?? "Detected"}${item.authenticated ? " · signed in" : item.loginCommand ? ` · sign in: ${item.loginCommand}` : ""}` : item.reason ?? "Not detected"}
+                  {item.detected
+                    ? `${item.version ?? (polish ? "Wykryto" : "Detected")}${item.authenticated ? (polish ? " · zalogowano" : " · signed in") : item.loginCommand ? ` · ${polish ? "logowanie" : "sign in"}: ${item.loginCommand}` : ""}`
+                    : item.reason ?? (polish ? "Nie wykryto" : "Not detected")}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -709,13 +636,14 @@ function CommandLineTools() {
                   onClick={() => void install(item)}
                   disabled={installing !== null}
                   className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                >{installing === item.id ? "Installing…" : installJob?.toolId === item.id && installJob.error ? "Retry install" : "Install"}</button>}
-                {item.loginAvailable && !item.authenticated && <button
+                >{installing === item.id ? (polish ? "Instalowanie…" : "Installing…") : installJob?.toolId === item.id && installJob.error ? (polish ? "Spróbuj ponownie" : "Retry install") : polish ? "Zainstaluj" : "Install"}</button>}
+                {item.detected && item.loginAvailable && !item.authenticated && <button
                   onClick={() => void startLogin(item)}
                   disabled={login !== null || !item.detected}
                   className="rounded-md bg-raised px-2 py-1 text-[11px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                >Sign in</button>}
+                >{polish ? "Zaloguj" : "Sign in"}</button>}
                 <input
+                  aria-label={`${polish ? "Włącz" : "Enable"} ${item.displayName}`}
                   type="checkbox"
                   checked={item.enabled}
                   disabled={busy === item.id}
@@ -727,11 +655,11 @@ function CommandLineTools() {
             {installJob?.toolId === item.id && (
               <div className="mx-2 mb-2 rounded-lg bg-inset p-2">
                 <div className="mb-1 text-[11px] text-ink-secondary">
-                  {installJob.done ? (installJob.error ? "Installation failed." : "Installation finished. Refreshing detection…") : "Installation running; keep this panel open or return later."}
+                  {installJob.done ? (installJob.error ? (polish ? "Instalacja nieudana." : "Installation failed.") : (polish ? "Instalacja zakończona. Odświeżam wykrywanie…" : "Installation finished. Refreshing detection…")) : (polish ? "Instalacja trwa; możesz wrócić później." : "Installation running; keep this panel open or return later.")}
                 </div>
                 {installJob.error && <div className="mt-1 text-[11px] text-danger">{installJob.error}</div>}
                 <details className="mt-1 text-[11px] text-ink-secondary">
-                  <summary className="cursor-pointer">Technical details</summary>
+                  <summary className="cursor-pointer">{polish ? "Szczegóły techniczne" : "Technical details"}</summary>
                   <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap text-ink">{installJob.output.join("\n")}</pre>
                 </details>
               </div>
@@ -750,14 +678,14 @@ function CommandLineTools() {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div id="cli-login-title" className="text-[16px] font-semibold text-ink">Sign in {cli.find((item) => item.id === login.toolId)?.displayName ?? login.toolId}</div>
+              <div id="cli-login-title" className="text-[16px] font-semibold text-ink">{polish ? "Logowanie:" : "Sign in"} {cli.find((item) => item.id === login.toolId)?.displayName ?? login.toolId}</div>
               <div className="mt-1 text-[12px] text-ink-secondary">
                 {login.mode === "device"
-                  ? "Open link below and enter shown code in browser. This window will finish automatically."
-                  : "Open OAuth link below, sign in, then paste returned code here. This is official CLI login flow."}
+                  ? polish ? "Otwórz link, wpisz kod w przeglądarce. To okno zakończy się automatycznie." : "Open link below and enter shown code in browser. This window will finish automatically."
+                  : cli.find((item) => item.id === login.toolId)?.loginHint ?? (polish ? "Wykonaj kroki pokazane przez oficjalne CLI." : "Follow the official CLI prompts.")}
               </div>
             </div>
-            {login.done && <button onClick={closeLogin} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised">Close</button>}
+            {login.done && <button onClick={closeLogin} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised">{polish ? "Zamknij" : "Close"}</button>}
           </div>
           {login.mode === "device" ? (
             <div className="mt-4 rounded-xl bg-inset p-4">
@@ -765,16 +693,16 @@ function CommandLineTools() {
                 <a href={deviceLogin.url} target="_blank" rel="noreferrer" className="block break-all text-[13px] text-accent underline">
                   {deviceLogin.url}
                 </a>
-              ) : <div className="text-[12px] text-ink-secondary">Preparing secure sign-in link…</div>}
+              ) : <div className="text-[12px] text-ink-secondary">{polish ? "Przygotowuję bezpieczny link…" : "Preparing secure sign-in link…"}</div>}
               {deviceLogin?.code && (
                 <div className="mt-4">
-                  <div className="text-[11px] uppercase tracking-wide text-ink-secondary">One-time code</div>
+                  <div className="text-[11px] uppercase tracking-wide text-ink-secondary">{polish ? "Kod jednorazowy" : "One-time code"}</div>
                   <div className="mt-1 select-all font-mono text-[24px] font-semibold tracking-wider text-ink">{deviceLogin.code}</div>
                 </div>
               )}
               {login.error && (
                 <details className="mt-3 text-[11px] text-ink-secondary">
-                  <summary className="cursor-pointer">Technical details</summary>
+                    <summary className="cursor-pointer">{polish ? "Szczegóły techniczne" : "Technical details"}</summary>
                   <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap text-ink">{login.output.join("\n")}</pre>
                 </details>
               )}
@@ -787,18 +715,18 @@ function CommandLineTools() {
               {login.mode !== "device" && <input
                 autoFocus
                 className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-card px-3 py-2 text-[13px] text-ink"
-                placeholder={login.toolId === "claude" ? "Paste OAuth code" : "Answer CLI prompt"}
+                placeholder={login.toolId === "claude" ? (polish ? "Wklej kod OAuth" : "Paste OAuth code") : polish ? "Odpowiedz CLI" : "Answer CLI prompt"}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter") return;
                   const input = event.currentTarget;
                   void sendLoginInput(input.value).then(() => { input.value = ""; });
                 }}
               />}
-              <button onClick={() => void stopLogin()} className="rounded-lg bg-raised px-3 py-2 text-[12px] text-ink">Stop</button>
+              <button onClick={() => void stopLogin()} className="rounded-lg bg-raised px-3 py-2 text-[12px] text-ink">{polish ? "Zatrzymaj" : "Stop"}</button>
             </div>
           )}
           {login.error && <div className="mt-2 text-[12px] text-danger">{login.error}</div>}
-          {login.done && !login.error && <div className="mt-2 text-[12px] text-success">Signed in. You can close this window.</div>}
+          {login.done && !login.error && <div className="mt-2 text-[12px] text-success">{polish ? "Zalogowano. Możesz zamknąć okno." : "Signed in. You can close this window."}</div>}
         </div>
       </div>
     )}
@@ -809,23 +737,24 @@ function CommandLineTools() {
 /** Manual update check row — packaged app only (no bridge in dev). */
 function UpdatesRow() {
   const s = useUpdaterState();
+  const polish = useLanguage() === "pl";
   if (!window.ogb?.updater) return null;
   const updater = window.ogb.updater;
   const label =
     s?.status === "checking"
-      ? "Checking…"
+      ? polish ? "Sprawdzanie…" : "Checking…"
       : s?.status === "available"
-        ? `${s.version} available`
+        ? `${s.version} ${polish ? "dostępna" : "available"}`
         : s?.status === "downloading"
-          ? `Downloading… ${Math.round(s.percent ?? 0)}%`
+          ? `${polish ? "Pobieranie…" : "Downloading…"} ${Math.round(s.percent ?? 0)}%`
           : s?.status === "downloaded"
-            ? `${s.version} ready — restart to apply`
+            ? `${s.version} ${polish ? "gotowa — uruchom ponownie" : "ready — restart to apply"}`
             : s?.status === "error"
-              ? `Check failed: ${s.message ?? "unknown error"}`
-              : "You're on the latest version we know of.";
+              ? `${polish ? "Sprawdzenie nieudane" : "Check failed"}: ${s.message ?? (polish ? "nieznany błąd" : "unknown error")}`
+              : polish ? "Masz najnowszą znaną wersję." : "You're on the latest version we know of.";
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">App updates</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Aktualizacje aplikacji" : "App updates"}</div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">{label}</div>
       <div className="mt-3 flex gap-2">
         {s?.status === "available" ? (
@@ -833,7 +762,7 @@ function UpdatesRow() {
             onClick={() => void updater.download()}
             className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white"
           >
-            Download
+            {polish ? "Pobierz" : "Download"}
           </button>
         ) : s?.status === "downloaded" ? (
           <button
@@ -884,7 +813,7 @@ export function AppSettingsPanel() {
             value={language}
             onChange={(event) => setLanguage(event.target.value as Language)}
             className="rounded-lg border border-hairline/40 bg-inset px-2.5 py-2 text-[13px] text-ink focus:outline-none"
-            aria-label="Language"
+            aria-label={polish ? "Język" : "Language"}
           >
             <option value="en">{languageLabel("en")}</option>
             <option value="pl">{languageLabel("pl")}</option>
@@ -901,8 +830,9 @@ export function AppSettingsPanel() {
         <div className="mt-4 rounded-xl bg-card p-4">
           <div className="text-[15px] font-medium text-ink">{polish ? "Połączenia" : "Connections"}</div>
           <div className="mt-0.5 text-[13px] text-ink-secondary">
-            Shared by all bots. Saving a key reloads providers instantly; keys are stored locally and never
-            shown again.
+            {polish
+              ? "Wspólne dla wszystkich botów. Zapis klucza od razu przeładowuje dostawców; klucze zostają lokalnie i nie są ponownie wyświetlane."
+              : "Shared by all bots. Saving a key reloads providers instantly; keys are stored locally and never shown again."}
           </div>
           <div className="mt-4 flex flex-col gap-4">
             <ApiKeyRow section="composio" label="Composio Connect key" placeholder="ck_…" />
@@ -917,6 +847,7 @@ export function AppSettingsPanel() {
 
         {/* multibot: G2 — server token, masked until explicitly shown. */}
         <AccessTokenSettings />
+        <PairDeviceSettings />
         <InstallAppSettings />
 
         {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
@@ -924,10 +855,9 @@ export function AppSettingsPanel() {
         {/* multibot: G1 — CLI allowlist UI; provisioning actions land in G3. */}
         <CommandLineTools />
 
-        {/* multibot: F11 — status local service above profile import */}
+        {/* multibot: F11 — status local service */}
         <EngineStatusRow />
-
-        <ProfileImport />
+        <MachineResources />
 
         <UpdatesRow />
       </div>

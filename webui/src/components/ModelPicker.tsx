@@ -2,13 +2,14 @@
 // Routing is by exact instanceId only — an entry is never inferred from a
 // driver kind, and unavailable instances render disabled with the reason.
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { useStore, type Bot, type InstanceInfo } from "@/state/store";
 import { ProviderMark } from "./ProviderIcons";
 import { cn } from "@/lib/cn";
+import { useLanguage } from "@/lib/language";
 
-export function modelLabelText(instance: InstanceInfo | undefined, model: string): string {
-  return instance?.models?.options?.find((o) => o.id === model)?.label ?? model;
+function modelLabel(instance: InstanceInfo | undefined, model: string): string {
+  return instance?.models.options.find((o) => o.id === model)?.label ?? model;
 }
 
 // The Python/Hermes sidecar is runtime infrastructure, not a user-facing
@@ -18,6 +19,7 @@ const publicInstances = (instances: InstanceInfo[]) => instances.filter((instanc
 
 export function ModelPicker({ bot, className }: { bot: Bot; className?: string }) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const [open, setOpen] = useState(false);
   const [railId, setRailId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -28,10 +30,10 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
   const railInstance =
     visibleInstances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ?? visibleInstances[0];
   const activeLabel = active?.instanceId === "local"
-    ? `Automatic · ${modelLabelText(active, selection.model)}`
+    ? `Automatic · ${modelLabel(active, selection.model)}`
     : active
-      ? `${active.displayName} · ${modelLabelText(active, selection.model)}`
-      : modelLabelText(active, selection.model);
+      ? `${active.displayName} · ${modelLabel(active, selection.model)}`
+      : modelLabel(active, selection.model);
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +65,8 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
         title={activeLabel || selection.model}
       >
         {active && active.instanceId !== "local" && <ProviderMark driverKind={active.driverKind} size={18} />}
+        {/* Na wąskim ekranie nazwa modelu wypychała pigułkę poza nagłówek —
+            zostaje sam znak dostawcy, pełna nazwa wraca od `sm`. */}
         <span className="hidden max-w-[190px] truncate sm:inline">
           {activeLabel}
         </span>
@@ -72,7 +76,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
       {open && (
         <div
           data-model-picker-content
-          className="z-30 flex flex-col overflow-hidden border border-hairline/50 bg-card shadow-2xl shadow-black/50 fixed inset-x-0 bottom-0 h-[60vh] rounded-t-2xl pb-[var(--safe-bottom)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:mt-2 sm:h-auto sm:flex-row sm:max-h-[70vh] sm:rounded-xl sm:pb-0 sm:w-[320px]"
+          className="z-30 flex flex-col overflow-hidden border border-hairline/50 bg-card shadow-2xl shadow-black/50 fixed inset-x-0 bottom-0 h-[60vh] rounded-t-2xl pb-[var(--safe-bottom)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-2 sm:h-auto sm:flex-row sm:max-h-[70vh] sm:rounded-xl sm:pb-0 sm:w-[320px]"
         >
           {/* instance rail — na telefonie poziomy pasek u góry (wszystkie ikony
               widoczne, przewijanie w poziomie), na desktopie pionowy z lewej */}
@@ -102,7 +106,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
           </div>
 
           {/* model list for the rail-selected instance */}
-          <div className="min-w-0 flex-1 min-h-0 overflow-y-auto p-2">
+          <div className="min-w-0 flex-1 p-2">
             {railInstance ? (
               <>
                 <div className="px-2 pb-1 pt-1">
@@ -113,7 +117,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                       : (railInstance.snapshot.reason ?? "unavailable")}
                   </div>
                 </div>
-                {(railInstance.models?.options ?? []).map((option) => {
+                {railInstance.models.options.map((option) => {
                   const current =
                     selection.instanceId === railInstance.instanceId && selection.model === option.id;
                   const disabled = railInstance.snapshot.state !== "available";
@@ -132,7 +136,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                         <span className="truncate">{option.label}</span>
                         {option.id === railInstance.models.default && (
                           <span className="shrink-0 rounded bg-inset px-1 py-px text-[10px] text-ink-secondary">
-                            default
+                            {polish ? "domyślny" : "default"}
                           </span>
                         )}
                       </span>
@@ -140,15 +144,10 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                     </button>
                   );
                 })}
-                {((railInstance.models?.options ?? []).length === 0) && (
-                  <div className="px-2 py-3 text-[13px] text-ink-secondary">
-                    {railInstance.snapshot.state === "available" ? "No models available" : "Provider unavailable"}
-                  </div>
-                )}
               </>
             ) : (
-              <div className="px-2 py-3 text-[13px] text-ink-secondary">
-                No providers — is the server running?
+              <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-ink-secondary">
+                <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie modeli…" : "Loading models…"}
               </div>
             )}
           </div>

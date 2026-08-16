@@ -70,7 +70,7 @@ function EngineUsage({ bot }: { bot: Bot }) {
       .catch(() => setStatus("offline"));
   }, [usagePath]);
 
-  const fmt = (n: number) => n.toLocaleString("en-US");
+  const fmt = (n: number) => n.toLocaleString(polish ? "pl-PL" : "en-US");
   const stat = (value: string, label: string) => (
     <div>
       <div className="text-[20px] font-semibold tabular-nums text-ink">{value}</div>
@@ -195,13 +195,13 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "cursor" })}
                 className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
               >
-                Reset
+                {polish ? "Resetuj" : "Reset"}
               </button>
             </div>
 
             <div className="p-3">
               <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                Icon shape
+                {polish ? "Kształt ikony" : "Icon shape"}
               </div>
               <div className="grid grid-cols-5 gap-2">
                 {MASCOT_SHAPES.map((shape) => (
@@ -213,7 +213,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                       (bot.mascotShape ?? "cursor") === shape && "ring-2 ring-accent-border",
                     )}
                     title={shape}
-                    aria-label={`Use ${shape} icon shape`}
+                    aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}
                   >
                     <MausAvatar color={bot.color} shape={shape} state={activeState} size={42} animated={false} />
                   </button>
@@ -221,7 +221,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               </div>
 
               <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                Color
+                {polish ? "Kolor" : "Color"}
               </div>
               <div className="flex flex-wrap gap-2.5">
                 {MAUS_COLOR_NAMES.map((color) => (
@@ -234,32 +234,32 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     )}
                     style={{ backgroundColor: MAUS_COLORS[color] }}
                     title={color}
-                    aria-label={`Use ${color} mascot color`}
+                    aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`}
                   />
                 ))}
               </div>
             </div>
           </div>
 
-          <Field label="Name">
+          <Field label={polish ? "Nazwa" : "Name"}>
             <input
               className={inputCls}
               value={bot.name}
               onChange={(e) => patch({ name: e.target.value })}
             />
           </Field>
-          <Field label="Title">
+          <Field label={polish ? "Rola" : "Title"}>
             <input
               className={inputCls}
-              placeholder="Describe what your agent does"
+              placeholder={polish ? "Opisz, czym zajmuje się bot" : "Describe what your agent does"}
               value={bot.title}
               onChange={(e) => patch({ title: e.target.value })}
             />
           </Field>
-          <Field label="Description">
+          <Field label={polish ? "Opis" : "Description"}>
             <textarea
               className={cn(inputCls, "min-h-[96px] resize-none")}
-              placeholder="What this agent is for"
+              placeholder={polish ? "Do czego służy ten bot" : "What this agent is for"}
               value={bot.description}
               onChange={(e) => patch({ description: e.target.value })}
             />

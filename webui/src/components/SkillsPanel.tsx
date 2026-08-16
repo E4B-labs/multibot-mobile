@@ -1,7 +1,7 @@
 // multibot: F8 — skille silnika slafy w prawym slocie (400px, jak Routines).
 // Provider-neutral skills. Harness stores them per bot and injects enabled
 // instructions into every provider turn.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -58,6 +58,7 @@ function SkillForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const polish = useLanguage() === "pl";
   const [description, setDescription] = useState(skill.description);
   const [instructions, setInstructions] = useState(skill.instructions);
   const [saving, setSaving] = useState(false);
@@ -78,18 +79,18 @@ function SkillForm({
 
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Edit {skill.name}</div>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Edytuj" : "Edit"} {skill.name}</div>
       <label className="block">
-        <div className="mb-1.5 text-[13px] text-ink-secondary">Description</div>
+        <div className="mb-1.5 text-[13px] text-ink-secondary">{polish ? "Opis" : "Description"}</div>
         <input
           className={inputCls}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="When should the bot reach for this skill?"
+          placeholder={polish ? "Kiedy bot ma użyć tej umiejętności?" : "When should the bot reach for this skill?"}
         />
       </label>
       <label className="block">
-        <div className="mb-1.5 text-[13px] text-ink-secondary">Instructions</div>
+        <div className="mb-1.5 text-[13px] text-ink-secondary">{polish ? "Instrukcje" : "Instructions"}</div>
         <textarea
           className={cn(inputCls, "min-h-[180px] resize-none font-mono text-[12px]")}
           value={instructions}
@@ -104,13 +105,13 @@ function SkillForm({
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-          Save
+          {polish ? "Zapisz" : "Save"}
         </button>
         <button
           onClick={onCancel}
           className="rounded-lg bg-raised px-4 py-2 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
         >
-          Cancel
+          {polish ? "Anuluj" : "Cancel"}
         </button>
       </div>
     </div>
@@ -213,15 +214,38 @@ export function TeachCard({
       });
   };
 
+  // K5: pilnuj przycisk z pulpitem (ComputerPanel) może wystartować/przerwać
+  // nagrywanie, mimo że stan trzymamy tu. Jedno źródło prawdy o fazie leci w
+  // drugą stronę jako zdarzenie, żeby pasek nagrywania mógł się narysować
+  // na ekranie bota, a nie tylko w bocznym TeachCard.
+  const teachRef = useRef(teach);
+  teachRef.current = teach;
+  useEffect(() => {
+    const onStart = () => start();
+    const onStop = () => {
+      const t = teachRef.current;
+      if (t.phase === "recording" || t.phase === "stopping") stop(t.recordingId);
+    };
+    window.addEventListener("mb:teach:start", onStart);
+    window.addEventListener("mb:teach:stop", onStop);
+    return () => {
+      window.removeEventListener("mb:teach:start", onStart);
+      window.removeEventListener("mb:teach:stop", onStop);
+    };
+  }, [start, stop]);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("mb:teach:phase", { detail: teach }));
+  }, [teach]);
+
   return (
     <div className="mt-3 rounded-xl bg-card p-4">
       <div className="flex items-center gap-2 text-[15px] font-medium text-ink">
         <GraduationCap size={16} className="text-ink-secondary" />
-        {polish ? "Nagraj skill" : "Record a skill"}
+        {polish ? "Nagraj umiejętność" : "Record a skill"}
       </div>
       <div className="mt-0.5 text-[13px] text-ink-secondary">
         {polish
-          ? "Pokaż botowi zadanie na jego komputerze — obejrzy Twoje kliknięcia i sam napisze sobie skill."
+          ? "Pokaż botowi zadanie na jego komputerze — obejrzy Twoje kliknięcia i sam napisze sobie umiejętność."
           : "Show the bot a task on its computer — it watches your clicks and writes itself a skill."}
       </div>
 
@@ -312,7 +336,7 @@ export function TeachCard({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={
-              polish ? "Nazwa skilla (opcjonalnie — bot sam wybierze)" : "Skill name (optional — the bot picks one)"
+              polish ? "Nazwa umiejętności (opcjonalnie — bot sam wybierze)" : "Skill name (optional — the bot picks one)"
             }
           />
           <div className="mt-2 flex gap-2">
@@ -322,7 +346,7 @@ export function TeachCard({
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Wand2 size={13} />
-              {polish ? "Utwórz skill" : "Create skill"}
+              {polish ? "Utwórz umiejętność" : "Create skill"}
             </button>
             <button
               onClick={() => setTeach({ phase: "idle" })}
@@ -338,7 +362,7 @@ export function TeachCard({
         <div className="mt-3 flex items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary">
           <Loader2 size={14} className="animate-spin" />
           {polish
-            ? "Bot pisze skill — to może potrwać kilka minut…"
+            ? "Bot pisze umiejętność — to może potrwać kilka minut…"
             : "The bot is writing the skill — this can take a few minutes…"}
         </div>
       )}
@@ -346,7 +370,7 @@ export function TeachCard({
       {teach.phase === "done" && (
         <>
           <div className="mt-3 text-[13px] text-success">
-            {polish ? "Utworzono skill: " : "Skill created: "}
+            {polish ? "Utworzono umiejętność: " : "Skill created: "}
             <span className="font-medium">{teach.skillName}</span>
           </div>
           <button
@@ -438,11 +462,11 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
           // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
-              Service offline
+              {polish ? "Usługa offline" : "Service offline"}
           </div>
         ) : status === "loading" ? (
           <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-secondary">
-            <Loader2 size={14} className="animate-spin" /> Loading skills…
+            <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie umiejętności…" : "Loading skills…"}
           </div>
         ) : editing ? (
           <SkillForm
@@ -457,19 +481,18 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
         ) : (
           <>
             <div className="mt-3 rounded-xl bg-card p-4">
-              <div className="text-[15px] font-medium text-ink">New skill</div>
-              <input className={cn(inputCls, "mt-3")} value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="Skill name" />
-              <textarea className={cn(inputCls, "mt-2 min-h-[100px] resize-y")} value={newSkillInstructions} onChange={(e) => setNewSkillInstructions(e.target.value)} placeholder="Instructions the bot should follow" />
-              <button onClick={create} disabled={creating || !newSkillName.trim() || !newSkillInstructions.trim()} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink disabled:opacity-40"><Check size={13} /> Create skill</button>
+              <div className="text-[15px] font-medium text-ink">{polish ? "Nowa umiejętność" : "New skill"}</div>
+              <input className={cn(inputCls, "mt-3")} value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder={polish ? "Nazwa umiejętności" : "Skill name"} />
+              <textarea className={cn(inputCls, "mt-2 min-h-[100px] resize-y")} value={newSkillInstructions} onChange={(e) => setNewSkillInstructions(e.target.value)} placeholder={polish ? "Instrukcje dla bota" : "Instructions the bot should follow"} />
+              <button onClick={create} disabled={creating || !newSkillName.trim() || !newSkillInstructions.trim()} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-raised py-2 text-[13px] text-ink disabled:opacity-40"><Check size={13} /> {polish ? "Utwórz umiejętność" : "Create skill"}</button>
             </div>
 
             {skills.length === 0 ? (
               <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
                 <Wand2 size={22} />
-                <div className="text-[13px] font-medium text-ink">No skills yet</div>
+                <div className="text-[13px] font-medium text-ink">{polish ? "Brak umiejętności" : "No skills yet"}</div>
                 <span className="text-[12px]">
-                  Skills are reusable playbooks shared by every bot — teach one above, or ask a bot
-                  to write one for itself.
+                  {polish ? "Umiejętności to procedury współdzielone przez boty. Utwórz je powyżej albo poproś bota, by napisał własną." : "Skills are reusable playbooks shared by every bot — teach one above, or ask a bot to write one for itself."}
                 </span>
               </div>
             ) : (
@@ -488,12 +511,12 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                         ) : (
                           <ChevronRight size={15} className="mt-0.5 shrink-0 text-ink-secondary" />
                         )}
-                        <span className="min-w-0">
-                          <span className="block truncate text-[15px] font-medium text-ink">
-                            {s.command ?? `/${s.name}`}
-                          </span>
+                         <span className="min-w-0">
+                           <span className="block truncate text-[15px] font-medium text-ink">
+                             <span className="mr-1 text-ink-secondary">⌘</span>{s.command ?? `/${s.name}`}
+                           </span>
                           <span className="mt-0.5 block text-[13px] text-ink-secondary">
-                            {s.description || "No description"}
+                            {s.description || (polish ? "Brak opisu" : "No description")}
                           </span>
                         </span>
                       </button>
@@ -501,7 +524,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                         <button
                           onClick={() => setEditing(s)}
                           className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink"
-                          title="Edit"
+                          title={polish ? "Edytuj" : "Edit"}
                         >
                           <Pencil size={15} />
                         </button>
@@ -509,7 +532,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                           onClick={() => remove(s.name)}
                           disabled={busy === `delete:${s.name}`}
                           className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-danger disabled:opacity-50"
-                          title="Delete"
+                          title={polish ? "Usuń" : "Delete"}
                         >
                           {busy === `delete:${s.name}` ? (
                             <Loader2 size={15} className="animate-spin" />
@@ -522,12 +545,12 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
                     {open && (
                       <div className="mt-3 border-t border-hairline/40 pt-3 text-[13px]">
                         <div className="mb-2 truncate text-[11px] text-ink-secondary" title={s.path ?? s.name}>
-                          {s.path ?? "Shared bot skill"}
+                          {s.path ?? (polish ? "Wspólna umiejętność bota" : "Shared bot skill")}
                         </div>
                         {s.instructions ? (
                           <ChatMarkdown text={s.instructions} />
                         ) : (
-                          <div className="text-ink-secondary">No instructions</div>
+                          <div className="text-ink-secondary">{polish ? "Brak instrukcji" : "No instructions"}</div>
                         )}
                       </div>
                     )}

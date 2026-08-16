@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { authFetch } from "@/lib/auth";
-import { ProfileImport } from "./AppSettingsPanel";
+
 import { useLanguage } from "@/lib/language";
 
 type CliTool = {
@@ -54,13 +54,14 @@ function StatusRow({ ok, warn, title, detail, action }: { ok: boolean; warn?: bo
 }
 
 function ProgressBox({ progress, onClose }: { progress: Progress | null; onClose?: () => void }) {
+  const polish = useLanguage() === "pl";
   if (!progress) return null;
   return (
     <div className="mt-3 rounded-xl bg-inset p-3 text-[12.5px] text-ink-secondary">
       <div className="flex items-center gap-2">
         {!progress.done && !progress.error && <Loader2 size={14} className="animate-spin" />}
-        <span>{progress.error ?? progress.message ?? progress.step ?? (progress.done ? "Done" : "Working…")}</span>
-        {progress.done && onClose && <button onClick={onClose} className="ml-auto text-ink hover:text-accent">Hide</button>}
+        <span>{progress.error ?? progress.message ?? progress.step ?? (progress.done ? polish ? "Gotowe" : "Done" : polish ? "Praca trwa…" : "Working…")}</span>
+        {progress.done && onClose && <button onClick={onClose} className="ml-auto text-ink hover:text-accent">{polish ? "Ukryj" : "Hide"}</button>}
       </div>
     </div>
   );
@@ -88,6 +89,7 @@ async function readProgress(path: string, onProgress: (value: Progress) => void)
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const polish = useLanguage() === "pl";
+  const [entry, setEntry] = useState<"choice" | "server" | "connect">("choice");
   const [step, setStep] = useState(0);
   const [device, setDevice] = useState<DeviceInfo | null>(null);
   const [deviceError, setDeviceError] = useState<string | null>(null);
@@ -104,13 +106,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [modelError, setModelError] = useState<string | null>(null);
-  const [showProfileImport, setShowProfileImport] = useState(false);
   const [perms, setPerms] = useState<{ mic: string } | null>(null);
+  const [manualAddress, setManualAddress] = useState("");
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
   useEffect(() => {
     track("onboarding_step", { step });
-    if (step === 0 && !device) {
+    if (entry === "server" && step === 0 && !device) {
       authFetch("/api/device")
         .then((response) => response.json())
         .then(setDevice)
@@ -132,7 +136,51 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       const timer = setInterval(poll, 2000);
       return () => clearInterval(timer);
     }
-  }, [step, device, cli]);
+  }, [entry, step, device, cli]);
+
+  useEffect(() => {
+    if (entry !== "connect") return;
+    const Detector = (window as any).BarcodeDetector as (new (options?: { formats: string[] }) => { detect(video: HTMLVideoElement): Promise<Array<{ rawValue?: string }>> }) | undefined;
+    if (!Detector || !navigator.mediaDevices?.getUserMedia) {
+      setScanError(polish ? "Ta przeglądarka nie obsługuje skanowania QR. Wpisz adres ręcznie." : "This browser cannot scan QR codes. Enter the address manually.");
+      return;
+    }
+    let alive = true;
+    let stream: MediaStream | null = null;
+    const scan = async () => {
+      if (!alive || !videoRef.current) return;
+      try {
+        const hit = (await new Detector({ formats: ["qr_code"] }).detect(videoRef.current))[0]?.rawValue;
+        if (!hit) return;
+        const url = new URL(hit);
+        const params = new URLSearchParams(url.hash.replace(/^#/, "") || url.search);
+        const code = params.get("pair");
+        if (!code) return;
+        const response = await fetch(`${url.origin}/api/pair/claim`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, deviceName: "browser" }) });
+        if (!response.ok) throw new Error("Pairing failed");
+        window.location.assign(url.origin);
+      } catch (error) {
+        setScanError(error instanceof Error ? error.message : String(error));
+      }
+    };
+    void navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then((value) => {
+        stream = value;
+        if (videoRef.current) {
+          videoRef.current.srcObject = value;
+          void videoRef.current.play();
+        }
+        const timer = window.setInterval(() => void scan(), 700);
+        (videoRef.current as any).__multibotScanTimer = timer;
+      })
+      .catch((error) => setScanError(error instanceof Error ? error.message : String(error)));
+    return () => {
+      alive = false;
+      const timer = (videoRef.current as any)?.__multibotScanTimer as number | undefined;
+      if (timer) window.clearInterval(timer);
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [entry, polish]);
 
   const startProvision = async () => {
     setProvision({ message: "Starting server setup…" });
@@ -163,7 +211,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       if (!response.ok) throw new Error(body.error ?? `Install failed (${response.status})`);
       const job = body.id ?? body.jobId ?? body.progressId;
       if (job) await readProgress(`/api/progress/${encodeURIComponent(job)}`, setCliProgress);
-      else setCliProgress({ done: true, message: "Installation started." });
+      else setCliProgress({ done: true, message: polish ? "Rozpoczęto instalację." : "Installation started." });
       const refreshed = await authFetch("/api/cli-tools").then((response) => response.json());
       const tools = (refreshed.tools ?? []) as CliTool[];
       setCli(tools);
@@ -180,13 +228,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
 
   const saveCustomModel = async () => {
-    if (!modelName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()) return;
+    if (!modelName.trim() || !baseUrl.trim() || !model.trim()) return;
     setModelError(null);
     try {
       const id = modelName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+/, "").slice(0, 64) || "custom-model";
       const response = await authFetch(`/api/models/custom/${encodeURIComponent(id)}`, {
         method: "PUT",
-        body: JSON.stringify({ displayName: modelName.trim(), baseUrl: baseUrl.trim(), model: model.trim(), apiKey: apiKey.trim() }),
+        body: JSON.stringify({ displayName: modelName.trim(), baseUrl: baseUrl.trim(), model: model.trim(), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }),
       });
       if (!response.ok) throw new Error((await response.json()).error ?? `Save failed (${response.status})`);
       setApiKey("");
@@ -204,16 +252,39 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app py-6 pt-[calc(var(--safe-top)+1.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)]">
-      <div role="dialog" aria-modal="true" aria-label="Multibot setup" className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
-        {step === 0 && <div className="flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja MultiBota" : "Multibot setup"} className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
+        {entry === "choice" && <div className="flex flex-col">
+          <MausAvatar color="green" state="happy" size={72} />
+          <h1 className="mt-4 text-[20px] font-semibold text-ink">MultiBot</h1>
+          <p className="mt-1.5 text-[14px] text-ink-secondary">{polish ? "Zacznij od jednej z dwóch rzeczy." : "Start with one of two things."}</p>
+          <button onClick={() => setEntry("server")} className="mt-6 rounded-xl bg-raised p-4 text-left text-ink hover:bg-raised-hover"><div className="font-semibold">{polish ? "Postaw serwer" : "Set up a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{polish ? "To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć." : "This device will be the server. Bots and their memory live here."}</div></button>
+          <button onClick={() => setEntry("connect")} className="mt-3 rounded-xl bg-raised p-4 text-left text-ink"><div className="font-semibold">{polish ? "Zaloguj się do serwera" : "Sign in to a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{polish ? "Serwer już gdzieś stoi. To urządzenie tylko się do niego łączy." : "A server already exists somewhere. This device only connects to it."}</div></button>
+        </div>}
+
+        {entry === "connect" && <div className="flex flex-col">
+          <h1 className="text-[18px] font-semibold text-ink">{polish ? "Zaloguj się do serwera" : "Sign in to a server"}</h1>
+          <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Zeskanuj kod QR pokazany w ustawieniach serwera." : "Scan the QR code shown in server settings."}</p>
+          <video ref={videoRef} muted playsInline className="mt-5 aspect-square w-full rounded-xl bg-black object-cover" />
+          {scanError && <div className="mt-2 text-[12px] text-danger">{scanError}</div>}
+          <div className="mt-4 text-center text-[12px] text-ink-secondary">{polish ? "Wpisz adres ręcznie" : "Enter address manually"}</div>
+          <div className="mt-2 flex gap-2"><input value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="https://server.example" className={`min-w-0 flex-1 ${inputClass}`} /><button onClick={() => manualAddress.trim() && window.location.assign(manualAddress.trim())} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">{polish ? "Połącz" : "Connect"}</button></div>
+          <button onClick={() => setEntry("choice")} className="mt-4 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Wstecz" : "Back"}</button>
+        </div>}
+
+        {entry === "server" && step === 0 && <div className="flex flex-col">
           <MausAvatar color="green" state="happy" size={72} />
           <h1 className="mt-4 text-[20px] font-semibold text-ink">{polish ? "Skonfiguruj urządzenie" : "Set up this device"}</h1>
+          <div className="mt-4 rounded-xl bg-card p-3.5 text-[12.5px] leading-relaxed text-ink-secondary">
+            <div>{polish ? "1. Uruchom MultiBota na komputerze albo telefonie, który ma być serwerem." : "1. Run MultiBot on the computer or phone that will be the server."}</div>
+            <div>{polish ? "2. W ustawieniach serwera wejdź w Połącz urządzenie. Pokaże kod QR." : "2. In server settings, open Connect device. It will show a QR code."}</div>
+            <div>{polish ? "3. Wróć tutaj, wybierz Zaloguj się do serwera i zeskanuj ten kod." : "3. Return here, choose Sign in to a server and scan that code."}</div>
+          </div>
           <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Skanujemy urządzenie, aby dopasować konfigurację." : "We scan this device so setup matches its capabilities."}</p>
           {device ? <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
             <div className="font-medium text-ink">{device.hostname ?? "This device"}</div>
             <div className="mt-1">{device.platform ?? "Unknown platform"} · {device.arch ?? "unknown architecture"}{device.memoryGb ? ` · ${device.memoryGb} GB RAM` : ""}</div>
             {(device.manufacturer || device.model) && <div className="mt-1">{device.manufacturer ?? "Android"} {device.model ?? ""}{device.androidVersion ? ` · Android ${device.androidVersion}` : ""}</div>}
-            {device.termux && <div className="mt-1">Termux host</div>}
+            {device.termux && <div className="mt-1">{polish ? "Host Termux" : "Termux host"}</div>}
             <div className="mt-1">Python {device.pythonVersion ?? (device.python ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))} · Docker {device.dockerVersion ?? (device.docker ? (polish ? "dostępny" : "available") : (polish ? "brak" : "not found"))}</div>
           </div> : <div className="mt-5 flex items-center gap-2 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> {polish ? "Skanowanie urządzenia…" : "Scanning device…"}</div>}
           {deviceError && <div className="mt-3 text-[12px] text-danger">{deviceError}</div>}
@@ -230,7 +301,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         {step === 1 && <div className="flex flex-col">
           <h1 className="text-[18px] font-semibold text-ink">{polish ? "O Tobie" : "About you"}</h1>
           <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Podaj, jak mamy się do Ciebie zwracać." : "Choose how we should address you."}</p>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={`mt-5 ${inputClass}`} />
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={polish ? "Twoje imię" : "Your name"} className={`mt-5 ${inputClass}`} />
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && valid && saveProfile()} placeholder="you@example.com" className={`mt-3 ${inputClass}`} />
           <button onClick={saveProfile} disabled={!valid} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white disabled:opacity-40">{polish ? "Dalej" : "Continue"}</button>
           <button onClick={() => setStep(2)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Może później" : "Maybe later"}</button>
@@ -250,19 +321,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         {step === 3 && <div className="flex flex-col">
           <h1 className="text-[18px] font-semibold text-ink">{polish ? "Dodaj własny model" : "Add a custom model"}</h1>
           <p className="mt-1 text-[13.5px] text-ink-secondary">{polish ? "Opcjonalne. Użyj dowolnego endpointu zgodnego z OpenAI, także lokalnego." : "Optional. Use any OpenAI-compatible endpoint, including a local model."}</p>
-          <input autoFocus value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="Name" className={`mt-4 ${inputClass}`} />
+          <input autoFocus value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={polish ? "Nazwa" : "Name"} className={`mt-4 ${inputClass}`} />
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="Base URL · https://…/v1" className={`mt-2 ${inputClass}`} />
-          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model id" className={`mt-2 ${inputClass}`} />
-          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" autoComplete="off" className={`mt-2 ${inputClass}`} />
-          <button onClick={() => void saveCustomModel()} disabled={!modelName.trim() || !baseUrl.trim() || !model.trim() || !apiKey.trim()} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink disabled:opacity-40">{polish ? "Zapisz model" : "Save model"}</button>
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={polish ? "Identyfikator modelu" : "Model id"} className={`mt-2 ${inputClass}`} />
+          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key (opcjonalny lokalnie)" autoComplete="off" className={`mt-2 ${inputClass}`} />
+          <button onClick={() => void saveCustomModel()} disabled={!modelName.trim() || !baseUrl.trim() || !model.trim()} className="mt-3 w-full rounded-lg bg-raised py-2.5 text-[14px] text-ink disabled:opacity-40">{polish ? "Zapisz model" : "Save model"}</button>
           {modelError && <div className="mt-2 text-[12px] text-danger">{modelError}</div>}
-          <div className="mt-4 rounded-xl bg-card p-3.5 text-[13px] text-ink-secondary">
-            <div>{polish ? "Masz istniejący profil? Zaimportuj go teraz albo później w ustawieniach aplikacji." : "Have an existing profile? Import it now or do this later from App Settings."}</div>
-            <button onClick={() => setShowProfileImport((open) => !open)} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">
-              {showProfileImport ? "Hide profile import" : "Import existing profile"}
-            </button>
-          </div>
-          {showProfileImport && <ProfileImport />}
           <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Dalej" : "Continue"}</button>
           <button onClick={() => setStep(isElectron ? 4 : 5)} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Pomiń" : "Skip for now"}</button>
         </div>}

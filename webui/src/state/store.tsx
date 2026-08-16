@@ -14,6 +14,7 @@ import {
 import type { MascotShape } from "@/lib/mascotShapes";
 import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
+import { getLanguage } from "@/lib/language";
 import { notifyBrowser } from "@/lib/notifications";
 
 export type { MausColor } from "@/lib/mascot";
@@ -31,15 +32,22 @@ export interface OptionCardData {
 export interface Message {
   id: string;
   role: "bot" | "user";
-  kind: "text" | "options" | "activity" | "screen";
+  kind: "text" | "options" | "activity" | "event" | "screen" | "room";
   text?: string;
   card?: OptionCardData;
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
+  event?: { type: "renamed" | "skill-created" | "routine-created" | "goal-progress"; value: string };
+  /** collaboration-room chip: "X texted Y" → opens the read-only room */
+  room?: { id: string; name: string; bot_ids: string[]; ownerBotId: string; status: string };
   /** screen messages: a frame of the bot's computer (base64) */
   png?: string;
   mime?: string;
   attachments?: Array<{ id: string; name: string; mime: string; size: number }>;
+  /** multibot (F12): model, który obsłużył tę wiadomość — badge w UI */
+  model?: string;
+  /** optimistic echo — user message waiting for the server's confirmation */
+  pending?: boolean;
   at: number;
 }
 
@@ -102,6 +110,16 @@ export interface EngineGroup {
   messages?: Array<{ id: string; from: "you" | string; text: string; at: number }>;
 }
 
+/** Ephemeral bot-to-bot collaboration room (read-only for the user). */
+export interface Room {
+  id: string;
+  name: string;
+  task: string;
+  bot_ids: string[];
+  transcript: Array<{ id: string; from: string; text: string; at: number }>;
+  status: "running" | "done" | "failed";
+}
+
 interface AppState {
   bots: Bot[];
   instances: InstanceInfo[];
@@ -118,6 +136,8 @@ interface AppState {
   skillsOpen: boolean;
   // multibot: F9-FE — otwarty pokój grupowy (prawy slot); null = zamknięty
   groupOpen: EngineGroup | null;
+  // multibot: otwarty read-only pokój współpracy botów (zastępuje widok czatu)
+  roomOpen: Room | null;
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
   /** latest live frame of a bot's computer, per botId */
@@ -139,6 +159,7 @@ type Action =
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
+  | { type: "selectComputer"; id: string }
   | { type: "send"; botId: string; text: string; reasoning?: string; attachmentIds?: string[] }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
@@ -170,6 +191,8 @@ type Action =
   | { type: "toggleSkills"; open?: boolean }
   // multibot: F9-FE — otwarcie pokoju grupowego (group) / zamknięcie (null)
   | { type: "toggleGroup"; group: EngineGroup | null }
+  // multibot: otwarcie read-only pokoju współpracy / zamknięcie (null)
+  | { type: "toggleRoom"; room: Room | null }
   | {
       type: "updateBot";
       botId: string;
@@ -227,10 +250,12 @@ function reducer(state: AppState, action: Action): AppState {
     // multibot: selecting a bot leaves group conversation mode.
     case "select":
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id, groupOpen: null }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, groupOpen: null, roomOpen: null }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
+    case "selectComputer":
+      return { ...state, selectedId: action.id };
     // optimistic card settle; the server's message.patch confirms it later
     case "answerCard":
       return withMascotMotion(
@@ -270,11 +295,17 @@ function reducer(state: AppState, action: Action): AppState {
     case "messageAdded": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);
       if (!bot) return state;
-      const next = updateBot(state, bot.id, (b) =>
-        b.messages.some((m) => m.id === action.message.id)
-          ? b
-          : { ...b, messages: [...b.messages, action.message] },
-      );
+      // a confirmed user message replaces the optimistic echo, not duplicates it
+      const withoutPending =
+        action.message.role === "user"
+          ? (msgs: Message[]) => msgs.filter((m) => !(m.role === "user" && m.pending))
+          : (msgs: Message[]) => msgs;
+      const next = updateBot(state, bot.id, (b) => {
+        const msgs = withoutPending(b.messages);
+        return msgs.some((m) => m.id === action.message.id)
+          ? { ...b, messages: msgs }
+          : { ...b, messages: [...msgs, action.message] };
+      });
       const motion =
         action.message.kind === "options"
           ? "thinking"
@@ -372,7 +403,6 @@ function reducer(state: AppState, action: Action): AppState {
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
-        groupOpen: open ? null : state.groupOpen,
       };
     }
     case "toggleAppSettings": {
@@ -444,6 +474,20 @@ function reducer(state: AppState, action: Action): AppState {
         skillsOpen: open ? false : state.skillsOpen,
       };
     }
+    // multibot: read-only bot collaboration room replaces the chat view.
+    case "toggleRoom": {
+      const open = action.room !== null;
+      return {
+        ...state,
+        roomOpen: action.room,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
+      };
+    }
     case "updateBot": {
       const mascotChanged =
         Object.prototype.hasOwnProperty.call(action.patch, "color") ||
@@ -454,9 +498,25 @@ function reducer(state: AppState, action: Action): AppState {
         : state;
       return updateBot(next, action.botId, (b) => ({ ...b, ...action.patch }));
     }
-    // handled entirely by the async wrapper
-    case "send":
-      return withMascotMotion(state, action.botId, "working");
+    // handled entirely by the async wrapper — but the user's message must
+    // appear instantly, not after the server round-trip (SSE messageAdded)
+    case "send": {
+      const bot = state.bots.find((b) => b.id === action.botId);
+      const echo: Message = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        role: "user",
+        kind: "text",
+        text: action.text,
+        at: Date.now(),
+        pending: true,
+      };
+      return bot
+        ? updateBot(withMascotMotion(state, action.botId, "working"), bot.id, (b) => ({
+            ...b,
+            messages: [...b.messages, echo],
+          }))
+        : withMascotMotion(state, action.botId, "working");
+    }
     case "newBot":
     case "duplicateBot":
     case "interrupt":
@@ -477,6 +537,7 @@ const initialState: AppState = {
   memoryOpen: false,
   skillsOpen: false,
   groupOpen: null,
+  roomOpen: null,
   streaming: {},
   screens: {},
   provisioning: {},
@@ -680,7 +741,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     loadAll();
 
-    const es = authenticatedEventSource("/api/events");
+    const es = authenticatedEventSource(`/api/events?lang=${getLanguage()}`);
     es.onopen = () => {
       rawDispatch({ type: "connected", value: true });
       loadAll(); // resync anything missed while disconnected
@@ -703,6 +764,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "group":
           rawDispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
           break;
+        case "room": {
+          // live transcript of the open collaboration room
+          const room = frame.room as Room | undefined;
+          const open = stateRef.current.roomOpen;
+          if (room && open?.id === room.id) rawDispatch({ type: "toggleRoom", room });
+          break;
+        }
         case "message.patch":
           rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message });
           break;

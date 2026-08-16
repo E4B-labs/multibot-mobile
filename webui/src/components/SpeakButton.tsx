@@ -12,6 +12,7 @@ import { Loader2, Square, Volume2, VolumeX } from "lucide-react";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { useLanguage } from "@/lib/language";
 
 type Phase = "idle" | "loading" | "playing" | "error";
 
@@ -20,6 +21,7 @@ let live: { stop: () => void } | null = null;
 
 export function SpeakButton({ text }: { text: string }) {
   const { state } = useStore();
+  const polish = useLanguage() === "pl";
   const [phase, setPhase] = useState<Phase>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -112,12 +114,12 @@ export function SpeakButton({ text }: { text: string }) {
       )}
       title={
         phase === "playing"
-          ? "Stop"
+          ? polish ? "Zatrzymaj" : "Stop"
           : phase === "loading"
-            ? "Loading audio…"
+            ? polish ? "Ładowanie dźwięku…" : "Loading audio…"
             : phase === "error"
-              ? "TTS unavailable — is the local service running?"
-              : "Read aloud"
+              ? polish ? "Synteza mowy niedostępna — czy usługa lokalna działa?" : "TTS unavailable — is the local service running?"
+              : polish ? "Czytaj na głos" : "Read aloud"
       }
     >
       {phase === "loading" ? (

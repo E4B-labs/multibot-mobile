@@ -28,6 +28,7 @@ async function api(path: string, init?: RequestInit): Promise<any> {
 export type ComputerState = "provisioning" | "ready" | "recovering" | "error";
 /** H5 input lease (server/computer-control.ts). */
 export type ControlOwner = "agent" | "user";
+type AgentQueue = { agentOwner?: string; agentQueue?: string[] };
 
 /** State → the one label PLAN-COMPUTER.md H4 allows for it. */
 export function computerStateLabel(state: ComputerState, polish: boolean): string {
@@ -47,11 +48,10 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
  *  the input lease — H5: "When the user does not hold the lease the iframe
  *  is view_only=1."
  *
- *  `token` (opcjonalny) dokleja się do ścieżki websockify, nie do adresu
- *  strony: strona i jej pliki idą publicznie, a iframe w WebView telefonu nie
- *  niesie ciasteczka sesji. noVNC buduje adres WebSocketu z parametru `path`,
- *  więc bearer jedzie tamtędy jako `?token=` i dociera do upgrade'u. Bez tego
- *  ekran komputera w aplikacji był czarny — WebSocket dostawał 401. */
+ *  `token` (optional) is appended to the websockify path, not to the page URL:
+ *  the page + assets are served public (statyczny klient noVNC), a mobile
+ *  WebView iframe carries no cookie, and noVNC builds its WebSocket URL from
+ *  the `path` param — so the bearer rides the upgrade request as ?token=. */
 export function computerVncSrc(botId: string, controlOwner: ControlOwner, token = ""): string {
   // `vnc_lite.html`, nie `vnc.html`: pełna strona noVNC dokłada własny pasek
   // sterowania (logo, rozłącz, ustawienia), a to jest ekran komputera bota, nie
@@ -70,21 +70,41 @@ export function stripVncChrome(doc: Document | null | undefined): void {
   if (doc?.body) doc.body.style.backgroundColor = "#000";
 }
 
+/** noVNC rysuje kursor zdalny jako nakładkę (`.noVNC_cursor`). Gdy użytkownik
+ *  odda sterowanie (`owner === "agent"`), ten kursor zostaje tam, gdzie go
+ *  zostawił człowiek, i wygląda, jakby wciąż sterował — mylące. Chowamy go
+ *  dokładnie w chwili oddania, nie po następnej klatce. */
+const CURSOR_HIDE_ID = "__mb_vnc_cursor_hide__";
+export function setRemoteCursorHidden(doc: Document | null | undefined, hidden: boolean): void {
+  if (!doc) return;
+  let style = doc.getElementById(CURSOR_HIDE_ID) as HTMLStyleElement | null;
+  if (hidden && !style) {
+    style = doc.createElement("style");
+    style.id = CURSOR_HIDE_ID;
+    style.textContent = "#noVNC_cursor, .noVNC_cursor { display: none !important; }";
+    (doc.head || doc.documentElement).appendChild(style);
+  } else if (!hidden && style) {
+    style.remove();
+  }
+}
+
 const POLL_MS = 4000;
 // server lease (computer-control.ts LEASE_MS) is 30s; renew at a third of
 // that so a slow tick never lets it lapse
 const RENEW_MS = 10_000;
 
 export function ComputerPanel({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [computerState, setComputerState] = useState<ComputerState>("provisioning");
   const [detail, setDetail] = useState<string | null>(null);
   const [owner, setOwner] = useState<ControlOwner>("agent");
+  const [agentQueue, setAgentQueue] = useState<AgentQueue>({});
   const [controlPending, setControlPending] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const ownerRef = useRef<ControlOwner>("agent");
   ownerRef.current = owner;
+  const screenRef = useRef<HTMLIFrameElement>(null);
 
   // poll the harness for the container's state; ready/provisioning/
   // recovering/error only — never a user-facing "off"
@@ -96,6 +116,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           if (!alive) return;
           setComputerState(r.state);
           setDetail(r.detail ?? null);
+          setAgentQueue(r);
         })
         .catch((e) => {
           if (alive) {
@@ -118,7 +139,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     let alive = true;
     setOwner("agent");
     api(`/api/bots/${bot.id}/computer/control`)
-      .then((r) => alive && setOwner(r.owner))
+      .then((r) => { if (!alive) return; setOwner(r.owner); setAgentQueue(r); })
       .catch(() => {});
     const botId = bot.id;
     return () => {
@@ -135,7 +156,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     if (owner !== "user") return;
     const timer = setInterval(() => {
       api(`/api/bots/${bot.id}/computer/control/renew`, { method: "POST" })
-        .then((r) => setOwner(r.owner))
+        .then((r) => { setOwner(r.owner); setAgentQueue(r); })
         .catch(() => setOwner("agent"));
     }, RENEW_MS);
     return () => clearInterval(timer);
@@ -151,17 +172,33 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  // Chowaj kursor zdalny dokładnie w chwili oddania sterowania — nie czekaj na
+  // przeładowanie iframe'a (efekt wyżej działa tylko przy onLoad).
+  useEffect(() => {
+    setRemoteCursorHidden(screenRef.current?.contentDocument, owner === "agent");
+  }, [owner, computerState, fullscreen]);
+
+  // K5: faza nagrywania skilla leci z TeachCard (boczny) jako zdarzenie, żeby
+  // pilulka "Naucz z demonstracji" i pasek nagrywania mogły siedzieć NA ekranie
+  // komputera, a nie tylko w panelu bocznym.
+  const [teachPhase, setTeachPhase] = useState<string>("idle");
+  useEffect(() => {
+    const onPhase = (e: Event) => setTeachPhase(((e as CustomEvent).detail as { phase: string }).phase);
+    window.addEventListener("mb:teach:phase", onPhase);
+    return () => window.removeEventListener("mb:teach:phase", onPhase);
+  }, []);
+
   const acquireControl = () => {
     setControlPending(true);
     api(`/api/bots/${bot.id}/computer/control/acquire`, { method: "POST" })
-      .then((r) => setOwner(r.owner))
+      .then((r) => { setOwner(r.owner); setAgentQueue(r); })
       .catch(() => {})
       .finally(() => setControlPending(false));
   };
   const releaseControl = () => {
     setControlPending(true);
     api(`/api/bots/${bot.id}/computer/control/release`, { method: "POST" })
-      .then((r) => setOwner(r.owner))
+      .then((r) => { setOwner(r.owner); setAgentQueue(r); })
       .catch(() => {})
       .finally(() => setControlPending(false));
   };
@@ -179,14 +216,24 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       {owner === "user" ? (polish ? "Oddaj sterowanie" : "Hand back") : polish ? "Przejmij sterowanie" : "Take control"}
     </button>
   );
+  const agentName = state.bots.find((item) => item.id === agentQueue.agentOwner)?.name ?? agentQueue.agentOwner;
+  const queuedCount = agentQueue.agentQueue?.length ?? 0;
+  // H4: the iframe cannot set an Authorization header, so the bearer rides the
+  // websockify path as ?token= — mobile WebView has no session cookie to lean
+  // on. Desktop keeps working either way (cookie or token).
+  const vncToken = getAuthToken();
 
   const screen = (fullscreenView: boolean) =>
     computerState === "ready" ? (
       <div className="relative h-full w-full">
         <iframe
+          ref={screenRef}
           title={polish ? "Ekran bota" : "Bot screen"}
-          src={computerVncSrc(bot.id, owner, getAuthToken())}
-          onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
+          src={computerVncSrc(bot.id, owner, vncToken)}
+          onLoad={(e) => {
+            stripVncChrome(e.currentTarget.contentDocument);
+            setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
+          }}
           className="h-full w-full border-0"
         />
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
@@ -197,6 +244,34 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             onClick={() => setFullscreen(true)}
             className="absolute inset-0 cursor-zoom-in"
           />
+        )}
+        {/* K5: pilulka "Naucz z demonstracji" NA ekranie komputera — start
+            nagrywania stąd, a nie z bocznego panelu. Znika, gdy nagrywanie
+            trwa (wtedy jest pasek u góry). */}
+        {teachPhase === "idle" && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:start"))}
+            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-[13px] font-medium text-white backdrop-blur hover:bg-black/80"
+          >
+            {polish ? "Naucz z demonstracji" : "Learn from demonstration"}
+          </button>
+        )}
+        {(teachPhase === "recording" || teachPhase === "stopping") && (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 bg-danger/90 px-3 py-1.5 text-[12px] font-medium text-white">
+            <span className="size-2 animate-pulse rounded-full bg-white" />
+            {polish
+              ? "Nagrywanie — pokaż zadanie na komputerze bota"
+              : "Recording — demonstrate the task on the bot's computer"}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:stop"))}
+              className="ml-1 rounded p-0.5 hover:bg-white/20"
+              aria-label={polish ? "Zatrzymaj" : "Stop"}
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
       </div>
     ) : (
@@ -215,7 +290,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           <button
             onClick={() => dispatch({ type: "toggleSettings", open: true })}
             className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-            title="Bot settings"
+            title={polish ? "Ustawienia bota" : "Bot settings"}
           >
             <Settings size={18} />
           </button>
@@ -247,6 +322,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               {polish ? "Pełny ekran" : "Full screen"}
             </button>
           </div>
+          {(agentName || queuedCount > 0) && (
+            <div className="mb-2 rounded-lg bg-raised/60 px-3 py-2 text-[12px] text-ink-secondary">
+              {agentName && <div>{polish ? `Teraz prowadzi: ${agentName}` : `Now driving: ${agentName}`}</div>}
+              {queuedCount > 0 && <div>{polish ? `W kolejce: ${queuedCount}` : `Queued: ${queuedCount}`}</div>}
+            </div>
+          )}
 
           {/* Ramka trzyma kształt pulpitu (16:9, scripts/computer-native.sh), zamiast
               rozpychać się na całą wysokość panelu — inaczej podgląd był wąskim paskiem
@@ -272,8 +353,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
-          <div className="flex items-center justify-between px-4 py-3">
+        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
+        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px] pt-[calc(var(--safe-top)+5%)] pb-[calc(var(--safe-bottom)+5%)] pl-[calc(var(--safe-left)+5%)] pr-[calc(var(--safe-right)+5%)]">
+          <div className="flex items-center justify-between px-1 py-2">
             <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             <div className="flex items-center gap-2">
               {controlButton}
@@ -285,7 +368,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               </button>
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center overflow-hidden">{screen(true)}</div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden">
+            <div className="h-full w-full overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10">
+              {screen(true)}
+            </div>
+          </div>
         </div>
       )}
     </>
