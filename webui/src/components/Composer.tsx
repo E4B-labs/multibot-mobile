@@ -104,12 +104,11 @@ export function Composer({ bot }: { bot: Bot }) {
   // Bez tego voice nie zadziała — trzeba mostka natywnego (eas build).
   const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
-  // multibot: to WebView podaje e.results jako LISTĘ SKUMULOWANĄ (rośnie przy
-  // każdym evencie), a e.resultIndex zwraca 0 — stąd wcześniejsze dublowanie,
-  // bo każdy event doklejał wszystko od nowa. Najpewniejsze: przy każdym
-  // evencie PRZEBUDOWUJEMY tekst od zera z e.results (listę traktujemy za
-  // źródło prawdy) i nie trzymamy własnego stanu doklejanego. Ewentualne echo
-  // interim (to samo co właśnie sfinalizowano) obcinamy.
+  // multibot: to WebView podaje e.results jako LISTĘ SKUMULOWANĄ, która rośnie
+  // przez wielokrotne dołączanie tego samego (rozszerzającego się) wyniku
+  // finalnego — stąd dublowanie przy łączeniu wszystkich finali. Bierzemy
+  // TYLKO OSTATNI wynik finalny (przy rosnącej re-emisji to najpełniejsza
+  // wersja) i obcinamy ewentualne echo w interim.
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
@@ -120,19 +119,19 @@ export function Composer({ bot }: { bot: Bot }) {
     rec.interimResults = true;
     rec.onresult = (e: any) => {
       let interim = "";
-      let finalStr = "";
+      let lastFinal = "";
       const results = e.results as any;
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         const tr = String(r[0]?.transcript ?? "");
-        if (r.isFinal) finalStr += tr;
+        if (r.isFinal) lastFinal = tr;
         else interim += tr;
       }
       // niektóre WebView powtarzają w interim to, co przed chwilą sfinalizowano
-      if (interim && finalStr && interim.startsWith(finalStr)) {
-        interim = interim.slice(finalStr.length);
+      if (interim && lastFinal && interim.startsWith(lastFinal)) {
+        interim = interim.slice(lastFinal.length);
       }
-      const recognized = (finalStr + (interim.trim() ? (finalStr ? " " : "") + interim.trim() : "")).trim();
+      const recognized = (lastFinal + (interim.trim() ? (lastFinal ? " " : "") + interim.trim() : "")).trim();
       const shown = [baseText.current, recognized].filter(Boolean).join(" ");
       setText(shown);
     };
