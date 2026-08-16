@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore, formatTime, type Bot } from "@/state/store";
-import { MausAvatar, InitialsAvatar } from "./Avatar";
+import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
@@ -372,9 +372,8 @@ export function Sidebar() {
                 document.body.classList.remove("mb-drawer-open");
                 dispatch({ type: "toggleAppSettings" });
               }}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
             >
-              <InitialsAvatar initials={profileInitials(state.config?.profile)} size={28} />
               <span className="truncate text-[14px] text-ink">
                 {state.config?.profile?.name?.trim() || state.config?.profile?.email?.trim() || "You"}
               </span>
