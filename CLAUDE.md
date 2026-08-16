@@ -58,17 +58,25 @@ białym ekranie, bo JavaScript woła moduł, którego w paczce nie ma.
 3. **EAS pakuje do wysyłki pliki wzięte z gita.** Poprawka leżąca tylko na
    dysku nie trafi do builda. Commituj PRZED `eas build`.
 
-### Przed KAŻDYM `eas update` sprawdź, co stoi na kanale
+### Przed KAŻDYM `eas update` sprawdź, Z JAKIEGO COMMITA stoi to, co na kanale
 
 ```sh
-npx eas-cli@latest update:list --branch production --limit 1
+npx eas-cli@latest update:view <group-id> --json    # pole gitCommitHash
+git cat-file -t <hash>                              # masz go u siebie?
 ```
 
-Na tym kanale publikuje więcej niż jedna osoba, a `eas update` bierze to, co
-masz na dysku, i kładzie na wierzch. Publikacja z bazy starszej niż to, co
-telefon już dostał, cicho cofa cudzą pracę — kosztowało to już jeden pełny
-rollback. Najnowszy wpis nie jest twoim ostatnim znanym stanem: zatrzymaj się
-i dociągnij `main`, zanim wydasz cokolwiek.
+Sama data z `update:list` nic nie mówi. Na tym kanale publikuje więcej niż
+jedna osoba, każdy ze swojego dysku, a `eas update` zawsze kładzie CAŁĄ paczkę
+na wierzch — nie ma czegoś takiego jak nałożenie zmiany na cudzą wersję.
+
+Pułapka, która kosztowała już dwie publikacje: aktualizacja na kanale bywa
+wydana z commita, którego **nie ma na GitHubie**. Wtedy wydanie z `main`, choćby
+najświeższego, cofa tamtą pracę i nikt nie umie jej odtworzyć — bo istnieje
+wyłącznie na cudzym dysku.
+
+Reguła: `gitCommitHash` najnowszej aktualizacji musi być commitem, który masz
+w historii. Nie masz go — **nie publikuj**. Poproś autora, żeby wypchnął swoją
+gałąź, dociągnij ją, dopiero wtedy wydawaj.
 
 Bundle interfejsu też nie jedzie sam. `webui/src` trafia do aplikacji dopiero
 przez `npm run webui`, który przebudowuje `webui/` i zapisuje `src/webui-html.ts`.
