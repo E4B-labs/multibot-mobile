@@ -125,6 +125,18 @@ function Shell() {
   const { state } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
+  // Domyślnie czat, nie drawer: przy (re)otwarciu apki zamykamy panel boczny,
+  // nawet gdy użytkownik zostawił go otwartego i klasa `mb-drawer-open`
+  // przetrwała w dokumencie WebView (Android nie zawsze przeładowuje widok).
+  useEffect(() => {
+    const close = () => document.body.classList.remove("mb-drawer-open");
+    close();
+    const onVis = () => {
+      if (document.visibilityState === "visible") close();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
