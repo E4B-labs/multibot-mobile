@@ -22,9 +22,15 @@ const REF = process.env.SYNC_REF || "original/main";
 // przeróbki mobilne. Każda pozycja z powodem — lista bez powodów po pół roku
 // jest nie do odróżnienia od listy przypadkowej.
 const PHONE_OWNED = [
-  // Nic tu jeszcze nie ma. Pierwszy plik, który przerobisz pod telefon na tyle,
-  // że wersja z oryginału go psuje, dopisujesz tutaj razem z jednym zdaniem
-  // dlaczego. Dopóki lista jest pusta, kopiujemy wszystko.
+  // Zadanie B4: język wizualny z inspiracje.png. Oryginał ma tu wersję sprzed
+  // przeróbki, więc skopiowanie go skasowałoby całą robotę nad wyglądem.
+  "components/Sidebar.tsx",
+  "styles.css",
+  // Te dwa w oryginale w ogóle nie istnieją — powstały pod telefon. Wpisane
+  // profilaktycznie, na wypadek gdyby ktoś dołożył pliki o tych nazwach po
+  // tamtej stronie.
+  "components/ListRow.tsx",
+  "components/SearchPalette.tsx",
 ];
 
 function git(...args) {
