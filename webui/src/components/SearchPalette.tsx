@@ -19,6 +19,7 @@ export interface SearchPaletteProps {
   onQueryChange: (value: string) => void;
   activeTab: SearchTab;
   onTabChange: (tab: SearchTab) => void;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 /**
@@ -31,12 +32,14 @@ export function SearchPalette({
   onQueryChange,
   activeTab,
   onTabChange,
+  inputRef,
 }: SearchPaletteProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 rounded-card border border-hairline bg-card px-3 py-2.5">
         <Search size={16} className="shrink-0 text-ink-secondary" />
         <input
+          ref={inputRef}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search"

@@ -1,8 +1,8 @@
 import { track } from "@/lib/analytics";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Bot as BotIcon,
   BellDot,
+  Bot as BotIcon,
   ClipboardCopy,
   Copy,
   EyeOff,
@@ -12,8 +12,9 @@ import {
   Pin,
   PinOff,
   Plus,
-  Settings,
   Puzzle,
+  Search,
+  Settings,
   Trash2,
   Users,
   X,
@@ -21,6 +22,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
+import { MAUS_COLORS } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -28,8 +30,6 @@ import { authFetch } from "@/lib/auth";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
 import { useLanguage } from "@/lib/language";
-
-const isElectron = navigator.userAgent.includes("Electron");
 
 /** "Milind Soni" → "MS", "milind" → "M", "you@x.dev" → "Y", unset → "?" */
 function profileInitials(profile?: { name?: string; email?: string }): string {
@@ -42,7 +42,7 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
       .join("");
   }
   const email = profile?.email?.trim();
-  return email ? email[0]!.toUpperCase() : "?";
+  return email ? email[0]!.toUpperCase() : "R";
 }
 
 function preview(bot: Bot): string {
@@ -160,65 +160,6 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
   );
 }
 
-function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
-  const { state, dispatch } = useStore();
-  const selected = state.selectedId === bot.id;
-  const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
-  const last = bot.messages[bot.messages.length - 1];
-  return (
-    <button
-      onClick={() => dispatch({ type: "select", id: bot.id })}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
-      }}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-card border border-hairline bg-card px-3 py-2.5 text-left",
-        selected ? "ring-1 ring-accent/60" : "hover:bg-raised/60",
-      )}
-    >
-      <MausAvatar
-        color={bot.color}
-        shape={bot.mascotShape}
-        state={stateForBot(bot)}
-        size={56}
-        motion={mascotMotion?.kind ?? "none"}
-        motionKey={mascotMotion?.nonce ?? 0}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-ink">
-            {bot.pinned && <Pin size={12} className="shrink-0 text-ink-secondary" />}
-            <span className="truncate">{bot.name}</span>
-          </span>
-          {selected && last && (
-            <span className="shrink-0 text-xs text-ink-secondary">
-              {formatTime(last.at)}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[13px] text-ink-secondary">
-            {preview(bot)}
-          </span>
-          {/* multibot: needs-attention dot — same pattern as the unread dot below,
-              warning color + reason tooltip; wins over unread (more urgent). */}
-          {bot.needsAttention != null ? (
-            <span
-              title={bot.needsAttention}
-              className="size-2 shrink-0 rounded-full bg-warning"
-            />
-          ) : (
-            bot.unread && (
-              <span className="size-2 shrink-0 rounded-full bg-accent" />
-            )
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
-
 function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: () => void }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
@@ -271,6 +212,71 @@ function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: ()
         {polish ? "Usuń grupę" : "Delete group"}
       </button>
     </div>
+  );
+}
+
+// multibot: minimalistyczna "blob-twarz" rysowana białą kreską na kolorowym
+// tle awatara (inspiracja: kwadratowy avatar z uśmiechniętą mordką).
+function BlobFace({ expression }: { expression?: string | null }) {
+  const ex = (expression ?? "happy").toLowerCase();
+  let mouth = "M9 18 Q16 25 23 18"; // uśmiech
+  if (ex.includes("sad") || ex.includes("frown")) mouth = "M9 22 Q16 17 23 22";
+  else if (ex.includes("think") || ex.includes("sleep") || ex.includes("neutral")) mouth = "M11 20 H21";
+  else if (ex.includes("surpris") || ex.includes("shock")) mouth = "M14 18 a2.2 2.2 0 1 0 4 0 a2.2 2.2 0 1 0 -4 0";
+  return (
+    <svg viewBox="0 0 32 32" className="size-1/2" fill="none" aria-hidden>
+      <circle cx="11" cy="13" r="1.7" fill="white" />
+      <circle cx="21" cy="13" r="1.7" fill="white" />
+      <path d={mouth} stroke="white" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
+  const { state, dispatch } = useStore();
+  const selected = state.selectedId === bot.id;
+  const last = bot.messages[bot.messages.length - 1];
+  return (
+    <button
+      onClick={() => dispatch({ type: "select", id: bot.id })}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
+      }}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left",
+        selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
+      )}
+    >
+      <div className="relative shrink-0">
+        <div
+          className="flex size-12 items-center justify-center rounded-[14px]"
+          style={{ backgroundColor: MAUS_COLORS[bot.color] ?? "#8a8a8f" }}
+        >
+          <BlobFace expression={stateForBot(bot)} />
+        </div>
+        {/* zielona kropka "online" — adaptacja: pokazujemy przy nieprzeczytanych */}
+        {bot.unread && (
+          <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 ring-2 ring-[#0d0d0f]" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[15px] font-semibold text-ink">{bot.name}</span>
+            {bot.description && (
+              <span className="max-w-[120px] shrink-0 truncate rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-ink-secondary">
+                {bot.description}
+              </span>
+            )}
+          </div>
+          {last && (
+            <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(last.at)}</span>
+          )}
+        </div>
+        <div className="mt-0.5 truncate text-[13px] text-ink-secondary">{preview(bot)}</div>
+      </div>
+    </button>
   );
 }
 
@@ -347,8 +353,7 @@ function GroupsSection({
   };
 
   return (
-    <div className="border-b border-hairline/40 px-2 pb-2 pt-1">
-
+    <div className="border-b border-white/5 px-2 pb-2 pt-1">
       {(groups ?? []).map((g) => (
         <button
           key={g.id}
@@ -359,7 +364,7 @@ function GroupsSection({
           }}
           className={cn(
             "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left",
-            state.groupOpen?.id === g.id ? "bg-raised" : "hover:bg-raised/50",
+            state.groupOpen?.id === g.id ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
           )}
         >
           <span className="flex -space-x-2 shrink-0">
@@ -433,9 +438,9 @@ export function Sidebar() {
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
-  // multibot: B4 — paleta wyszukiwania (inspiracje.png): zapytanie + aktywna zakładka
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
   // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
@@ -494,152 +499,158 @@ export function Sidebar() {
   }, [addMenuOpen]);
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-hairline/40 bg-panel">
-      {/* Titlebar: real traffic lights in Electron, faux ones in the browser */}
-      <div
-        className="flex items-center justify-between px-4 pt-3.5 pb-1"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        {isElectron ? (
-          <div className="w-14" />
-        ) : (
-          <div className="flex items-center gap-2">
-            {/* Przycisk zamykania draweru — tylko mobile (md:hidden). Na szerokim
-               ekranie pasek boczny jest trwały i tego przycisku nie potrzeba. */}
-            <button
-              onClick={() => document.body.classList.remove("mb-drawer-open")}
-              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink md:hidden"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              aria-label={polish ? "Zamknij menu" : "Close menu"}
-            >
-              <X size={20} />
-            </button>
-            <span className="size-3 rounded-full bg-[#ff5f57]" />
-            <span className="size-3 rounded-full bg-[#febc2e]" />
-            <span className="size-3 rounded-full bg-[#28c840]" />
-          </div>
-        )}
-        <div className="relative" data-add-menu>
+    <aside className="fixed inset-0 z-[60] bg-black/40 md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
+      {/* Rozmyte, kolorowe tło (bokeh) — tylko mobile; widać je lekko na
+          krawędziach ekranu wokół karty. */}
+      <div className="absolute inset-0 overflow-hidden md:hidden" aria-hidden>
+        <div className="absolute -left-20 -top-24 size-72 rounded-full bg-orange-500/45 blur-3xl" />
+        <div className="absolute -right-16 top-1/4 size-80 rounded-full bg-fuchsia-600/35 blur-3xl" />
+        <div className="absolute -bottom-24 left-8 size-80 rounded-full bg-sky-500/35 blur-3xl" />
+        <div className="absolute bottom-12 right-0 size-64 rounded-full bg-emerald-500/25 blur-3xl" />
+      </div>
+
+      {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu. */}
+      <div className="relative mx-2 my-2 flex h-[calc(100%-1rem)] w-[calc(100%-1rem)] flex-col overflow-hidden rounded-[28px] bg-[#0d0d0f] shadow-2xl shadow-black/60 md:mx-0 md:my-0 md:h-full md:w-full md:rounded-none">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
+          {/* X zamyka drawer (tylko mobile) */}
           <button
-            onClick={() => setAddMenuOpen((v) => !v)}
-            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title={polish ? "Dodaj bota albo grupę" : "Add bot or group"}
-            aria-expanded={addMenuOpen}
+            onClick={() => document.body.classList.remove("mb-drawer-open")}
+            className="rounded-md p-1 text-ink-secondary hover:bg-white/10 hover:text-ink md:hidden"
+            aria-label={polish ? "Zamknij menu" : "Close menu"}
           >
-            <Plus size={20} strokeWidth={2} />
+            <X size={20} />
           </button>
-          {addMenuOpen && (
-            <div className="absolute right-0 top-8 z-30 w-44 rounded-xl border border-hairline/40 bg-card p-1.5 shadow-lg">
-              <button
-                onClick={() => {
-                  track("bot_created");
-                  setAddMenuOpen(false);
-                  dispatch({ type: "newBot" });
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised"
-              >
-                <BotIcon size={15} className="text-ink-secondary" />
-                {polish ? "Nowy bot" : "New bot"}
-              </button>
-              <button
-                onClick={() => {
-                  setAddMenuOpen(false);
-                  setGroupCreateOpen(true);
-                }}
-                disabled={groupBots.length === 0}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Users size={15} className="text-ink-secondary" />
-                {polish ? "Nowa grupa" : "New group"}
-              </button>
+          {/* Avatar użytkownika */}
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white">
+            {profileInitials(state.config?.profile) || "R"}
+          </div>
+          <div className="flex-1" />
+          {/* Szukaj */}
+          <button
+            onClick={() => searchInputRef.current?.focus()}
+            className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
+            aria-label={polish ? "Szukaj" : "Search"}
+          >
+            <Search size={20} />
+          </button>
+          {/* Dodaj */}
+          <div className="relative" data-add-menu>
+            <button
+              onClick={() => setAddMenuOpen((v) => !v)}
+              className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
+              aria-label={polish ? "Dodaj bota albo grupę" : "Add bot or group"}
+              aria-expanded={addMenuOpen}
+            >
+              <Plus size={20} strokeWidth={2} />
+            </button>
+            {addMenuOpen && (
+              <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
+                <button
+                  onClick={() => {
+                    track("bot_created");
+                    setAddMenuOpen(false);
+                    dispatch({ type: "newBot" });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <BotIcon size={15} className="text-ink-secondary" />
+                  {polish ? "Nowy bot" : "New bot"}
+                </button>
+                <button
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    setGroupCreateOpen(true);
+                  }}
+                  disabled={groupBots.length === 0}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Users size={15} className="text-ink-secondary" />
+                  {polish ? "Nowa grupa" : "New group"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search — B4: paleta wyszukiwania (inspiracje.png) */}
+        <div className="px-4 pb-2">
+          <SearchPalette
+            query={query}
+            onQueryChange={setQuery}
+            activeTab={tab}
+            onTabChange={setTab}
+            inputRef={searchInputRef}
+          />
+        </div>
+
+        {/* Unified conversation list: group rows sit with bots, above plugins. */}
+        <div className="flex-1 overflow-y-auto px-2">
+          {groupBots.length > 0 && (
+            <GroupsSection
+              bots={groupBots}
+              createOpen={groupCreateOpen}
+              onCreateOpenChange={setGroupCreateOpen}
+              onMenu={setGroupMenu}
+            />
+          )}
+          <div className="flex flex-col gap-0.5">
+            {filteredBots.map((b) => (
+              <BotRow key={b.id} bot={b} onMenu={setMenu} />
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-3 pb-3 pt-2">
+          {engineOffline && (
+            <div
+              title="Local service offline — custom-model bots can't run. Check App Settings."
+              className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
+            >
+              <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
+              Service offline
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Search — B4: paleta wyszukiwania (inspiracje.png) */}
-      <div className="px-3 pt-2 pb-3">
-        <SearchPalette
-          query={query}
-          onQueryChange={setQuery}
-          activeTab={tab}
-          onTabChange={setTab}
-        />
-      </div>
-
-      {/* Unified conversation list: group rows sit with bots, above plugins. */}
-      <div className="flex-1 overflow-y-auto px-2">
-        {groupBots.length > 0 && (
-          <GroupsSection
-            bots={groupBots}
-            createOpen={groupCreateOpen}
-            onCreateOpenChange={setGroupCreateOpen}
-            onMenu={setGroupMenu}
-          />
-        )}
-        <div className="flex flex-col gap-0.5">
-          {filteredBots.map((b) => (
-            <BotListItem key={b.id} bot={b} onMenu={setMenu} />
-          ))}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-3 pb-3 pt-2">
-        {/* multibot: F11 — subtelna kropka statusu silnika, tylko offline+slafy;
-            szara bg-raised-hover = konwencja "Service offline" */}
-        {engineOffline && (
-          <div
-            title="Local service offline — custom-model bots can't run. Check App Settings."
-            className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-ink-secondary"
+          <button
+            onClick={() => {
+              document.body.classList.remove("mb-drawer-open");
+              dispatch({ type: "togglePlugins", open: true });
+            }}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
           >
-            <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
-            Service offline
-          </div>
-        )}
-        <button
-          onClick={() => {
-            // Jak przy zębatce: na mobile drawer i panel się nakładają, więc
-            // zamykamy drawer, by modal wtyczek był na wierzchu i używalny.
-            document.body.classList.remove("mb-drawer-open");
-            dispatch({ type: "togglePlugins", open: true });
-          }}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
-        >
-          <Puzzle size={20} className="text-ink-secondary" />
+            <Puzzle size={20} className="text-ink-secondary" />
             <span className="text-[14px] text-ink">{polish ? "Wtyczki" : "Plugins"}</span>
-        </button>
-        <div className="flex items-center">
-          <button
-            onClick={() => {
-              // Na mobile drawer i panel ustawień się nakładają (scrim przykrywa
-              // panel), więc zamykamy drawer, by otwarty panel był używalny.
-              document.body.classList.remove("mb-drawer-open");
-              dispatch({ type: "toggleAppSettings" });
-            }}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
-          >
-            <InitialsAvatar initials={profileInitials(state.config?.profile)} size={28} />
-            <span className="truncate text-[14px] text-ink">
-              {state.config?.profile?.name?.trim() || state.config?.profile?.email?.trim() || "You"}
-            </span>
           </button>
-          <button
-            onClick={() => {
-              document.body.classList.remove("mb-drawer-open");
-              dispatch({ type: "toggleAppSettings" });
-            }}
-            className="rounded-md p-2 text-ink-secondary hover:bg-raised hover:text-ink"
-            title={polish ? "Ustawienia aplikacji" : "App settings"}
-          >
-            <Settings size={18} />
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => {
+                document.body.classList.remove("mb-drawer-open");
+                dispatch({ type: "toggleAppSettings" });
+              }}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
+            >
+              <InitialsAvatar initials={profileInitials(state.config?.profile)} size={28} />
+              <span className="truncate text-[14px] text-ink">
+                {state.config?.profile?.name?.trim() || state.config?.profile?.email?.trim() || "You"}
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                document.body.classList.remove("mb-drawer-open");
+                dispatch({ type: "toggleAppSettings" });
+              }}
+              className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
+              title={polish ? "Ustawienia aplikacji" : "App settings"}
+            >
+              <Settings size={18} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
-      {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
+        {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
+        {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
+      </div>
     </aside>
   );
 }
