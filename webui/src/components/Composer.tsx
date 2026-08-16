@@ -104,16 +104,13 @@ export function Composer({ bot }: { bot: Bot }) {
   // Bez tego voice nie zadziała — trzeba mostka natywnego (eas build).
   const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
-  // multibot: monotoniczny licznik przetworzonych wyników — gwarantuje, że
-  // każdy fragment (final/interim) trafi do tekstu dokładnie raz. Poleganie
-  // na e.resultIndex w niektórych WebView (zwłaszcza mobilnych) zwraca 0 przy
-  // każdym evencie, przez co ten sam finalny wynik był wielokrotnie doklejany
-  // (duplikacja wiadomości).
-  const processed = useRef(0);
+  // multibot: niektóre WebView (mobilne) emitują ten sam finalny wynik
+  // wielokrotnie (duplikacja wiadomości). Deduplikujemy po treści — pomijamy
+  // final, który już znajduje się na końcu baseText. To działa niezależnie od
+  // tego, czy e.results jest skumulowana (Chrome), czy nie.
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
-    processed.current = 0;
     const rec: any = new WebSpeech();
     webRec.current = rec;
     rec.lang = navigator.language || "en-US";
@@ -122,16 +119,20 @@ export function Composer({ bot }: { bot: Bot }) {
     rec.onresult = (e: any) => {
       let interim = "";
       const results = e.results as any;
-      for (let i = processed.current; i < results.length; i++) {
+      for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r.isFinal) {
           const t = String(r[0]?.transcript ?? "").trim();
-          if (t) baseText.current = baseText.current ? `${baseText.current} ${t}` : t;
+          if (t) {
+            const tail = baseText.current.endsWith(" ") ? "" : " ";
+            if (baseText.current !== t && !baseText.current.endsWith(tail + t)) {
+              baseText.current = baseText.current ? baseText.current + tail + t : t;
+            }
+          }
         } else {
           interim += r[0]?.transcript ?? "";
         }
       }
-      processed.current = results.length;
       const shown = interim.trim()
         ? baseText.current
           ? `${baseText.current} ${interim.trim()}`
