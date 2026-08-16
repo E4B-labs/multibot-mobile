@@ -10,6 +10,7 @@
 // the agent owns input by default; the user can take it, see-through
 // continues either way (agent can always watch, never blocked from reading).
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, Maximize2, Settings, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -78,6 +79,17 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   const [fullscreen, setFullscreen] = useState(false);
   const ownerRef = useRef<ControlOwner>("agent");
   ownerRef.current = owner;
+  // Na mobile panel idzie do document.body (createPortal), by był warstwą
+  // najwyższą (z-[90]) nad drawerem (z-[60]) — niezależnie od kontekstu
+  // nakładania. Na desktopie render w miejscu (prawa kolumna).
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 700px)");
+    const update = () => setMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // poll the harness for the container's state; ready/provisioning/
   // recovering/error only — never a user-facing "off"
@@ -200,9 +212,9 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </div>
     );
 
-  return (
+  const panel = (
     <>
-      <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
+      <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -265,7 +277,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
+        <div className="fixed inset-0 z-[100] flex flex-col bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             <div className="flex items-center gap-2">
@@ -283,4 +295,6 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       )}
     </>
   );
+
+  return mobile ? createPortal(panel, document.body) : panel;
 }
