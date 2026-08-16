@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Maximize2, Settings, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { authFetch, getAuthToken } from "@/lib/auth";
+import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { TeachCard } from "./SkillsPanel";
 
@@ -45,19 +45,13 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
 
 /** The noVNC iframe src. view_only=1 iff the agent (not this viewer) holds
  *  the input lease — H5: "When the user does not hold the lease the iframe
- *  is view_only=1."
- *
- *  `token` (optional) is appended to the websockify path, not to the page URL:
- *  the page + assets are served public (statyczny klient noVNC), a mobile
- *  WebView iframe carries no cookie, and noVNC builds its WebSocket URL from
- *  the `path` param — so the bearer rides the upgrade request as ?token=. */
-export function computerVncSrc(botId: string, controlOwner: ControlOwner, token = ""): string {
+ *  is view_only=1." */
+export function computerVncSrc(botId: string, controlOwner: ControlOwner): string {
   // `vnc_lite.html`, nie `vnc.html`: pełna strona noVNC dokłada własny pasek
   // sterowania (logo, rozłącz, ustawienia), a to jest ekran komputera bota, nie
   // klient VNC — sterowanie ma UI panelu. Lite umie dokładnie to, czego
   // potrzebujemy: `path`, `scale`, `view_only`.
-  const ws = `api/bots/${botId}/computer/vnc/websockify${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
+  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=api/bots/${botId}/computer/vnc/websockify`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
 }
 
@@ -179,17 +173,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     </button>
   );
 
-  // H4: the iframe cannot set an Authorization header, so the bearer rides the
-  // websockify path as ?token= — mobile WebView has no session cookie to lean
-  // on. Desktop keeps working either way (cookie or token).
-  const vncToken = getAuthToken();
-
   const screen = (fullscreenView: boolean) =>
     computerState === "ready" ? (
       <div className="relative h-full w-full">
         <iframe
           title={polish ? "Ekran bota" : "Bot screen"}
-          src={computerVncSrc(bot.id, owner, vncToken)}
+          src={computerVncSrc(bot.id, owner)}
           onLoad={(e) => stripVncChrome(e.currentTarget.contentDocument)}
           className="h-full w-full border-0"
         />
