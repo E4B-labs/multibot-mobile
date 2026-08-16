@@ -44,7 +44,10 @@ export function SearchPalette({
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto">
+      {/* W drawerze mobilnym (md:hidden) rząd zakładek filtrujących jest
+          ukryty — lista botów filtruje i tak tylko po zapytaniu, a pigułki
+          tylko zajmują miejsce na wąskim ekranie. */}
+      <div className="hidden gap-2 overflow-x-auto md:flex">
         {SEARCH_TABS.map((tab) => (
           <button
             key={tab}
