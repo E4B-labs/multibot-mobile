@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { WebView, type WebViewNavigation } from "react-native-webview";
 
 import type { Host } from "../lib/host-logic";
@@ -11,6 +11,13 @@ interface Props {
   botId?: string;
   onBack: () => void;
 }
+
+// W Android WebView `env(safe-area-inset-top)` nie obejmuje paska stanu (tylko
+// notch), więc interfejs webowy by go zakrywał. Podajemy realną wysokość paska
+// stanu jako zmienną CSS `--android-status-bar`, a webui dodaje ją do górnych
+// marginesów (patrz :root w styles.css). Na iOS zmienna zostaje 0, bo tam
+// `env(safe-area-inset-top)` sam pokrywa pasek stanu.
+const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
 
 // How long we wait before the spinner turns into a concrete failure. A host on
 // the same network returns the UI in well under a second (measured on device:
@@ -58,7 +65,8 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
       // interfejsu trafia do serwera MultiBota, a nie w próżnię.
       const deep = botId ? `location.hash = ${JSON.stringify(`#bot=${botId}`)};` : "";
       setBootstrap(
-        `try { localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); ${deep} } catch (e) {}
+        `try { document.documentElement.style.setProperty('--android-status-bar', '${STATUS_BAR_HEIGHT}px'); } catch (e) {}
+         try { localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); ${deep} } catch (e) {}
          true;`,
       );
     }, (e: unknown) => {
@@ -168,7 +176,7 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
         // wgrywania czegokolwiek na serwer MultiBota.
         source={{ html: WEBUI_HTML, baseUrl: host.url.replace(/\/$/, "") }}
         injectedJavaScriptBeforeContentLoaded={bootstrap}
-        style={styles.flex}
+        style={[styles.flex, expanded ? { paddingTop: STATUS_BAR_HEIGHT } : undefined]}
         // The harness UI — including the bot-computer noVNC iframe reached
         // through /api/bots/:id/computer/vnc/... — needs JS, DOM storage
         // (for the access-token bootstrap above) and inline media; none of
@@ -219,7 +227,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#0f0f0f",
-    paddingTop: 8,
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 8) : 8,
     paddingBottom: 8,
     paddingHorizontal: 8,
     borderBottomWidth: 1,

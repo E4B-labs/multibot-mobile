@@ -19,6 +19,7 @@ import { Loader2, Send, Users } from "lucide-react";
 import { useStore, formatTime, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { MausAvatar } from "./Avatar";
+import { DrawerToggle } from "./DrawerToggle";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -112,30 +113,33 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
 
   return (
     <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
-      {/* Header — ten sam rytm co zwykły panel agenta */}
-      <div className="flex items-center px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+      {/* Header — ten sam rytm co zwykły panel agenta. `sticky top-0` keeps the
+          bar visible while the room scrolls; `DrawerToggle` (mobile) sits inline
+          as the first element, sharing the bar's height. */}
+      <div className="chat-header sticky top-0 z-20 bg-app flex items-center px-3 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <DrawerToggle />
           {members.length > 0 ? (
             <div className="flex -space-x-2 shrink-0">
               {members.slice(0, 3).map((bot) => (
-                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={28} animated={false} />
+                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={36} animated={false} />
               ))}
             </div>
           ) : (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
-              <Users size={16} />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
+              <Users size={20} />
             </span>
           )}
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold text-ink">{group.name || (polish ? "Grupa" : "Group")}</div>
-            <div className="truncate text-[11px] text-ink-secondary">
+            <div className="truncate text-[16px] font-semibold text-ink">{group.name || (polish ? "Grupa" : "Group")}</div>
+            <div className="truncate text-[12px] text-ink-secondary">
               {members.length} {polish ? "botów" : "bots"} · {group.bot_ids.map(nameOf).join(" · ")}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-3">
         {entries.length === 0 ? (
           <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
             <Users size={22} />
@@ -182,8 +186,9 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
         )}
       </div>
 
-      {/* Composer — jedna linia; odpowiedzi renderują się po powrocie POST-a */}
-      <div className="border-t border-hairline/40 px-4 py-3">
+      {/* Composer — jedna linia; odpowiedzi renderują się po powrocie POST-a.
+          `sticky bottom-0` keeps the input pinned above the page scroll. */}
+      <div className="sticky bottom-0 z-20 bg-app border-t border-hairline/40 px-4 py-3">
         <div className="flex items-center gap-2">
           <input
             className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
