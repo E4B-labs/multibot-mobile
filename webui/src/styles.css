@@ -88,25 +88,25 @@ body {
     padding-left: var(--safe-left);
   }
   .multibot-shell > div.relative { display: flex; }
+  /* Pełny panel na mobile: wypełnia CAŁY ekran (zasłania czat) zamiast
+     wysuwać się tylko częściowo. Zamyka się wyłącznie przyciskiem X wewnątrz
+     panelu (brak scrimu do tapnięcia na zewnątrz — patrz DrawerToggle). */
   .multibot-shell > div.relative > aside:first-child {
     position: fixed;
-    top: var(--safe-top);
-    left: var(--safe-left);
-    bottom: var(--safe-bottom);
-    /* Nadpisujemy Tailwind `h-full` (height:100%): przy `top`+`bottom` oba
-       offsety wyznaczają wysokość, a `h-full` pchał pasek o --safe-top w dół
-       poza dół ekranu, przez co stopka z awatarem uciekała poza zasięg i
-       cały drawer był "sztywny" (nie dało się przewinąć do awatara). */
-    height: auto;
-    width: 84%;
-    max-width: 340px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     z-index: 60;
     transform: translateX(-100%);
     transition: transform 0.18s ease;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.55);
-    /* Cały drawer przewija się góra–dół, gdy zawartość (lista botów + stopka)
-       przerasta bezpieczny obszar między paskami systemu. */
-    overflow-y: auto;
+    /* Wewnątrz przewija się tylko lista (flex-1 overflow-y-auto), więc panel
+       sam nie ma paska. Własne marginesy safe-area, bo zakrywa cały viewport. */
+    overflow: hidden;
+    padding-top: var(--safe-top);
+    padding-right: var(--safe-right);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
   }
   body.mb-drawer-open .multibot-shell > div.relative > aside:first-child {
     transform: translateX(0);
