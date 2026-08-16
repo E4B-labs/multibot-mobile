@@ -104,16 +104,15 @@ export function Composer({ bot }: { bot: Bot }) {
   // Bez tego voice nie zadziała — trzeba mostka natywnego (eas build).
   const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
-  // multibot: niektóre WebView (mobilne) emitują ten sam finalny wynik
-  // wielokrotnie (duplikacja wiadomości). Trzymamy rozpoznane frazy w tablicy
-  // i doklejamy tylko nowe — twarda deduplikacja po dokładnej treści, odporna
-  // na doklejane spacje/znaki, przez które proste porównanie końca tekstu
-  // zawodziło. Działa dla e.results skumulowanej i nieskumulowanej.
-  const finals = useRef<string[]>([]);
+  // multibot: to WebView podaje e.results jako LISTĘ SKUMULOWANĄ (rośnie przy
+  // każdym evencie), a e.resultIndex zwraca 0 — stąd wcześniejsze dublowanie,
+  // bo każdy event doklejał wszystko od nowa. Najpewniejsze: przy każdym
+  // evencie PRZEBUDOWUJEMY tekst od zera z e.results (listę traktujemy za
+  // źródło prawdy) i nie trzymamy własnego stanu doklejanego. Ewentualne echo
+  // interim (to samo co właśnie sfinalizowano) obcinamy.
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
-    finals.current = [];
     const rec: any = new WebSpeech();
     webRec.current = rec;
     rec.lang = navigator.language || "en-US";
@@ -121,22 +120,20 @@ export function Composer({ bot }: { bot: Bot }) {
     rec.interimResults = true;
     rec.onresult = (e: any) => {
       let interim = "";
+      let finalStr = "";
       const results = e.results as any;
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
-        if (r.isFinal) {
-          const t = String(r[0]?.transcript ?? "").trim();
-          if (t && !finals.current.includes(t)) finals.current.push(t);
-        } else {
-          interim += r[0]?.transcript ?? "";
-        }
+        const tr = String(r[0]?.transcript ?? "");
+        if (r.isFinal) finalStr += tr;
+        else interim += tr;
       }
-      const base = [baseText.current, ...finals.current].filter(Boolean).join(" ");
-      const shown = interim.trim()
-        ? base
-          ? `${base} ${interim.trim()}`
-          : interim.trim()
-        : base;
+      // niektóre WebView powtarzają w interim to, co przed chwilą sfinalizowano
+      if (interim && finalStr && interim.startsWith(finalStr)) {
+        interim = interim.slice(finalStr.length);
+      }
+      const recognized = (finalStr + (interim.trim() ? (finalStr ? " " : "") + interim.trim() : "")).trim();
+      const shown = [baseText.current, recognized].filter(Boolean).join(" ");
       setText(shown);
     };
     rec.onerror = (e: any) => {
