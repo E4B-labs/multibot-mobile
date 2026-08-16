@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore, formatTime, type Bot } from "@/state/store";
-import { MausAvatar } from "./Avatar";
+import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
@@ -303,11 +303,11 @@ export function Sidebar() {
           <div className="relative" data-user-menu>
             <button
               onClick={() => setUserMenuOpen((v) => !v)}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              className="shrink-0 rounded-full"
               aria-label={polish ? "Menu użytkownika" : "User menu"}
               aria-expanded={userMenuOpen}
             >
-              {profileInitials(state.config?.profile) || "R"}
+              <InitialsAvatar initials={profileInitials(state.config?.profile) || "R"} size={36} />
             </button>
             {userMenuOpen && (
               <div className="absolute left-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
