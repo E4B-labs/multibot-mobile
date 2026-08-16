@@ -214,6 +214,7 @@ export function Sidebar() {
   const polish = useLanguage() === "pl";
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -270,6 +271,20 @@ export function Sidebar() {
     };
   }, [addMenuOpen]);
 
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-user-menu]")) setUserMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setUserMenuOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [userMenuOpen]);
+
   return (
     <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu. */}
@@ -284,9 +299,42 @@ export function Sidebar() {
           >
             <X size={20} />
           </button>
-          {/* Avatar użytkownika */}
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white">
-            {profileInitials(state.config?.profile) || "R"}
+          {/* Avatar użytkownika — rozwija menu Ustawienia + Wtyczki */}
+          <div className="relative" data-user-menu>
+            <button
+              onClick={() => setUserMenuOpen((v) => !v)}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              aria-label={polish ? "Menu użytkownika" : "User menu"}
+              aria-expanded={userMenuOpen}
+            >
+              {profileInitials(state.config?.profile) || "R"}
+            </button>
+            {userMenuOpen && (
+              <div className="absolute left-0 top-11 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    document.body.classList.remove("mb-drawer-open");
+                    dispatch({ type: "togglePlugins", open: true });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <Puzzle size={15} className="text-ink-secondary" />
+                  {polish ? "Wtyczki" : "Plugins"}
+                </button>
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    document.body.classList.remove("mb-drawer-open");
+                    dispatch({ type: "toggleAppSettings" });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <Settings size={15} className="text-ink-secondary" />
+                  {polish ? "Ustawienia" : "Settings"}
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex-1" />
           {/* Szukaj */}
@@ -345,7 +393,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer — status (menu Ustawienia/Wtyczki przeniesione pod avatar) */}
         <div className="px-3 pb-3 pt-2">
           {engineOffline && (
             <div
@@ -356,26 +404,6 @@ export function Sidebar() {
               Service offline
             </div>
           )}
-          <button
-            onClick={() => {
-              document.body.classList.remove("mb-drawer-open");
-              dispatch({ type: "togglePlugins", open: true });
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
-          >
-            <Puzzle size={20} className="text-ink-secondary" />
-            <span className="text-[14px] text-ink">{polish ? "Wtyczki" : "Plugins"}</span>
-          </button>
-          <button
-            onClick={() => {
-              document.body.classList.remove("mb-drawer-open");
-              dispatch({ type: "toggleAppSettings" });
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/[0.06]"
-          >
-            <Settings size={20} className="text-ink-secondary" />
-            <span className="text-[14px] text-ink">{polish ? "Ustawienia" : "Settings"}</span>
-          </button>
         </div>
 
         {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
