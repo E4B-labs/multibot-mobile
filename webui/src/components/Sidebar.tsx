@@ -215,6 +215,7 @@ export function Sidebar() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -285,6 +286,32 @@ export function Sidebar() {
     };
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-search-menu]")) {
+        setSearchOpen(false);
+        setQuery("");
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSearchOpen(false);
+        setQuery("");
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
   return (
     <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu. */}
@@ -337,14 +364,17 @@ export function Sidebar() {
             )}
           </div>
           <div className="flex-1" />
-          {/* Szukaj */}
-          <button
-            onClick={() => searchInputRef.current?.focus()}
-            className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
-            aria-label={polish ? "Szukaj" : "Search"}
-          >
-            <Search size={20} />
-          </button>
+          {/* Szukaj — kliknięcie lupki rozwija popover z paletą wyszukiwania */}
+          <div data-search-menu>
+            <button
+              onClick={() => setSearchOpen((v) => !v)}
+              className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
+              aria-label={polish ? "Szukaj" : "Search"}
+              aria-expanded={searchOpen}
+            >
+              <Search size={20} />
+            </button>
+          </div>
           {/* Dodaj */}
           <div className="relative" data-add-menu>
             <button
@@ -373,16 +403,36 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Search — B4: paleta wyszukiwania (inspiracje.png) */}
-        <div className="px-4 pb-2">
-          <SearchPalette
-            query={query}
-            onQueryChange={setQuery}
-            activeTab={tab}
-            onTabChange={setTab}
-            inputRef={searchInputRef}
-          />
-        </div>
+        {/* Szukaj — popover pełnej szerokości karty, rozwijany ikoną lupki */}
+        {searchOpen && (
+          <div
+            data-search-menu
+            className="absolute inset-x-2 top-2 z-40 rounded-xl border border-white/10 bg-card p-3 shadow-lg"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[13px] text-ink-secondary">
+                {polish ? "Szukaj" : "Search"}
+              </span>
+              <button
+                onClick={() => {
+                  setSearchOpen(false);
+                  setQuery("");
+                }}
+                className="rounded-md p-1 text-ink-secondary hover:bg-white/10 hover:text-ink"
+                aria-label={polish ? "Zamknij szukanie" : "Close search"}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <SearchPalette
+              query={query}
+              onQueryChange={setQuery}
+              activeTab={tab}
+              onTabChange={setTab}
+              inputRef={searchInputRef}
+            />
+          </div>
+        )}
 
         {/* Unified conversation list */}
         <div className="flex-1 overflow-y-auto px-2">
