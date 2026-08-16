@@ -379,7 +379,12 @@ export function Composer({ bot }: { bot: Bot }) {
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
+           ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
+           Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
+           działa i pozwala dołączyć zdjęcie. Prawdziwy aparat w WebView wymaga
+           natywnej obsługi showFileChooser — poza zakresem JS. */}
+        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker skilli po "/", ten sam dropdown co @mention */}
