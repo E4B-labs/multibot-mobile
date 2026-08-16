@@ -22,7 +22,6 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
-import { MAUS_COLORS } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -215,26 +214,12 @@ function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: ()
   );
 }
 
-// multibot: minimalistyczna "blob-twarz" rysowana białą kreską na kolorowym
-// tle awatara (inspiracja: kwadratowy avatar z uśmiechniętą mordką).
-function BlobFace({ expression }: { expression?: string | null }) {
-  const ex = (expression ?? "happy").toLowerCase();
-  let mouth = "M9 18 Q16 25 23 18"; // uśmiech
-  if (ex.includes("sad") || ex.includes("frown")) mouth = "M9 22 Q16 17 23 22";
-  else if (ex.includes("think") || ex.includes("sleep") || ex.includes("neutral")) mouth = "M11 20 H21";
-  else if (ex.includes("surpris") || ex.includes("shock")) mouth = "M14 18 a2.2 2.2 0 1 0 4 0 a2.2 2.2 0 1 0 -4 0";
-  return (
-    <svg viewBox="0 0 32 32" className="size-1/2" fill="none" aria-hidden>
-      <circle cx="11" cy="13" r="1.7" fill="white" />
-      <circle cx="21" cy="13" r="1.7" fill="white" />
-      <path d={mouth} stroke="white" strokeWidth="1.9" strokeLinecap="round" />
-    </svg>
-  );
-}
-
+// multibot: awatar bota przywrócony do oryginalnego MausAvatar (kształt +
+// wyraz z poprzedniego drawera), zamiast uproszczonej blob-twarzy.
 function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
   const { state, dispatch } = useStore();
   const selected = state.selectedId === bot.id;
+  const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
   const last = bot.messages[bot.messages.length - 1];
   return (
     <button
@@ -248,18 +233,14 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      <div className="relative shrink-0">
-        <div
-          className="flex size-12 items-center justify-center rounded-[14px]"
-          style={{ backgroundColor: MAUS_COLORS[bot.color] ?? "#8a8a8f" }}
-        >
-          <BlobFace expression={stateForBot(bot)} />
-        </div>
-        {/* zielona kropka "online" — adaptacja: pokazujemy przy nieprzeczytanych */}
-        {bot.unread && (
-          <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-green-500 ring-2 ring-[#0d0d0f]" />
-        )}
-      </div>
+      <MausAvatar
+        color={bot.color}
+        shape={bot.mascotShape}
+        state={stateForBot(bot)}
+        size={56}
+        motion={mascotMotion?.kind ?? "none"}
+        motionKey={mascotMotion?.nonce ?? 0}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -274,7 +255,19 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
             <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(last.at)}</span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[13px] text-ink-secondary">{preview(bot)}</div>
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <span className="truncate text-[13px] text-ink-secondary">{preview(bot)}</span>
+          {bot.needsAttention != null ? (
+            <span
+              title={bot.needsAttention}
+              className="size-2 shrink-0 rounded-full bg-warning"
+            />
+          ) : (
+            bot.unread && (
+              <span className="size-2 shrink-0 rounded-full bg-accent" />
+            )
+          )}
+        </div>
       </div>
     </button>
   );
