@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Brain, CalendarClock, Check, File, Loader2, Monitor, Square, Wand2, X } from "lucide-react";
+import { ArrowDown, Brain, CalendarClock, Check, File, Loader2, Monitor, MoreVertical, Square, Wand2, X } from "lucide-react";
 import { useStore, formatTime, type Bot, type Message } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
@@ -176,6 +176,23 @@ export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const scrollRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setActionsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActionsOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [actionsOpen]);
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
@@ -226,16 +243,16 @@ export function ChatView({ bot }: { bot: Bot }) {
               motion={mascotMotion?.kind ?? "none"}
               motionKey={mascotMotion?.nonce ?? 0}
             />
-            <div className="flex min-w-0 flex-col items-start">
+            <div className="flex min-w-0 flex-col">
               <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-[16px] font-semibold text-ink">{bot.name}</span>
+                <span className="min-w-0 truncate text-[16px] font-semibold text-ink">{bot.name}</span>
                 {bot.busy && <Loader2 size={16} className="animate-spin text-ink-secondary" />}
               </div>
               {(() => {
                 const inst = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
                 const label = modelLabelText(inst, bot.modelSelection.model);
                 return label ? (
-                  <span className="truncate text-[13px] text-ink-secondary">{label}</span>
+                  <span className="min-w-0 truncate text-[13px] text-ink-secondary">{label}</span>
                 ) : null;
               })()}
             </div>
@@ -256,49 +273,64 @@ export function ChatView({ bot }: { bot: Bot }) {
             </button>
           )}
           <ModelPicker bot={bot} />
-          <button
-            onClick={() => dispatch({ type: "toggleComputer" })}
-            className={cn(
-              "rounded-lg px-1 py-3 hover:bg-raised",
-              state.computerOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+          <div ref={actionsRef} className="relative">
+            <button
+              onClick={() => setActionsOpen((o) => !o)}
+              className={cn(
+                "rounded-lg px-1 py-3 hover:bg-raised",
+                actionsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+              )}
+              title={polish ? "Więcej" : "More"}
+              aria-label={polish ? "Więcej" : "More"}
+              aria-expanded={actionsOpen}
+            >
+              <MoreVertical size={22} />
+            </button>
+            {actionsOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-hairline/40 bg-app p-1 shadow-xl">
+                <button
+                  onClick={() => { dispatch({ type: "toggleComputer" }); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    state.computerOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <Monitor size={18} />
+                  <span>{polish ? "Komputer bota" : "Bot's computer"}</span>
+                </button>
+                <button
+                  onClick={() => { dispatch({ type: "toggleMemory" }); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    state.memoryOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <Brain size={18} />
+                  <span>{polish ? "Pamięć bota" : "Bot memory"}</span>
+                </button>
+                <button
+                  onClick={() => { dispatch({ type: "toggleRoutines" }); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    state.routinesOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <CalendarClock size={18} />
+                  <span>{polish ? "Rutyny bota" : "Bot routines"}</span>
+                </button>
+                <button
+                  onClick={() => { dispatch({ type: "toggleSkills" }); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    state.skillsOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <Wand2 size={18} />
+                  <span>{polish ? "Skille bota" : "Bot skills"}</span>
+                </button>
+              </div>
             )}
-            title={polish ? "Komputer bota" : "Bot's computer"}
-          >
-            <Monitor size={22} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleMemory" })}
-            className={cn(
-              "rounded-lg px-1 py-3 hover:bg-raised",
-              state.memoryOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Pamięć bota" : "Bot memory"}
-            aria-label={polish ? "Pamięć bota" : "Bot memory"}
-          >
-            <Brain size={22} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleRoutines" })}
-            className={cn(
-              "rounded-lg px-1 py-3 hover:bg-raised",
-              state.routinesOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Rutyny bota" : "Bot routines"}
-            aria-label={polish ? "Rutyny bota" : "Bot routines"}
-          >
-            <CalendarClock size={22} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleSkills" })}
-            className={cn(
-              "rounded-lg px-1 py-3 hover:bg-raised",
-              state.skillsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Skille bota" : "Bot skills"}
-            aria-label={polish ? "Skille bota" : "Bot skills"}
-          >
-            <Wand2 size={22} />
-          </button>
+          </div>
         </div>
       </div>
 

@@ -40,9 +40,10 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
   // WebView history depth, so the back control (and the hardware button on
   // Android) steps out of the in-page chat before bailing to the host list.
   const [canGoBack, setCanGoBack] = useState(false);
-  // Hides the top bar over the bot-computer / noVNC view, where it would cover
-  // the screen. Toggled, not auto, because the WebView doesn't report scroll.
-  const [expanded, setExpanded] = useState(false);
+  // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
+  // natywnego paska) to domyślny ekran czatu. Przycisk „‹ Hosts" (collapse)
+  // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
+  const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,9 +156,6 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
     <View style={styles.flex}>
       {!expanded && (
         <View style={styles.header}>
-          <Pressable style={styles.headerBack} onPress={handleBack}>
-            <Text style={styles.headerBackText}>‹</Text>
-          </Pressable>
           <Text style={styles.headerName} numberOfLines={1}>
             {host.name}
           </Text>
@@ -211,11 +209,6 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
           if (e.nativeEvent.statusCode >= 500) setFailed(`Host answered HTTP ${e.nativeEvent.statusCode}.`);
         }}
       />
-      {expanded && (
-        <Pressable style={styles.collapseButton} onPress={() => setExpanded(false)}>
-          <Text style={styles.collapseText}>‹ Hosts</Text>
-        </Pressable>
-      )}
     </View>
   );
 }

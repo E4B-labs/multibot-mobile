@@ -23,6 +23,10 @@ export default function App() {
   const [route, setRoute] = useState<Route>({ name: "list" });
   const [hosts, setHosts] = useState<Host[]>([]);
   const hostsRef = useRef<Host[]>([]);
+  // Przy pierwszym załadowaniu, jeśli istnieje już host, wchodzimy od razu w
+  // panel czatu zamiast do wyboru hostów — aplikacja obsługuje jednego hosta
+  // i nie wraca do listy.
+  const didInit = useRef(false);
   const [loading, setLoading] = useState(true);
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -34,6 +38,10 @@ export default function App() {
     void listHosts().then((h) => {
       setHosts(h);
       setLoading(false);
+      if (!didInit.current && h.length >= 1) {
+        didInit.current = true;
+        setRoute({ name: "webview", host: h[0] });
+      }
     });
   }, []);
 
@@ -172,7 +180,7 @@ export default function App() {
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={() => setRoute({ name: "list" })} />
+          <WebViewScreen host={route.host} botId={route.botId}             onBack={() => {}} />
         )}
       </SafeAreaView>
 
