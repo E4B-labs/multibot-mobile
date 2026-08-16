@@ -105,12 +105,15 @@ export function Composer({ bot }: { bot: Bot }) {
   const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
   // multibot: niektóre WebView (mobilne) emitują ten sam finalny wynik
-  // wielokrotnie (duplikacja wiadomości). Deduplikujemy po treści — pomijamy
-  // final, który już znajduje się na końcu baseText. To działa niezależnie od
-  // tego, czy e.results jest skumulowana (Chrome), czy nie.
+  // wielokrotnie (duplikacja wiadomości). Trzymamy rozpoznane frazy w tablicy
+  // i doklejamy tylko nowe — twarda deduplikacja po dokładnej treści, odporna
+  // na doklejane spacje/znaki, przez które proste porównanie końca tekstu
+  // zawodziło. Działa dla e.results skumulowanej i nieskumulowanej.
+  const finals = useRef<string[]>([]);
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
+    finals.current = [];
     const rec: any = new WebSpeech();
     webRec.current = rec;
     rec.lang = navigator.language || "en-US";
@@ -123,21 +126,17 @@ export function Composer({ bot }: { bot: Bot }) {
         const r = results[i];
         if (r.isFinal) {
           const t = String(r[0]?.transcript ?? "").trim();
-          if (t) {
-            const tail = baseText.current.endsWith(" ") ? "" : " ";
-            if (baseText.current !== t && !baseText.current.endsWith(tail + t)) {
-              baseText.current = baseText.current ? baseText.current + tail + t : t;
-            }
-          }
+          if (t && !finals.current.includes(t)) finals.current.push(t);
         } else {
           interim += r[0]?.transcript ?? "";
         }
       }
+      const base = [baseText.current, ...finals.current].filter(Boolean).join(" ");
       const shown = interim.trim()
-        ? baseText.current
-          ? `${baseText.current} ${interim.trim()}`
+        ? base
+          ? `${base} ${interim.trim()}`
           : interim.trim()
-        : baseText.current;
+        : base;
       setText(shown);
     };
     rec.onerror = (e: any) => {
