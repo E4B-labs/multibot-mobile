@@ -7,7 +7,6 @@ import {
   Copy,
   EyeOff,
   FolderPlus,
-  Loader2,
   Pencil,
   Pin,
   PinOff,
@@ -16,16 +15,14 @@ import {
   Search,
   Settings,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
-import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
+import { useStore, formatTime, type Bot } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
-import { authFetch } from "@/lib/auth";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
 import { useLanguage } from "@/lib/language";
@@ -56,12 +53,6 @@ function preview(bot: Bot): string {
 
 interface MenuState {
   botId: string;
-  x: number;
-  y: number;
-}
-
-interface GroupMenuState {
-  group: EngineGroup;
   x: number;
   y: number;
 }
@@ -159,61 +150,6 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
   );
 }
 
-function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: () => void }) {
-  const { state, dispatch } = useStore();
-  const polish = useLanguage() === "pl";
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-group-menu]")) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("blur", onClose);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("blur", onClose);
-    };
-  }, [onClose]);
-
-  const remove = async () => {
-    if (busy || !window.confirm(polish ? `Usunąć grupę „${menu.group.name || menu.group.id}”?` : `Delete “${menu.group.name || menu.group.id}”?`)) return;
-    setBusy(true);
-    try {
-      const res = await authFetch(`/api/groups/${encodeURIComponent(menu.group.id)}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      if (state.groupOpen?.id === menu.group.id) dispatch({ type: "toggleGroup", group: null });
-      dispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
-      onClose();
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
-      setBusy(false);
-    }
-  };
-
-  const top = Math.min(menu.y, window.innerHeight - 90);
-  const left = Math.min(menu.x, window.innerWidth - 220);
-  return (
-    <div
-      data-group-menu
-      style={{ top, left }}
-      className="fixed z-40 w-[208px] overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
-    >
-      <button
-        onClick={() => void remove()}
-        disabled={busy}
-        className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-danger hover:bg-danger/10 disabled:cursor-default disabled:opacity-50"
-      >
-        {busy ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-        {polish ? "Usuń grupę" : "Delete group"}
-      </button>
-    </div>
-  );
-}
-
 // multibot: awatar bota przywrócony do oryginalnego MausAvatar (kształt +
 // wyraz z poprzedniego drawera), zamiast uproszczonej blob-twarzy.
 function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
@@ -273,164 +209,11 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
   );
 }
 
-// multibot: F9-FE — grupy w sidebarze: każdy bot ma trwałą reprezentację
-// `mb-<threadId>` w transporcie grupowym, niezależnie od wybranego drivera.
-function GroupsSection({
-  bots,
-  createOpen,
-  onCreateOpenChange,
-  onMenu,
-}: {
-  bots: Bot[];
-  createOpen: boolean;
-  onCreateOpenChange: (open: boolean) => void;
-  onMenu: (menu: GroupMenuState) => void;
-}) {
-  const { state, dispatch } = useStore();
-  const polish = useLanguage() === "pl";
-  // null = nie załadowano (silnik offline / jeszcze nie sprawdzono)
-  const [groups, setGroups] = useState<EngineGroup[] | null>(null);
-  const [name, setName] = useState("");
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Jeden GET przy mount (wzorzec engineStatus) — zero pollingu; POST create
-  // dopisuje do listy lokalnie.
-  useEffect(() => {
-    let alive = true;
-    authFetch("/api/groups")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((gs: EngineGroup[]) => alive && setGroups(gs))
-      .catch(() => alive && setGroups([]));
-    return () => {
-      alive = false;
-    };
-  }, [state.workspaceVersion]);
-
-  const toggle = (engineBotId: string) =>
-    setPicked((cur) => {
-      const next = new Set(cur);
-      if (next.has(engineBotId)) next.delete(engineBotId);
-      else next.add(engineBotId);
-      return next;
-    });
-
-  const create = async () => {
-    if (busy || !name.trim() || picked.size === 0) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const bot_ids = bots.map((b) => `mb-${b.threadId}`).filter((id) => picked.has(id));
-      const res = await authFetch("/api/groups", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), bot_ids }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const detail = typeof body.detail === "string" ? body.detail : undefined;
-        throw new Error(detail ?? body.error ?? `${res.status} ${res.statusText}`);
-      }
-      const group = body as EngineGroup;
-      setGroups((gs) => [...(gs ?? []), group]);
-      onCreateOpenChange(false);
-      setName("");
-      setPicked(new Set());
-      dispatch({ type: "toggleGroup", group });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="border-b border-white/5 px-2 pb-2 pt-1">
-      {(groups ?? []).map((g) => (
-        <button
-          key={g.id}
-          onClick={() => dispatch({ type: "toggleGroup", group: g })}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onMenu({ group: g, x: e.clientX, y: e.clientY });
-          }}
-          className={cn(
-            "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left",
-            state.groupOpen?.id === g.id ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
-          )}
-        >
-          <span className="flex -space-x-2 shrink-0">
-            {g.bot_ids.slice(0, 3).map((engineId) => {
-              const member = bots.find((b) => `mb-${b.threadId}` === engineId);
-              return member ? <MausAvatar key={engineId} color={member.color} shape={member.mascotShape} state={stateForBot(member)} size={24} animated={false} /> : <Users key={engineId} size={18} className="text-ink-secondary" />;
-            })}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{g.name || g.id}</span>
-          <span className="shrink-0 text-[12px] text-ink-secondary">{g.bot_ids.length}</span>
-        </button>
-      ))}
-
-      {createOpen && (
-        <div className="mx-1 mt-1 flex flex-col gap-2 rounded-xl bg-card p-3">
-          <input
-            className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
-            placeholder={polish ? "Nazwa grupy" : "Group name"}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-            {bots.map((b) => {
-              const engineBotId = `mb-${b.threadId}`;
-              return (
-                <label
-                  key={b.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-[13px] text-ink hover:bg-raised/50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.has(engineBotId)}
-                    onChange={() => toggle(engineBotId)}
-                    className="accent-accent"
-                  />
-                  <span className="truncate">{b.name}</span>
-                </label>
-              );
-            })}
-          </div>
-          {error && <div className="text-[12px] text-danger">{error}</div>}
-          <div className="flex gap-2">
-            <button
-              onClick={() => void create()}
-              disabled={busy || !name.trim() || picked.size === 0}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-raised py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy && <Loader2 size={12} className="animate-spin" />}
-              {polish ? "Utwórz" : "Create"}
-            </button>
-            <button
-              onClick={() => {
-                onCreateOpenChange(false);
-                setError(null);
-              }}
-              className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised-hover hover:text-ink"
-            >
-              {polish ? "Anuluj" : "Cancel"}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function Sidebar() {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -472,10 +255,6 @@ export function Sidebar() {
           b.description.toLowerCase().includes(q),
       )
     : visibleBots;
-
-  // multibot: F9-FE — kandydaci do grup: cała flota, także ukryci. Kolejność
-  // stabilna z listy botów; wybrany driver nie usuwa bota z grup.
-  const groupBots = state.bots;
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -541,17 +320,6 @@ export function Sidebar() {
                   <BotIcon size={15} className="text-ink-secondary" />
                   {polish ? "Nowy bot" : "New bot"}
                 </button>
-                <button
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    setGroupCreateOpen(true);
-                  }}
-                  disabled={groupBots.length === 0}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Users size={15} className="text-ink-secondary" />
-                  {polish ? "Nowa grupa" : "New group"}
-                </button>
               </div>
             )}
           </div>
@@ -568,16 +336,8 @@ export function Sidebar() {
           />
         </div>
 
-        {/* Unified conversation list: group rows sit with bots, above plugins. */}
+        {/* Unified conversation list */}
         <div className="flex-1 overflow-y-auto px-2">
-          {groupBots.length > 0 && (
-            <GroupsSection
-              bots={groupBots}
-              createOpen={groupCreateOpen}
-              onCreateOpenChange={setGroupCreateOpen}
-              onMenu={setGroupMenu}
-            />
-          )}
           <div className="flex flex-col gap-0.5">
             {filteredBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={setMenu} />
@@ -633,7 +393,6 @@ export function Sidebar() {
         </div>
 
         {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
-        {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
       </div>
     </aside>
   );
