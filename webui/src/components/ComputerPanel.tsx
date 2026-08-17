@@ -280,13 +280,22 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             // czarno — czyli produkowało dokładnie ten czarny ekran, którego
             // szukaliśmy.
             let where = "";
+            let reach = "";
             try {
-              where = e.currentTarget.contentDocument?.location?.href ?? "";
-            } catch {
-              where = "obce-pochodzenie"; // nawigacja doszła do skutku
+              where = e.currentTarget.contentDocument?.location?.href ?? "brak-dokumentu";
+            } catch (err) {
+              reach = (err as Error).message;
             }
-            if (!where || where === "about:blank") {
-              setScreenNote(`Ramka nie ruszyła z about:blank. Adres: ${vncOrigin() || "PUSTY"}`);
+            if (reach) {
+              // Sięgnięcie po dokument rzuciło. Ekran mógł się wczytać z obcego
+              // pochodzenia albo WebView blokuje dostęp — tak czy owak nie da
+              // się zdjąć paska noVNC ani schować kursora, więc mówimy o tym
+              // wprost zamiast udawać sukces.
+              setScreenNote(`Ramka niedostępna z tej strony: ${reach}`);
+              return;
+            }
+            if (where === "about:blank" || where === "brak-dokumentu") {
+              setScreenNote(`Ramka stoi na ${where}. Adres: ${vncOrigin() || "PUSTY"}`);
               return;
             }
             setScreenLoaded(true);
@@ -304,7 +313,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           onError={() => setScreenNote("Przeglądarka nie wczytała adresu ekranu.")}
           className="h-full w-full border-0"
         />
-        {!screenLoaded && (
+        {(!screenLoaded || screenNote) && (
           <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger px-3 py-2 text-[11px] leading-snug text-white">
             {screenNote ?? `czekam na ekran · stan: ${computerState} · token: ${vncToken ? "jest" : "BRAK"} · adres: ${vncOrigin() || "PUSTY"} · origin: ${typeof location === "undefined" ? "brak" : String(location.origin)}`}
           </div>
@@ -388,7 +397,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             {/* Znacznik wydania widoczny gołym okiem. Bez niego nie da się z
                 zewnątrz odróżnić „poprawka nie działa" od „aplikacja wciąż
                 chodzi na starej paczce", a to dwie zupełnie różne diagnozy. */}
-            <span>{polish ? "Ekran bota" : "Bot screen"} <span className="opacity-50">d3</span></span>
+            <span>{polish ? "Ekran bota" : "Bot screen"} <span className="opacity-50">d4</span></span>
             <button
               type="button"
               onClick={() => setFullscreen(true)}
