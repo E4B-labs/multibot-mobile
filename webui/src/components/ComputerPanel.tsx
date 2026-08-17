@@ -110,7 +110,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   // nie do odróżnienia od pulpitu z czarną tapetą. Diagnoza „czarny ekran
   // w aplikacji" schodziła przez to na zgadywanie. Tu iframe mówi, co mu jest.
   const [screenNote, setScreenNote] = useState<string | null>(null);
-  const screenLoaded = useRef(false);
+  const [screenLoaded, setScreenLoaded] = useState(false);
   // Na mobile panel idzie do document.body (createPortal), by był warstwą
   // najwyższą (z-[90]) nad drawerem (z-[60]) — niezależnie od kontekstu
   // nakładania. Na desktopie render w miejscu (prawa kolumna).
@@ -241,18 +241,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   const vncToken = getAuthToken();
 
   // Iframe, który nigdy nie wyśle żądania, nie odpala ani `onLoad`, ani
-  // `onError` — milczy. Ośmiosekundowy budzik zamienia to milczenie w zdanie.
+  // `onError` — milczy. Pasek stanu pod ekranem wisi od pierwszej klatki i
+  // znika dopiero, gdy ekran realnie się wczyta, więc nieudany ekran nigdy
+  // nie wygląda jak pulpit z czarną tapetą.
   useEffect(() => {
-    if (computerState !== "ready") return;
-    screenLoaded.current = false;
+    setScreenLoaded(false);
     setScreenNote(null);
-    const timer = setTimeout(() => {
-      if (screenLoaded.current) return;
-      setScreenNote(
-        `Ekran nie odpowiedział w 8 s. Adres: /api/bots/${bot.id}/computer/vnc/vnc_lite.html${vncToken ? "" : " (BRAK TOKENA)"}`,
-      );
-    }, 8_000);
-    return () => clearTimeout(timer);
   }, [computerState, bot.id, owner, vncToken]);
 
   const screen = (fullscreenView: boolean) =>
@@ -263,7 +257,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner, vncToken)}
           onLoad={(e) => {
-            screenLoaded.current = true;
+            setScreenLoaded(true);
             try {
               stripVncChrome(e.currentTarget.contentDocument);
               setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
@@ -278,9 +272,9 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           onError={() => setScreenNote("Przeglądarka nie wczytała adresu ekranu.")}
           className="h-full w-full border-0"
         />
-        {screenNote && (
-          <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger/90 px-3 py-2 text-[11px] leading-snug text-white">
-            {screenNote}
+        {!screenLoaded && (
+          <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger px-3 py-2 text-[11px] leading-snug text-white">
+            {screenNote ?? `czekam na ekran · stan: ${computerState} · token: ${vncToken ? "jest" : "BRAK"} · ster: ${owner}`}
           </div>
         )}
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
@@ -359,7 +353,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               : "One computer, shared by all bots — logins and files are visible to every one of them."}
           </div>
           <div className="mb-1.5 mt-2 flex items-center justify-between text-[13px] text-ink-secondary">
-            <span>{polish ? "Ekran bota" : "Bot screen"}</span>
+            {/* Znacznik wydania widoczny gołym okiem. Bez niego nie da się z
+                zewnątrz odróżnić „poprawka nie działa" od „aplikacja wciąż
+                chodzi na starej paczce", a to dwie zupełnie różne diagnozy. */}
+            <span>{polish ? "Ekran bota" : "Bot screen"} <span className="opacity-50">d2</span></span>
             <button
               type="button"
               onClick={() => setFullscreen(true)}
