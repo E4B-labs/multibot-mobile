@@ -53,6 +53,16 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
  *  the page + assets are served public (statyczny klient noVNC), a mobile
  *  WebView iframe carries no cookie, and noVNC builds its WebSocket URL from
  *  the `path` param — so the bearer rides the upgrade request as ?token=. */
+/** Pochodzenie hosta, sklejane z `protocol` i `host`, nigdy z `location.origin`.
+ *  W dokumencie wstrzykniętym przez `loadDataWithBaseURL` `origin` bywa napisem
+ *  `"null"` (pochodzenie nieprzejrzyste), a wtedy adres iframe'a zaczyna się od
+ *  `null/` i znowu jest względny. `host` zostaje poprawny — stoi na nim
+ *  WebSocket czatu, który w aplikacji działa. */
+export function vncOrigin(): string {
+  if (typeof location === "undefined" || !location.host) return "";
+  return `${location.protocol}//${location.host}`;
+}
+
 export function computerVncSrc(botId: string, controlOwner: ControlOwner, token = ""): string {
   // `vnc_lite.html`, nie `vnc.html`: pełna strona noVNC dokłada własny pasek
   // sterowania (logo, rozłącz, ustawienia), a to jest ekran komputera bota, nie
@@ -66,8 +76,7 @@ export function computerVncSrc(botId: string, controlOwner: ControlOwner, token 
   // prawdziwego adresu i nie prowadzi donikąd. Iframe zostawał wtedy na
   // `about:blank` — odpalał `load`, `stripVncChrome` malowało mu tło na czarno
   // i to był cały „czarny ekran komputera": ani jednego żądania do serwera.
-  const origin = typeof location === "undefined" ? "" : location.origin;
-  const base = `${origin}/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
+  const base = `${vncOrigin()}/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
 }
 
@@ -265,6 +274,21 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner, vncToken)}
           onLoad={(e) => {
+            // Pusty dokument startowy iframe'a też odpala `load`. Bez tego
+            // rozróżnienia „ekran wczytany" znaczyło „ramka istnieje", pasek
+            // znikał po mgnieniu, a `stripVncChrome` malowało `about:blank` na
+            // czarno — czyli produkowało dokładnie ten czarny ekran, którego
+            // szukaliśmy.
+            let where = "";
+            try {
+              where = e.currentTarget.contentDocument?.location?.href ?? "";
+            } catch {
+              where = "obce-pochodzenie"; // nawigacja doszła do skutku
+            }
+            if (!where || where === "about:blank") {
+              setScreenNote(`Ramka nie ruszyła z about:blank. Adres: ${vncOrigin() || "PUSTY"}`);
+              return;
+            }
             setScreenLoaded(true);
             try {
               stripVncChrome(e.currentTarget.contentDocument);
@@ -282,7 +306,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         />
         {!screenLoaded && (
           <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger px-3 py-2 text-[11px] leading-snug text-white">
-            {screenNote ?? `czekam na ekran · stan: ${computerState} · token: ${vncToken ? "jest" : "BRAK"} · ster: ${owner}`}
+            {screenNote ?? `czekam na ekran · stan: ${computerState} · token: ${vncToken ? "jest" : "BRAK"} · adres: ${vncOrigin() || "PUSTY"} · origin: ${typeof location === "undefined" ? "brak" : String(location.origin)}`}
           </div>
         )}
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
@@ -364,7 +388,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             {/* Znacznik wydania widoczny gołym okiem. Bez niego nie da się z
                 zewnątrz odróżnić „poprawka nie działa" od „aplikacja wciąż
                 chodzi na starej paczce", a to dwie zupełnie różne diagnozy. */}
-            <span>{polish ? "Ekran bota" : "Bot screen"} <span className="opacity-50">d2</span></span>
+            <span>{polish ? "Ekran bota" : "Bot screen"} <span className="opacity-50">d3</span></span>
             <button
               type="button"
               onClick={() => setFullscreen(true)}
