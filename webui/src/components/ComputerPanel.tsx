@@ -106,6 +106,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   const ownerRef = useRef<ControlOwner>("agent");
   ownerRef.current = owner;
   const screenRef = useRef<HTMLIFrameElement>(null);
+  // Ekran, który się nie wczytał, był dotąd niemym czarnym prostokątem —
+  // nie do odróżnienia od pulpitu z czarną tapetą. Diagnoza „czarny ekran
+  // w aplikacji" schodziła przez to na zgadywanie. Tu iframe mówi, co mu jest.
+  const [screenNote, setScreenNote] = useState<string | null>(null);
+  const screenLoaded = useRef(false);
   // Na mobile panel idzie do document.body (createPortal), by był warstwą
   // najwyższą (z-[90]) nad drawerem (z-[60]) — niezależnie od kontekstu
   // nakładania. Na desktopie render w miejscu (prawa kolumna).
@@ -235,6 +240,21 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   // on. Desktop keeps working either way (cookie or token).
   const vncToken = getAuthToken();
 
+  // Iframe, który nigdy nie wyśle żądania, nie odpala ani `onLoad`, ani
+  // `onError` — milczy. Ośmiosekundowy budzik zamienia to milczenie w zdanie.
+  useEffect(() => {
+    if (computerState !== "ready") return;
+    screenLoaded.current = false;
+    setScreenNote(null);
+    const timer = setTimeout(() => {
+      if (screenLoaded.current) return;
+      setScreenNote(
+        `Ekran nie odpowiedział w 8 s. Adres: /api/bots/${bot.id}/computer/vnc/vnc_lite.html${vncToken ? "" : " (BRAK TOKENA)"}`,
+      );
+    }, 8_000);
+    return () => clearTimeout(timer);
+  }, [computerState, bot.id, owner, vncToken]);
+
   const screen = (fullscreenView: boolean) =>
     computerState === "ready" ? (
       <div className="relative h-full w-full">
@@ -243,11 +263,26 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           title={polish ? "Ekran bota" : "Bot screen"}
           src={computerVncSrc(bot.id, owner, vncToken)}
           onLoad={(e) => {
-            stripVncChrome(e.currentTarget.contentDocument);
-            setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
+            screenLoaded.current = true;
+            try {
+              stripVncChrome(e.currentTarget.contentDocument);
+              setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
+              setScreenNote(null);
+            } catch (err) {
+              // Wyjątek TUTAJ znaczy, że strona się wczytała, ale dokument
+              // iframe'a jest dla nas obcym pochodzeniem — dokładnie ten
+              // przypadek daje WebView aplikacji mobilnej.
+              setScreenNote(`Ekran wczytany, brak dostępu do jego dokumentu: ${(err as Error).message}`);
+            }
           }}
+          onError={() => setScreenNote("Przeglądarka nie wczytała adresu ekranu.")}
           className="h-full w-full border-0"
         />
+        {screenNote && (
+          <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger/90 px-3 py-2 text-[11px] leading-snug text-white">
+            {screenNote}
+          </div>
+        )}
         {/* view-only screen: clicks land nowhere useful, so use them to expand */}
         {owner === "agent" && !fullscreenView && (
           <button
