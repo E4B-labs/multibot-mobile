@@ -59,7 +59,15 @@ export function computerVncSrc(botId: string, controlOwner: ControlOwner, token 
   // klient VNC — sterowanie ma UI panelu. Lite umie dokładnie to, czego
   // potrzebujemy: `path`, `scale`, `view_only`.
   const ws = `api/bots/${botId}/computer/vnc/websockify${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-  const base = `/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
+  // Adres MUSI być bezwzględny. Aplikacja wstrzykuje interfejs przez
+  // `loadDataWithBaseURL`: `location` udaje adres hosta, ale prawdziwym adresem
+  // dokumentu zostaje wstrzyknięta treść. `fetch("/api/...")` działa, bo idzie
+  // po `document.baseURI`; względny `src` iframe'a rozwiązuje się względem tego
+  // prawdziwego adresu i nie prowadzi donikąd. Iframe zostawał wtedy na
+  // `about:blank` — odpalał `load`, `stripVncChrome` malowało mu tło na czarno
+  // i to był cały „czarny ekran komputera": ani jednego żądania do serwera.
+  const origin = typeof location === "undefined" ? "" : location.origin;
+  const base = `${origin}/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
 }
 
