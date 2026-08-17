@@ -5,22 +5,20 @@ import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
 import { normalizeHostUrl } from "./src/lib/host-logic";
-import { deleteHost, listHosts, renameHost } from "./src/lib/hosts";
+import { listHosts } from "./src/lib/hosts";
 import { configurePushNotifications, extractBotTarget, requestPushPermission } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
-import HostListScreen from "./src/screens/HostListScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
 // No navigation library: three screens, switched by local state. Adding
 // react-navigation for this would be an unrequested abstraction — bring it
 // in when a fourth screen or deep-link routing actually needs it.
 type Route =
-  | { name: "list" }
-  | { name: "add" }
+  | { name: "firstrun" }
   | { name: "webview"; host: Host; botId?: string };
 
 export default function App() {
-  const [route, setRoute] = useState<Route>({ name: "list" });
+  const [route, setRoute] = useState<Route>({ name: "firstrun" });
   const [hosts, setHosts] = useState<Host[]>([]);
   const hostsRef = useRef<Host[]>([]);
   // Przy pierwszym załadowaniu, jeśli istnieje już host, wchodzimy od razu w
@@ -61,7 +59,10 @@ export default function App() {
 
     const openFromTarget = (target: ReturnType<typeof extractBotTarget>) => {
       if (!target.hostUrl) {
-        setRoute({ name: "list" });
+        // Bez adresu hosta otwieramy zapisanego hosta (aplikacja obsługuje
+        // jednego) — ekran listy został usunięty.
+        const existing = hostsRef.current[0];
+        if (existing) setRoute({ name: "webview", host: existing });
         return;
       }
       let normalized: string;
@@ -84,22 +85,6 @@ export default function App() {
 
     return () => sub.remove();
   }, []);
-
-  const handleRemove = useCallback(
-    async (id: string) => {
-      await deleteHost(id);
-      refresh();
-    },
-    [refresh],
-  );
-
-  const handleRename = useCallback(
-    async (id: string, name: string) => {
-      await renameHost(id, name);
-      refresh();
-    },
-    [refresh],
-  );
 
   useEffect(() => {
     if (__DEV__ || !Updates.isEnabled) {
@@ -160,27 +145,26 @@ export default function App() {
     <>
       <SafeAreaView style={styles.root}>
         <StatusBar barStyle="light-content" backgroundColor="#070707" />
-        {route.name === "list" && (
-          <HostListScreen
-            hosts={hosts}
-            loading={loading}
-            onOpen={(host) => setRoute({ name: "webview", host })}
-            onAdd={() => setRoute({ name: "add" })}
-            onRemove={(id) => void handleRemove(id)}
-            onRename={(id, name) => void handleRename(id, name)}
-          />
+        {route.name === "firstrun" && loading && (
+          // Splash podczas odczytu hostów z SecureStore: bez tego przez chwilę
+          // migał ekran dodawania (route startuje jako "firstrun"), zanim
+          // didInit przełączy na zapisanego hosta.
+          <View style={styles.splash} />
         )}
-        {route.name === "add" && (
+        {route.name === "firstrun" && !loading && (
+          // Pierwsze uruchomienie (brak hosta w SecureStore): od razu ekran
+          // dodawania. Po dodaniu hosta wchodzimy w WebView i już do niego
+          // nie wracamy — stąd brak osobnego ekranu listy.
           <AddHostScreen
             onDone={(host) => {
               refresh();
               setRoute({ name: "webview", host });
             }}
-            onCancel={() => setRoute({ name: "list" })}
+            onCancel={() => {}}
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId}             onBack={() => {}} />
+          <WebViewScreen host={route.host} botId={route.botId} onBack={() => {}} />
         )}
       </SafeAreaView>
 
@@ -222,6 +206,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#070707" },
+  splash: { flex: 1, backgroundColor: "#070707" },
   updateActions: {
     flexDirection: "row",
     gap: 10,

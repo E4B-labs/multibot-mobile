@@ -126,6 +126,18 @@ function Shell() {
   const { state } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
+  // Drawer to panel startowy aplikacji: przy (re)otwarciu apki otwieramy
+  // panel boczny (klasa `mb-drawer-open`), nawet gdy Android nie przeładował
+  // WebView i stan dokumentu przetrwał w tle.
+  useEffect(() => {
+    const open = () => document.body.classList.add("mb-drawer-open");
+    open();
+    const onVis = () => {
+      if (document.visibilityState === "visible") open();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}

@@ -88,20 +88,72 @@ body {
     padding-left: var(--safe-left);
   }
   .multibot-shell > div.relative { display: flex; }
+  /* Pełny panel na mobile: wypełnia CAŁY ekran (zasłania czat) zamiast
+     wysuwać się tylko częściowo. Zamyka się wyłącznie przyciskiem X wewnątrz
+     panelu (brak scrimu do tapnięcia na zewnątrz — patrz DrawerToggle). */
   .multibot-shell > div.relative > aside:first-child {
     position: fixed;
-    top: var(--safe-top);
-    left: var(--safe-left);
-    bottom: var(--safe-bottom);
-    width: 84%;
-    max-width: 340px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     z-index: 60;
     transform: translateX(-100%);
     transition: transform 0.18s ease;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.55);
+    /* Wewnątrz przewija się tylko lista (flex-1 overflow-y-auto), więc panel
+       sam nie ma paska. Własne marginesy safe-area, bo zakrywa cały viewport. */
+    overflow: hidden;
+    padding-top: var(--safe-top);
+    padding-right: var(--safe-right);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
   }
   body.mb-drawer-open .multibot-shell > div.relative > aside:first-child {
     transform: translateX(0);
+  }
+  /* Modal wtyczek na mobile: pełny ekran (fixed z-[70]), odsunięty o safe-area,
+     by nie wchodził pod paski systemu. Na desktopie (md:absolute) nie gra. */
+  .plugins-overlay {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+  /* Pasek przewijania w czacie zostaje widoczny (pokazuje pozycję w historii),
+     ale surowy WebView rysował biały bloczek w prawym dolnym rogu (corner,
+     tam gdzie spotykają się paski). Stylujemy go na ciemno i robimy róg
+     przezroczysty, by nie gryzł się z motywem. */
+  .chat-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #3d3d3d transparent;
+  }
+  .chat-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .chat-scroll::-webkit-scrollbar-thumb {
+    background: #3d3d3d;
+    border-radius: 4px;
+  }
+  .chat-scroll::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  /* Wiadomości zawijają się zamiast wymuszać poziomy pasek przewijania:
+     dlugi tekst, kod, adresy i tabele łamią się w szerokości bulgii. */
+  .chat-scroll {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .chat-scroll pre,
+  .chat-scroll code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .chat-scroll img,
+  .chat-scroll table {
+    max-width: 100%;
   }
   .multibot-shell main,
   .multibot-shell > div.relative > div {
@@ -145,6 +197,10 @@ body {
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 

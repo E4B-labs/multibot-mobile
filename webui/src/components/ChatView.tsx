@@ -146,7 +146,7 @@ function ActivityChip({ message }: { message: Message }) {
     <div className="flex justify-start">
       <div
         className={cn(
-          "flex items-center gap-2 rounded-full border border-hairline/40 bg-panel px-3 py-1.5 text-[13px]",
+          "flex items-center gap-2 rounded-xl border border-hairline/40 bg-panel px-3 py-1.5 text-[13px]",
           failed ? "text-danger" : "text-ink-secondary",
         )}
       >
@@ -157,7 +157,7 @@ function ActivityChip({ message }: { message: Message }) {
         ) : (
           <Check size={13} className="text-success" />
         )}
-        <span className="max-w-[480px] truncate font-mono">{tool.name}</span>
+        <span className="min-w-0 max-w-[480px] break-all font-mono">{tool.name}</span>
       </div>
     </div>
   );
@@ -425,7 +425,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-5 [overflow-anchor:none]"
+        className="chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 [overflow-anchor:none]"
         onWheel={(e) => {
           if (e.deltaY < 0) setFollow(false);
           else if (atEnd()) setFollow(true);
