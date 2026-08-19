@@ -89,8 +89,9 @@ body {
   }
   .multibot-shell > div.relative { display: flex; }
   /* Pełny panel na mobile: wypełnia CAŁY ekran (zasłania czat) zamiast
-     wysuwać się tylko częściowo. Zamyka się wyłącznie przyciskiem X wewnątrz
-     panelu (brak scrimu do tapnięcia na zewnątrz — patrz DrawerToggle). */
+     wysuwać się tylko częściowo. Zamyka się wyborem bota z listy — wtedy od
+     razu widać jego czat (brak scrimu do tapnięcia na zewnątrz — patrz
+     DrawerToggle). */
   .multibot-shell > div.relative > aside:first-child {
     position: fixed;
     inset: 0;

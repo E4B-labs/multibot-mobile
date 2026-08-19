@@ -5,7 +5,7 @@ import { Menu, X } from "lucide-react";
 // Dzięki temu pasek i przycisk są w jednym rzędzie, tej samej wysokości — nie
 // ma wolnego miejsca pod osobnym, wyższym przyciskiem. Przełącza drawer
 // (`mb-drawer-open` na <body>). Na mobile drawer to pełny panel zamykany
-// wyłącznie przyciskiem X wewnątrz (brak scrimu do tapnięcia na zewnątrz).
+// wyborem bota z listy (brak scrimu do tapnięcia na zewnątrz).
 export function DrawerToggle() {
   const [open, setOpen] = useState(false);
   useEffect(() => {

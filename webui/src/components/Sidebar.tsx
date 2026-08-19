@@ -159,14 +159,21 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
   const last = bot.messages[bot.messages.length - 1];
   return (
     <button
-      onClick={() => dispatch({ type: "select", id: bot.id })}
+      onClick={() => {
+        dispatch({ type: "select", id: bot.id });
+        // Wybór bota zamyka drawer i pokazuje jego czat — to jedyne wyjście
+        // z panelu, odkąd nie ma już przycisku X w nagłówku.
+        document.body.classList.remove("mb-drawer-open");
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
       }}
       style={{ WebkitTouchCallout: "none" }}
       className={cn(
-        "flex w-full select-none items-center gap-3 rounded-2xl px-3 py-3 text-left",
+        // Wiersz dochodzi do lewej krawędzi ekranu (pl-0), więc podświetlenie
+        // zaznaczenia jest tam proste — zaokrąglony róg wisiałby w powietrzu.
+        "flex w-full select-none items-center gap-3 rounded-r-2xl pl-0 pr-3 py-3 text-left",
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
@@ -315,18 +322,11 @@ export function Sidebar() {
 
   return (
     <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
-      {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu. */}
-      <div className="relative mx-2 my-2 flex h-[calc(100%-1rem)] w-[calc(100%-1rem)] flex-col overflow-hidden rounded-[28px] bg-black shadow-2xl shadow-black/60 md:mx-0 md:my-0 md:h-full md:w-full md:rounded-none">
+      {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu.
+          Bez marginesu poziomego — lista botów ma dochodzić do lewej krawędzi. */}
+      <div className="relative my-2 flex h-[calc(100%-1rem)] w-full flex-col overflow-hidden rounded-[28px] bg-black shadow-2xl shadow-black/60 md:my-0 md:h-full md:rounded-none">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
-          {/* X zamyka drawer (tylko mobile) */}
-          <button
-            onClick={() => document.body.classList.remove("mb-drawer-open")}
-            className="rounded-md p-1 text-ink-secondary hover:bg-white/10 hover:text-ink md:hidden"
-            aria-label={polish ? "Zamknij menu" : "Close menu"}
-          >
-            <X size={20} />
-          </button>
           <div className="flex-1" />
           {/* Szukaj — kliknięcie lupki rozwija popover z paletą wyszukiwania */}
           <div data-search-menu>
@@ -398,8 +398,9 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Unified conversation list */}
-        <div className="flex-1 overflow-y-auto px-2">
+        {/* Unified conversation list — bez wcięcia po lewej (wiersze dochodzą
+            do krawędzi ekranu), wcięcie zostaje po prawej, gdzie stoi godzina. */}
+        <div className="flex-1 overflow-y-auto pr-2">
           <div className="flex flex-col gap-0.5">
             {filteredBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={setMenu} />
