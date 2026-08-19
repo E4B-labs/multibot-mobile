@@ -182,7 +182,14 @@ function Shell() {
 }
 
 export default function App() {
-  const [gated, setGated] = useState(() => !emailGateDone());
+  // Port poprawki z oryginału (ff08c703/67b0c15): zapisany token dostępu to
+  // dowód konfiguracji. W powłoce mobilnej token wchodzi do localStorage przed
+  // startem strony (WebViewScreen bootstrap), więc onboarding NIGDY nie ma się
+  // tu pokazać — serwer już stoi, logowanie zrobiła natywna część aplikacji.
+  // Bez tego nakładka „Set up a server / Sign in to a server" wisiała nad
+  // zalogowanym czatem i wyglądała jak drugie logowanie.
+  const configured = emailGateDone() || Boolean(getAuthToken());
+  const [gated, setGated] = useState(() => !configured);
   // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
   // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.
   const [authenticated, setAuthenticated] = useState(() => Boolean(getAuthToken()));
