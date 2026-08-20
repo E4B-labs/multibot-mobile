@@ -1,5 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BellDot,
   Bot as BotIcon,
@@ -63,6 +64,15 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
+      // Prawy przycisk (na telefonie: długie przytrzymanie) otwiera to menu
+      // zdarzeniem `contextmenu`, które przeglądarka wysyła PO `mousedown`
+      // tego samego gestu. Zamykanie na `mousedown` sprawiało więc, że drugie
+      // przytrzymanie tego samego wiersza najpierw zamykało menu, a ułamek
+      // milisekundy później `contextmenu` otwierało je z powrotem — z zewnątrz
+      // wyglądało to tak, jakby menu w ogóle nie dało się zamknąć i trzeba
+      // było kliknąć jeszcze raz, gdzie indziej. O prawym przycisku decyduje
+      // wyłącznie `contextmenu` (patrz przełącznik w `Sidebar`).
+      if (e.button === 2) return;
       if (!(e.target as HTMLElement).closest("[data-bot-menu]")) onClose();
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -107,11 +117,17 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
   );
   const divider = (key: string) => <div key={key} className="mx-2 my-1 border-t border-hairline/40" />;
 
-  return (
+  // Menu jedzie przez portal do <body> i na warstwę `z-[90]` — tę samą, której
+  // używają SettingsPanel i ComputerPanel, żeby stanąć nad drawerem (`z-[60]`).
+  // Renderowane w miejscu siedziało wewnątrz drawera, który na telefonie ma
+  // `transform`, więc tworzy własny kontekst nakładania: `z-40` liczyło się
+  // tylko wewnątrz szuflady, a `position: fixed` liczyło współrzędne względem
+  // niej (czyli z przesunięciem o jej safe-area), a nie względem ekranu.
+  return createPortal(
     <div
       data-bot-menu
       style={{ top, left }}
-      className="fixed z-40 w-[228px] select-none overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
+      className="fixed z-[90] w-[228px] select-none overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
     >
       {[
         item(
@@ -146,7 +162,8 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
           danger: true,
         }),
       ]}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -227,6 +244,27 @@ export function Sidebar() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // Dymek profilu i jego menu: menu idzie portalem do <body>, więc nie ma
+  // rodzica, względem którego mogłoby się ustawić — kotwiczymy je na pozycji
+  // przycisku odczytanej w chwili otwarcia.
+  const userButtonRef = useRef<HTMLButtonElement>(null);
+  const [userMenuAt, setUserMenuAt] = useState<{ top: number; left: number } | null>(null);
+
+  const toggleUserMenu = () => {
+    if (userMenuOpen) {
+      setUserMenuOpen(false);
+      return;
+    }
+    const box = userButtonRef.current?.getBoundingClientRect();
+    setUserMenuAt(box ? { top: box.bottom + 8, left: box.left } : null);
+    setUserMenuOpen(true);
+  };
+
+  // Powtórne przytrzymanie tego samego wiersza zamyka jego menu, zamiast
+  // otwierać je od nowa. Bez tego `contextmenu` zawsze ustawiał stan na
+  // "otwarte" i menu dało się zamknąć tylko kliknięciem gdzie indziej.
+  const openBotMenu = (next: MenuState) =>
+    setMenu((prev) => (prev?.botId === next.botId ? null : next));
 
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
   // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
@@ -327,6 +365,20 @@ export function Sidebar() {
       <div className="relative my-2 flex h-[calc(100%-1rem)] w-full flex-col overflow-hidden rounded-[28px] bg-black shadow-2xl shadow-black/60 md:my-0 md:h-full md:rounded-none">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
+          {/* Dymek profilu stoi w lewym górnym rogu — w miejscu po przycisku X,
+              który kiedyś zamykał drawer. Rozwija menu Wtyczki + Ustawienia. */}
+          <div className="relative" data-user-menu>
+            <button
+              ref={userButtonRef}
+              onClick={toggleUserMenu}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              style={{ minHeight: 0 }}
+              aria-label={polish ? "Menu użytkownika" : "User menu"}
+              aria-expanded={userMenuOpen}
+            >
+              {profileInitials(state.config?.profile) || "R"}
+            </button>
+          </div>
           <div className="flex-1" />
           {/* Szukaj — kliknięcie lupki rozwija popover z paletą wyszukiwania */}
           <div data-search-menu>
@@ -403,51 +455,16 @@ export function Sidebar() {
         <div className="flex-1 overflow-y-auto pr-2">
           <div className="flex flex-col gap-0.5">
             {filteredBots.map((b) => (
-              <BotRow key={b.id} bot={b} onMenu={setMenu} />
+              <BotRow key={b.id} bot={b} onMenu={openBotMenu} />
             ))}
           </div>
         </div>
 
-        {/* Footer — avatar (lewy dół) rozwija menu Ustawienia + Wtyczki */}
-        <div className="flex items-center gap-3 px-3 pb-3 pt-2">
-          <div className="relative" data-user-menu>
-            <button
-              onClick={() => setUserMenuOpen((v) => !v)}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
-              style={{ minHeight: 0 }}
-              aria-label={polish ? "Menu użytkownika" : "User menu"}
-              aria-expanded={userMenuOpen}
-            >
-              {profileInitials(state.config?.profile) || "R"}
-            </button>
-            {userMenuOpen && (
-              <div className="absolute bottom-11 left-0 z-30 w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg">
-                <button
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    document.body.classList.remove("mb-drawer-open");
-                    dispatch({ type: "togglePlugins", open: true });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
-                >
-                  <Puzzle size={15} className="text-ink-secondary" />
-                  {polish ? "Wtyczki" : "Plugins"}
-                </button>
-                <button
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    document.body.classList.remove("mb-drawer-open");
-                    dispatch({ type: "toggleAppSettings" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
-                >
-                  <Settings size={15} className="text-ink-secondary" />
-                  {polish ? "Ustawienia" : "Settings"}
-                </button>
-              </div>
-            )}
-          </div>
-          {engineOffline && (
+        {/* Stopka została już tylko dla wskaźnika offline — dymek profilu
+            przeniósł się do nagłówka. Bez wskaźnika nie rezerwujemy miejsca,
+            żeby lista botów sięgała dołu ekranu. */}
+        {engineOffline && (
+          <div className="flex items-center gap-3 px-3 pb-3 pt-2">
             <div
               title="Local service offline — custom-model bots can't run. Check App Settings."
               className="flex items-center gap-2 text-[12px] text-ink-secondary"
@@ -455,11 +472,54 @@ export function Sidebar() {
               <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
               Service offline
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
       </div>
+
+      {/* Menu profilu — portal do <body> i `z-[90]`, ta sama warstwa co
+          SettingsPanel/ComputerPanel, czyli nad drawerem (`z-[60]`). W miejscu
+          renderowania byłoby zamknięte w kontekście nakładania szuflady (ma
+          `transform`) i dodatkowo przycinane przez `overflow-hidden` karty.
+          `data-user-menu` MUSI zostać także tutaj: portal wynosi menu poza
+          poddrzewo przycisku, a wykrywanie „kliknięcia poza" chodzi po DOM-ie
+          (`closest`). Bez tego atrybutu `mousedown` na pozycji menu zamykałby
+          je, zanim przeglądarka zdążyłaby wysłać `click` do jego przycisku —
+          i pierwsze tapnięcie w pozycję menu przepadałoby bez efektu. */}
+      {userMenuOpen &&
+        userMenuAt &&
+        createPortal(
+          <div
+            data-user-menu
+            style={{ top: userMenuAt.top, left: userMenuAt.left }}
+            className="fixed z-[90] w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
+          >
+            <button
+              onClick={() => {
+                setUserMenuOpen(false);
+                document.body.classList.remove("mb-drawer-open");
+                dispatch({ type: "togglePlugins", open: true });
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+            >
+              <Puzzle size={15} className="text-ink-secondary" />
+              {polish ? "Wtyczki" : "Plugins"}
+            </button>
+            <button
+              onClick={() => {
+                setUserMenuOpen(false);
+                document.body.classList.remove("mb-drawer-open");
+                dispatch({ type: "toggleAppSettings" });
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+            >
+              <Settings size={15} className="text-ink-secondary" />
+              {polish ? "Ustawienia" : "Settings"}
+            </button>
+          </div>,
+          document.body,
+        )}
     </aside>
   );
 }

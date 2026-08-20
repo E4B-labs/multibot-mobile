@@ -107,7 +107,14 @@ body {
     padding-top: var(--safe-top);
     padding-right: var(--safe-right);
     padding-bottom: var(--safe-bottom);
-    padding-left: var(--safe-left);
+    /* Po lewej ŻADNEGO wcięcia — lista botów ma dotykać krawędzi ekranu, a to
+       była ostatnia warstwa, która ją odsuwała (karta `mx-2`, kontener `px-2`
+       i wiersz `px-3` zniknęły wcześniej). `env(safe-area-inset-left)` na
+       Androidzie w pionie i tak zwraca 0, a w poziomie chroniłby przed
+       wcięciem ekranu — ale tu po lewej stoi tylko awatar, którego obcięcie
+       niczego nie kosztuje, a wcięcie psuje cały efekt. Góra, dół i prawa
+       strona zostają, bo tam są paski systemu i godziny wiadomości. */
+    padding-left: 0;
   }
   body.mb-drawer-open .multibot-shell > div.relative > aside:first-child {
     transform: translateX(0);
@@ -179,6 +186,12 @@ body {
   .multibot-shell button,
   .multibot-shell input,
   .multibot-shell select { min-height: 44px; }
+  /* Menu z paska bocznego jadą portalem do <body>, żeby stanąć nad drawerem,
+     więc wypadają spod selektora `.multibot-shell` powyżej. Bez tej reguły
+     ich pozycje miałyby na telefonie kilkanaście pikseli wysokości zamiast
+     wygodnego celu pod palec. */
+  [data-bot-menu] button,
+  [data-user-menu] button { min-height: 44px; }
   .multibot-login button,
   .multibot-login input,
   [role="dialog"] button,
