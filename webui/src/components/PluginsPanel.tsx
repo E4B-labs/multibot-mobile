@@ -6,11 +6,22 @@
 // (source === "custom") — renderowane w sekcji "Custom connectors" niżej,
 // obsługiwane trasami harnessa /api/connectors/custom/:id (działają bez
 // klucza Composio).
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, X } from "lucide-react";
+// multibot (scrapery zdjęć): karty, którymi bot zdobywa obrazy, jadą na górę
+// listy we własnej sekcji, a gotowe presety własnych serwerów MCP dają się
+// podpiąć jednym tapnięciem zamiast przepisywania ich do formularza —
+// szczegóły i granica tego, co wolno zrobić bez pytania, w @/lib/imageScrapers.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Images, Loader2, RefreshCw, X } from "lucide-react";
 import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
+import {
+  imageScraperCards,
+  markSeeded,
+  pendingPresets,
+  presetBody,
+  type ScraperPreset,
+} from "@/lib/imageScrapers";
 
 interface ToolkitCard {
   slug: string;
@@ -46,6 +57,97 @@ function ServiceIcon({ card }: { card: ToolkitCard }) {
   );
 }
 
+// Wiersze katalogu wyjęte z listy do osobnych komponentów, bo od sekcji
+// scraperów zdjęć każdy z nich renderuje się w dwóch miejscach naraz —
+// raz przypięty na górze, raz w zwykłej liście. Zduplikowany JSX rozjechałby
+// się przy pierwszej zmianie przycisku.
+function ComposioRow({
+  card,
+  connected,
+  busy,
+  configured,
+  onConnect,
+  onDisconnect,
+  polish,
+  divider,
+}: {
+  card: ToolkitCard;
+  connected: boolean;
+  busy: boolean;
+  configured: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  polish: boolean;
+  divider: boolean;
+}) {
+  return (
+    <div className={cn("flex items-center gap-3 bg-card px-4 py-3", divider && "border-t border-hairline/40")}>
+      <ServiceIcon card={card} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
+          {card.label}
+          {connected && <span className="size-1.5 rounded-full bg-success" />}
+        </div>
+        <div className="truncate text-[12px] text-ink-secondary">{card.blurb}</div>
+      </div>
+      <button
+        disabled={!configured || busy}
+        onClick={() => (connected ? onDisconnect() : onConnect())}
+        className={cn(
+          "w-[92px] rounded-lg py-1.5 text-[13px] disabled:opacity-50",
+          connected ? "bg-raised text-ink-secondary hover:text-danger" : "bg-raised text-ink hover:bg-raised-hover",
+        )}
+      >
+        {busy ? (
+          <Loader2 size={13} className="mx-auto animate-spin" />
+        ) : connected ? (
+          polish ? "Odłącz" : "Disconnect"
+        ) : (
+          polish ? "Połącz" : "Connect"
+        )}
+      </button>
+    </div>
+  );
+}
+
+function CustomRow({
+  card,
+  busy,
+  onEdit,
+  onRemove,
+  polish,
+}: {
+  card: ToolkitCard;
+  busy: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+  polish: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-t border-hairline/40 px-4 py-3">
+      <ServiceIcon card={card} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-ink">{card.label}</div>
+        <div className="truncate text-[12px] text-ink-secondary">{card.blurb}</div>
+      </div>
+      <button
+        disabled={busy}
+        onClick={onEdit}
+        className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
+      >
+        {polish ? "Edytuj" : "Edit"}
+      </button>
+      <button
+        disabled={busy}
+        onClick={onRemove}
+        className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:text-danger disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={13} className="mx-auto animate-spin" /> : polish ? "Usuń" : "Remove"}
+      </button>
+    </div>
+  );
+}
+
 // multibot (F7): własne konektory MCP — formularz i pomocnicy. Lustrzane
 // stałe walidacji z server/mcp-connectors.ts, żeby błąd id pokazać od razu,
 // bez rundy do serwera (resztę wsadu i tak waliduje backend — 400 idzie
@@ -65,6 +167,17 @@ type KV = { k: string; v: string };
 // connectorCards() zawsze buduje jako "<transport>: …".
 function typeFromBlurb(blurb: string): TransportType {
   return blurb.startsWith("http:") ? "http" : blurb.startsWith("sse:") ? "sse" : "stdio";
+}
+
+// Favicon presetu bierzemy z hosta jego adresu — dokładnie tak, jak robi to
+// `connectorCards()` na serwerze dla już zapisanych konektorów, żeby wiersz
+// propozycji i wiersz po instalacji wyglądały tak samo.
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
 
 function kvToMap(rows: KV[]): Record<string, string> | undefined {
@@ -441,13 +554,59 @@ export function PluginsPanel() {
       .finally(() => setBusySlug(null));
   };
 
+  // multibot (scrapery zdjęć): preset ląduje w harnessie tą samą trasą co
+  // konektor wpisany ręcznie, więc różnica jest wyłącznie taka, że nikt nie
+  // przepisuje polecenia z palca. `markSeeded` zapada PO udanym zapisie —
+  // inaczej nieudana instalacja zniknęłaby z listy propozycji na zawsze.
+  const installPreset = useCallback(
+    (preset: ScraperPreset) => {
+      setBusySlug(preset.id);
+      setError(null);
+      return api(`/api/connectors/custom/${preset.id}`, {
+        method: "PUT",
+        body: JSON.stringify(presetBody(preset)),
+      })
+        .then(() => {
+          markSeeded([preset.id]);
+          return loadCatalog();
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setBusySlug(null));
+    },
+    [loadCatalog],
+  );
+
+  // Presety oznaczone `auto` instalują się same przy pierwszym wczytaniu
+  // katalogu — to jest owo „podpięte domyślnie". Ref pilnuje, żeby
+  // przeładowanie katalogu po zapisie nie zapętliło instalacji.
+  const autoSeeded = useRef(false);
+  useEffect(() => {
+    if (!cards || autoSeeded.current) return;
+    autoSeeded.current = true;
+    const auto = pendingPresets(cards).filter((p) => p.auto);
+    if (!auto.length) return;
+    void (async () => {
+      for (const preset of auto) await installPreset(preset);
+    })();
+  }, [cards, installPreset]);
+
   const visible = (cards ?? []).filter(
     (c) => !search || `${c.label} ${c.slug} ${c.blurb}`.toLowerCase().includes(search.toLowerCase()),
   );
+  // Propozycje liczymy z pełnego katalogu, nie z `visible` — wpisana fraza
+  // wyszukiwania nie może udawać, że presetu nie ma w harnessie.
+  const proposals = cards ? pendingPresets(cards).filter((p) => !p.auto) : [];
   // multibot (F7): Composio renderuje się jak dotąd, własne konektory idą
   // do sekcji "Custom connectors" na dole listy
   const composioCards = visible.filter((c) => c.source !== "custom");
   const customCards = visible.filter((c) => c.source === "custom");
+  // multibot (scrapery zdjęć): to, czym bot zdobywa obrazy, wyjęte z obu
+  // źródeł na górę listy. Karta pokazuje się w sekcji ALBO na zwykłej liście,
+  // nigdy dwa razy — stąd odjęcie slugów poniżej.
+  const scraperCards = imageScraperCards(visible);
+  const scraperSlugs = new Set(scraperCards.map((c) => c.slug));
+  const restComposio = composioCards.filter((c) => !scraperSlugs.has(c.slug));
+  const restCustom = customCards.filter((c) => !scraperSlugs.has(c.slug));
 
   return (
     <div
@@ -528,48 +687,98 @@ export function PluginsPanel() {
               <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie katalogu…" : "Loading catalog…"}
             </div>
           ) : (
-            composioCards.map((card, i) => {
-              const connected = status[card.slug]?.connected;
-              const busy = busySlug === card.slug;
-              return (
-                <div
-                  key={card.slug}
-                  className={cn(
-                    "flex items-center gap-3 bg-card px-4 py-3",
-                    i > 0 && "border-t border-hairline/40",
-                  )}
-                >
-                  <ServiceIcon card={card} />
+            <>
+              {/* multibot (scrapery zdjęć): sekcja przypięta na górze. Karty
+                  Composio zostają z przyciskiem „Połącz" — OAuth wymaga
+                  przeglądarki, więc automat może je najwyżej pokazać;
+                  własne serwery MCP są tu już realnie podpięte. */}
+              {(scraperCards.length > 0 || proposals.length > 0) && (
+                <div className="bg-card px-4 pb-2 pt-3">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+                    <Images size={14} className="text-ink-secondary" />
+                    {polish ? "Scrapery zdjęć" : "Image scrapers"}
+                  </div>
+                  <div className="text-[12px] text-ink-secondary">
+                    {polish ? "Czym bot zdobywa obrazy z sieci." : "How your bots fetch images from the web."}
+                  </div>
+                </div>
+              )}
+              {scraperCards.map((card) =>
+                card.source === "custom" ? (
+                  <CustomRow
+                    key={card.slug}
+                    card={card}
+                    busy={busySlug === card.slug}
+                    onEdit={() =>
+                      setDraft({ id: card.slug, name: card.label, type: typeFromBlurb(card.blurb), locked: true })
+                    }
+                    onRemove={() => removeCustom(card.slug)}
+                    polish={polish}
+                  />
+                ) : (
+                  <ComposioRow
+                    key={card.slug}
+                    card={card}
+                    connected={Boolean(status[card.slug]?.connected)}
+                    busy={busySlug === card.slug}
+                    configured={configured}
+                    onConnect={() => connect(card.slug)}
+                    onDisconnect={() => disconnect(card.slug)}
+                    polish={polish}
+                    divider
+                  />
+                ),
+              )}
+              {proposals.map((preset) => (
+                <div key={preset.id} className="flex items-center gap-3 border-t border-hairline/40 bg-card px-4 py-3">
+                  <ServiceIcon
+                    card={{
+                      slug: preset.id,
+                      label: preset.name,
+                      blurb: "",
+                      logo: null,
+                      domain: preset.transport.type === "stdio" ? null : hostOf(preset.transport.url),
+                    }}
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
-                      {card.label}
-                      {connected && <span className="size-1.5 rounded-full bg-success" />}
+                    <div className="text-[14px] font-medium text-ink">{preset.name}</div>
+                    <div className="truncate text-[12px] text-ink-secondary">
+                      {preset.transport.type === "stdio"
+                        ? `stdio: ${[preset.transport.command, ...(preset.transport.args ?? [])].join(" ")}`
+                        : `${preset.transport.type}: ${preset.transport.url}`}
                     </div>
-                    <div className="truncate text-[12px] text-ink-secondary">{card.blurb}</div>
                   </div>
                   <button
-                    disabled={!configured || busy}
-                    onClick={() => (connected ? disconnect(card.slug) : connect(card.slug))}
-                    className={cn(
-                      "w-[92px] rounded-lg py-1.5 text-[13px] disabled:opacity-50",
-                      connected
-                        ? "bg-raised text-ink-secondary hover:text-danger"
-                        : "bg-raised text-ink hover:bg-raised-hover",
-                    )}
+                    disabled={busySlug === preset.id}
+                    onClick={() => void installPreset(preset)}
+                    className="w-[92px] rounded-lg bg-raised py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
                   >
-                    {busy ? (
+                    {busySlug === preset.id ? (
                       <Loader2 size={13} className="mx-auto animate-spin" />
-                    ) : connected ? (
-                      polish ? "Odłącz" : "Disconnect"
+                    ) : polish ? (
+                      "Podepnij"
                     ) : (
-                      polish ? "Połącz" : "Connect"
+                      "Connect"
                     )}
                   </button>
                 </div>
-              );
-            })
+              ))}
+              {restComposio.map((card, i) => (
+                <ComposioRow
+                  key={card.slug}
+                  card={card}
+                  connected={Boolean(status[card.slug]?.connected)}
+                  busy={busySlug === card.slug}
+                  configured={configured}
+                  onConnect={() => connect(card.slug)}
+                  onDisconnect={() => disconnect(card.slug)}
+                  polish={polish}
+                  divider={i > 0 || scraperCards.length > 0 || proposals.length > 0}
+                />
+              ))}
+            </>
           )}
-          {cards !== null && composioCards.length === 0 && (
+          {cards !== null && restComposio.length === 0 && scraperCards.length === 0 && (
             <div className="py-8 text-center text-[13px] text-ink-secondary">{polish ? "Brak pasujących aplikacji." : "No apps match."}</div>
           )}
 
@@ -598,42 +807,21 @@ export function PluginsPanel() {
                   {polish ? "Dodaj konektor" : "Add connector"}
                 </button>
               </div>
-              {customCards.map((card) => {
-                const busy = busySlug === card.slug;
-                return (
-                  <div
-                    key={card.slug}
-                    className="flex items-center gap-3 border-t border-hairline/40 px-4 py-3"
-                  >
-                    <ServiceIcon card={card} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-medium text-ink">{card.label}</div>
-                      <div className="truncate text-[12px] text-ink-secondary">{card.blurb}</div>
-                    </div>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        setDraft({
-                          id: card.slug,
-                          name: card.label,
-                          type: typeFromBlurb(card.blurb),
-                          locked: true,
-                        })
-                      }
-                      className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                    >
-                      {polish ? "Edytuj" : "Edit"}
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => removeCustom(card.slug)}
-                      className="rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink-secondary hover:text-danger disabled:opacity-50"
-                    >
-                      {busy ? <Loader2 size={13} className="mx-auto animate-spin" /> : polish ? "Usuń" : "Remove"}
-                    </button>
-                  </div>
-                );
-              })}
+              {/* Scrapery zdjęć są już wyżej we własnej sekcji, więc tu
+                  zostaje reszta własnych serwerów — inaczej ten sam konektor
+                  renderowałby się dwa razy. */}
+              {restCustom.map((card) => (
+                <CustomRow
+                  key={card.slug}
+                  card={card}
+                  busy={busySlug === card.slug}
+                  onEdit={() =>
+                    setDraft({ id: card.slug, name: card.label, type: typeFromBlurb(card.blurb), locked: true })
+                  }
+                  onRemove={() => removeCustom(card.slug)}
+                  polish={polish}
+                />
+              ))}
               {draft && (
                 <ConnectorForm
                   key={draft.locked ? draft.id : "new"}
