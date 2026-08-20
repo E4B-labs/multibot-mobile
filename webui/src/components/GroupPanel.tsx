@@ -22,6 +22,7 @@ import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
+import { DrawerToggle } from "./DrawerToggle";
 import { useLanguage } from "@/lib/language";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
@@ -112,18 +113,21 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
 
   return (
     <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
-      {/* Header — ten sam rytm co zwykły panel agenta */}
-      <div className="flex items-center px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+      {/* Header — ten sam rytm co zwykły panel agenta. `sticky top-0` trzyma
+          pasek w miejscu, gdy pokój się przewija; `DrawerToggle` (telefon)
+          stoi jako pierwszy element i dzieli z paskiem wysokość. */}
+      <div className="chat-header sticky top-0 z-20 bg-app flex items-center px-3 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <DrawerToggle />
           {members.length > 0 ? (
             <div className="flex -space-x-2 shrink-0">
               {members.slice(0, 3).map((bot) => (
-                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={28} animated={false} />
+                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={36} animated={false} />
               ))}
             </div>
           ) : (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
-              <Users size={16} />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
+              <Users size={20} />
             </span>
           )}
           <div className="min-w-0">

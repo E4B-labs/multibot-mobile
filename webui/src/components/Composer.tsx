@@ -162,7 +162,16 @@ export function Composer({ bot }: { bot: Bot }) {
   // the browser exception, plain LAN HTTP must explain limitation clearly.
   const secureContext = window.isSecureContext || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const webSpeechActive = !!WebSpeech && !window.ogb && secureContext;
+  // multibot: w Android/iOS WebView nie ma Web Speech (brak usługi rozpoznawania)
+  // i secureContext jest fałszywy (host to http/LAN); okno.ogb to mostek desktopu.
+  // Bez tego voice nie zadziała — trzeba mostka natywnego (eas build).
+  const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
+  // multibot: to WebView podaje e.results jako LISTĘ SKUMULOWANĄ, która rośnie
+  // przez wielokrotne dołączanie tego samego (rozszerzającego się) wyniku
+  // finalnego — stąd dublowanie przy łączeniu wszystkich finali. Bierzemy
+  // TYLKO OSTATNI wynik finalny (przy rosnącej re-emisji to najpełniejsza
+  // wersja) i obcinamy ewentualne echo w interim.
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
@@ -173,20 +182,20 @@ export function Composer({ bot }: { bot: Bot }) {
     rec.interimResults = true;
     rec.onresult = (e: any) => {
       let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) {
-          const t = String(r[0]?.transcript ?? "").trim();
-          if (t) baseText.current = baseText.current ? `${baseText.current} ${t}` : t;
-        } else {
-          interim += r[0]?.transcript ?? "";
-        }
+      let lastFinal = "";
+      const results = e.results as any;
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const tr = String(r[0]?.transcript ?? "");
+        if (r.isFinal) lastFinal = tr;
+        else interim += tr;
       }
-      const shown = interim.trim()
-        ? baseText.current
-          ? `${baseText.current} ${interim.trim()}`
-          : interim.trim()
-        : baseText.current;
+      // niektóre WebView powtarzają w interim to, co przed chwilą sfinalizowano
+      if (interim && lastFinal && interim.startsWith(lastFinal)) {
+        interim = interim.slice(lastFinal.length);
+      }
+      const recognized = (lastFinal + (interim.trim() ? (lastFinal ? " " : "") + interim.trim() : "")).trim();
+      const shown = [baseText.current, recognized].filter(Boolean).join(" ");
       setText(shown);
     };
     rec.onerror = (e: any) => {
@@ -561,10 +570,10 @@ setText("");
   };
 
   return (
-    <div className="px-5 pb-5 pt-2">
-      {!secureContext && !window.ogb && (
+    <div className="sticky bottom-0 z-20 bg-app px-5 pb-5 pt-2">
+      {!voiceAvailable && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          Dictation needs a secure context: use HTTPS or localhost. Plain HTTP on a LAN cannot access the microphone.
+          Dyktacja głosowa jest niedostępna w aplikacji mobilnej. Działa w przeglądarce (HTTPS/localhost) oraz w wersji desktopowej.
         </div>
       )}
       {speechError && (
@@ -578,7 +587,12 @@ setText("");
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
+           ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
+           Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
+           działa i pozwala dołączyć zdjęcie. Prawdziwy aparat w WebView wymaga
+           natywnej obsługi showFileChooser — poza zakresem JS. */}
+        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker po "/", ten sam dropdown co @mention; pięć
@@ -786,13 +800,21 @@ setText("");
         ) : (
           <button
             onClick={toggleMic}
+            disabled={!voiceAvailable || bot.busy || uploading}
             className={cn(
               "flex size-8 shrink-0 items-center justify-center rounded-full",
               recording
                 ? "animate-pulse bg-danger/20 text-danger"
                 : "text-ink-secondary hover:bg-raised hover:text-ink",
+              (!voiceAvailable || bot.busy || uploading) && "cursor-not-allowed opacity-40",
             )}
-            title={recording ? polish ? "Zatrzymaj dyktowanie (Esc)" : "Stop dictation (Esc)" : polish ? "Dyktuj" : "Dictate"}
+            title={
+              !voiceAvailable
+                ? polish ? "Dyktowanie niedostępne w aplikacji mobilnej" : "Dictation unavailable in the mobile app"
+                : recording
+                  ? polish ? "Zatrzymaj dyktowanie (Esc)" : "Stop dictation (Esc)"
+                  : polish ? "Dyktuj" : "Dictate"
+            }
           >
             <Mic size={18} />
           </button>

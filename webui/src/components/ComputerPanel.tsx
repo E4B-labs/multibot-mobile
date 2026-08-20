@@ -402,7 +402,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
   const panel = (
     <>
-      <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
+      <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -480,12 +480,21 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
-        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px]">
-          {/* multibot: same ikony, bez tytułu — na pełnym ekranie liczy się
-              obraz, a nazwa panelu i tak stoi w nagłówku panelu obok. */}
-          <div className="flex items-center justify-end px-1 py-2">
+        <div
+          className={cn(
+            "fixed inset-0 flex flex-col",
+            // Na telefonie pełny ekran nad szufladą i z odsunięciem od pasków
+            // systemowych Androida; na komputerze duży panel na środku (K6),
+            // bo tam MultiBot pod spodem ma zostać widoczny.
+            mobile
+              ? "z-[100] bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
+              : "z-50 bg-black/50 p-[5%] backdrop-blur-[1px]",
+          )}
+        >
+          <div className={cn("flex items-center py-2", mobile ? "justify-between px-4" : "justify-end px-1")}>
+            {mobile && (
+              <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
+            )}
             <div className="flex items-center gap-2">
               {teachButton}
               {controlButton}

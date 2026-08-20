@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, Brain, CalendarClock, Check, Crosshair, Loader2, Monitor, Square, Wand2, X } from "lucide-react";
+import { ArrowDown, Brain, CalendarClock, Check, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2, X } from "lucide-react";
+import { DrawerToggle } from "./DrawerToggle";
 // multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
 import { AttachmentCard } from "./AttachmentCard";
@@ -145,7 +146,7 @@ function ActivityChip({ message }: { message: Message }) {
     <div className="flex justify-start">
       <div
         className={cn(
-          "flex items-center gap-2 rounded-full border border-hairline/40 bg-panel px-3 py-1.5 text-[13px]",
+          "flex items-center gap-2 rounded-xl border border-hairline/40 bg-panel px-3 py-1.5 text-[13px]",
           failed ? "text-danger" : "text-ink-secondary",
         )}
       >
@@ -156,7 +157,7 @@ function ActivityChip({ message }: { message: Message }) {
         ) : (
           <Check size={13} className="text-success" />
         )}
-        <span className="max-w-[480px] truncate font-mono">{tool.name}</span>
+        <span className="min-w-0 max-w-[480px] break-all font-mono">{tool.name}</span>
       </div>
     </div>
   );
@@ -290,6 +291,23 @@ export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const scrollRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setActionsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActionsOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [actionsOpen]);
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
@@ -321,25 +339,39 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3">
-        <button
-          onClick={() => dispatch({ type: "toggleSettings" })}
-          className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 hover:bg-raised/50"
-          title={polish ? "Ustawienia bota" : "Bot settings"}
-        >
-          <MausAvatar
-            color={bot.color}
-            shape={bot.mascotShape}
-            state={stateForBot(bot)}
-            size={28}
-            motion={mascotMotion?.kind ?? "none"}
-            motionKey={mascotMotion?.nonce ?? 0}
-          />
-          <span className="text-[15px] font-semibold text-ink">{bot.name}</span>
-          {bot.busy && <Loader2 size={14} className="animate-spin text-ink-secondary" />}
-        </button>
-        <div className="flex items-center gap-2">
+      {/* Header — `sticky top-0` trzyma pasek w widoku, gdy rozmowa się
+          przewija. Hamburger (`DrawerToggle`, tylko na telefonie) stoi jako
+          pierwszy element i dzieli z paskiem wysokość. */}
+      <div className="chat-header sticky top-0 z-20 bg-app flex items-center justify-between gap-2 px-3 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <DrawerToggle />
+          <button
+            onClick={() => dispatch({ type: "toggleSettings" })}
+            className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-raised/50"
+            title={polish ? "Ustawienia bota" : "Bot settings"}
+          >
+            <MausAvatar
+              color={bot.color}
+              shape={bot.mascotShape}
+              state={stateForBot(bot)}
+              size={44}
+              motion={mascotMotion?.kind ?? "none"}
+              motionKey={mascotMotion?.nonce ?? 0}
+            />
+            {/* Nazwa i model w kolumnie, obie ucinane wielokropkiem: na wąskim
+                ekranie nachodziły na pigułkę modelu po prawej. */}
+            <div className="flex min-w-0 flex-col">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-[16px] font-semibold text-ink">{bot.name}</span>
+                {bot.busy && <Loader2 size={16} className="animate-spin text-ink-secondary" />}
+              </div>
+            </div>
+          </button>
+        </div>
+        {/* gap-1, nie gap-2: ikony urosły z 18 na 22 px, a nazwa bota po lewej
+            ma tylko tyle miejsca, ile zostanie po prawej grupie. Odstęp
+            odrabiamy powiększonym paddingiem samych przycisków. */}
+        <div className="flex shrink-0 items-center gap-1">
           {bot.busy && (
             <button
               onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
@@ -351,49 +383,46 @@ export function ChatView({ bot }: { bot: Bot }) {
             </button>
           )}
           <ModelPicker bot={bot} />
-          <button
-            onClick={() => dispatch({ type: "toggleComputer" })}
-            className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
-              state.computerOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+          {/* Cztery ikony akcji nie mieszczą się obok nazwy i pigułki modelu na
+              ekranie telefonu — chowają się pod jednym przyciskiem. */}
+          <div ref={actionsRef} className="relative">
+            <button
+              onClick={() => setActionsOpen((o) => !o)}
+              className={cn(
+                "rounded-lg px-1 py-3 hover:bg-raised",
+                actionsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
+              )}
+              title={polish ? "Więcej" : "More"}
+              aria-label={polish ? "Więcej" : "More"}
+              aria-expanded={actionsOpen}
+            >
+              <MoreVertical size={22} />
+            </button>
+            {actionsOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-hairline/40 bg-app p-1 shadow-xl">
+                {(
+                  [
+                    ["toggleComputer", state.computerOpen, Monitor, polish ? "Komputer bota" : "Bot's computer"],
+                    ["toggleMemory", state.memoryOpen, Brain, polish ? "Pamięć bota" : "Bot memory"],
+                    ["toggleRoutines", state.routinesOpen, CalendarClock, polish ? "Rutyny bota" : "Bot routines"],
+                    ["toggleSkills", state.skillsOpen, Wand2, polish ? "Umiejętności bota" : "Bot skills"],
+                  ] as const
+                ).map(([action, open, Icon, label]) => (
+                  <button
+                    key={action}
+                    onClick={() => { dispatch({ type: action }); setActionsOpen(false); }}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                      open ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                    )}
+                  >
+                    <Icon size={18} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
             )}
-            title={polish ? "Komputer bota" : "Bot's computer"}
-          >
-            <Monitor size={18} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleMemory" })}
-            className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
-              state.memoryOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Pamięć bota" : "Bot memory"}
-            aria-label={polish ? "Pamięć bota" : "Bot memory"}
-          >
-            <Brain size={18} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleRoutines" })}
-            className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
-              state.routinesOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Rutyny bota" : "Bot routines"}
-            aria-label={polish ? "Rutyny bota" : "Bot routines"}
-          >
-            <CalendarClock size={18} />
-          </button>
-          <button
-            onClick={() => dispatch({ type: "toggleSkills" })}
-            className={cn(
-              "rounded-md p-1.5 hover:bg-raised",
-              state.skillsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-            )}
-            title={polish ? "Umiejętności bota" : "Bot skills"}
-            aria-label={polish ? "Umiejętności bota" : "Bot skills"}
-          >
-            <Wand2 size={18} />
-          </button>
+          </div>
         </div>
       </div>
 
@@ -409,7 +438,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-5 [overflow-anchor:none]"
+        className="chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 [overflow-anchor:none]"
         onWheel={(e) => {
           if (e.deltaY < 0) setFollow(false);
           else if (atEnd()) setFollow(true);

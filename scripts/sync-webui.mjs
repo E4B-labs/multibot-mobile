@@ -9,6 +9,30 @@
 //   node scripts/sync-webui.mjs
 //
 // Potem `git diff` i albo commit, albo `git checkout .`.
+//
+// OSTRZEŻENIE, opłacone całym dniem pracy: lista `PHONE_OWNED` NIE chroni
+// przeróbek mobilnych. Chroni wyłącznie pliki wypisane niżej po nazwie, a
+// przeróbki pod telefon (hamburger `DrawerToggle`, panele przez `createPortal`
+// nad szufladą, klasa `mb-drawer-open`, odsunięcia od pasków systemowych
+// Androida, dyktowanie niedostępne w WebView) siedzą także w kilkunastu innych
+// plikach — `ChatView.tsx`, `GroupPanel.tsx`, `ComputerPanel.tsx`,
+// `SettingsPanel.tsx`, `ModelPicker.tsx`, `Composer.tsx`, `App.tsx`,
+// `Onboarding.tsx`, `UpdateBanner.tsx`. Zwykłe przepisanie ich z oryginału
+// kasuje tamtą robotę w całości; commit `13f960b` zrobił dokładnie to.
+//
+// Dlatego synchronizację robi się TRZYSTRONNIE, plik po pliku:
+//   OURS   = wersja telefonu sprzed synchronizacji (`git show <HEAD>:webui/src/<plik>`)
+//   BASE   = `src/<plik>` z repo `multibot` z commitu POPRZEDNIEJ synchronizacji
+//   THEIRS = `src/<plik>` z repo `multibot` z commitu, który właśnie wciągasz
+//   git merge-file -p OURS BASE THEIRS > webui/src/<plik>
+// Konflikty rozstrzyga się w stronę „obie strony zostają": mobilne z OURS,
+// nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
+// przepisać wprost — telefon ich nie ruszał.
+//
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `2d82549d` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-08-21). Po kolejnej synchronizacji
+// podmień ten hash na świeży, inaczej trzystronne scalanie liczy różnice od
+// złej bazy i znowu wywali przeróbki mobilne.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -31,6 +55,9 @@ const PHONE_OWNED = [
   // tamtej stronie.
   "components/ListRow.tsx",
   "components/SearchPalette.tsx",
+  "components/DrawerToggle.tsx",
+  "lib/imageScrapers.ts",
+  "lib/imageScrapers.test.ts",
 ];
 
 function git(...args) {

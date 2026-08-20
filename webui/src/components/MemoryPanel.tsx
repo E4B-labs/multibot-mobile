@@ -45,7 +45,7 @@ interface Graph {
 
 const TABS = ["facts", "markdown", "graph"] as const;
 type Tab = (typeof TABS)[number];
-const TAB_LABELS: Record<Tab, [string, string]> = { facts: ["Facts", "Fakty"], markdown: ["MEMORY.md", "MEMORY.md"], graph: ["Graph", "Graf"] };
+const TAB_LABELS: Record<Tab, string> = { facts: "Facts", markdown: "MEMORY.md", graph: "Graph" };
 
 const inputCls =
   "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
@@ -94,7 +94,6 @@ function layout(graph: Graph): Map<string, { x: number; y: number }> {
 
 function MemoryGraph({ graph }: { graph: Graph }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const polish = useLanguage() === "pl";
   const pos = useMemo(() => layout(graph), [graph]);
   const hoveredNode = graph.nodes.find((n) => n.id === hovered);
 
@@ -102,9 +101,10 @@ function MemoryGraph({ graph }: { graph: Graph }) {
     return (
       <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
         <Brain size={22} />
-        <div className="text-[13px] font-medium text-ink">{polish ? "Brak danych do zmapowania" : "Nothing to map yet"}</div>
+        <div className="text-[13px] font-medium text-ink">Nothing to map yet</div>
         <span className="text-[12px]">
-          {polish ? "Graf łączy fakty z osobami, miejscami i rzeczami. Wypełnia się, gdy bot zapamiętuje informacje." : "The graph links facts to the people, places and things they mention — it fills in as the bot remembers."}
+          The graph links facts to the people, places and things they mention — it fills in as the
+          bot remembers.
         </span>
       </div>
     );
@@ -277,11 +277,11 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
           // Konwencja local runtime controls
           <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
             <span className="size-1.5 rounded-full bg-raised-hover" />
-            {polish ? "Usługa offline" : "Service offline"}
+            Service offline
           </div>
         ) : status === "loading" ? (
           <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-secondary">
-            <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie pamięci…" : "Loading memory…"}
+            <Loader2 size={14} className="animate-spin" /> Loading memory…
           </div>
         ) : (
           <>
@@ -297,7 +297,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                     tab === t ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
                   )}
                 >
-                  {TAB_LABELS[t][polish ? 1 : 0]}
+                  {TAB_LABELS[t]}
                 </button>
               ))}
             </div>
@@ -305,8 +305,8 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
             {tab === "facts" && (
               <>
                 <div className="mt-3 flex gap-2">
-                  <input className={inputCls} value={newFact} onChange={(e) => setNewFact(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWorkspaceFact()} placeholder={polish ? "Dodaj fakt do pamięci…" : "Add a memory fact…"} />
-                  <button onClick={addWorkspaceFact} disabled={savingFact || !newFact.trim()} className="rounded-lg bg-raised px-3 text-ink disabled:opacity-40" title={polish ? "Dodaj fakt" : "Add fact"}><Plus size={15} /></button>
+                  <input className={inputCls} value={newFact} onChange={(e) => setNewFact(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWorkspaceFact()} placeholder="Add a memory fact…" />
+                  <button onClick={addWorkspaceFact} disabled={savingFact || !newFact.trim()} className="rounded-lg bg-raised px-3 text-ink disabled:opacity-40" title="Add fact"><Plus size={15} /></button>
                 </div>
                 <div className="relative mt-3">
                   <Search
@@ -317,7 +317,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                     className={cn(inputCls, "pl-8")}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={polish ? "Filtruj fakty…" : "Filter facts…"}
+                    placeholder="Filter facts…"
                   />
                   {searching && (
                     <Loader2
@@ -330,18 +330,19 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
                   <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
                     <Brain size={22} />
                     <div className="text-[13px] font-medium text-ink">
-                      {query ? polish ? "Brak pasujących faktów" : "No matching facts" : polish ? "Brak faktów" : "No facts yet"}
+                      {query ? "No matching facts" : "No facts yet"}
                     </div>
                     {!query && (
                       <span className="text-[12px]">
-                        {polish ? "Fakty to informacje poznane przez bota w rozmowach. Bot zapisuje je podczas czatu." : "Facts are what this bot has learned from its conversations — it saves them on its own as you chat."}
+                        Facts are what this bot has learned from its conversations — it saves them
+                        on its own as you chat.
                       </span>
                     )}
                   </div>
                 ) : (
                   facts.map((f) => (
                     <div key={f.id} className="mt-3 rounded-xl bg-card p-4">
-                      <div className="flex items-start justify-between gap-2"><div className="text-[13px] leading-relaxed text-ink">{f.text}</div><button onClick={() => removeWorkspaceFact(f.id)} className="shrink-0 text-ink-secondary hover:text-danger" title={polish ? "Usuń fakt" : "Delete fact"}><Trash2 size={14} /></button></div>
+                      <div className="flex items-start justify-between gap-2"><div className="text-[13px] leading-relaxed text-ink">{f.text}</div><button onClick={() => removeWorkspaceFact(f.id)} className="shrink-0 text-ink-secondary hover:text-danger" title="Delete fact"><Trash2 size={14} /></button></div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-secondary">
                         {typeof f.trust_score === "number" && (
                           <span className="rounded bg-inset px-1.5 py-0.5">
@@ -390,11 +391,12 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
               ) : (
                 <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
                   <Brain size={22} />
-                  <div className="text-[13px] font-medium text-ink">{polish ? "MEMORY.md jest pusty" : "MEMORY.md is empty"}</div>
+                  <div className="text-[13px] font-medium text-ink">MEMORY.md is empty</div>
                   <span className="text-[12px]">
-                    {polish ? "Bot przechowuje tu długoterminowe notatki. Pojawią się, gdy uzna informację za wartą zapisania." : "The bot keeps long-term notes here — they appear once it decides something is worth writing down."}
+                    The bot keeps long-term notes here — they appear once it decides something is
+                    worth writing down.
                   </span>
-                  <button onClick={() => { setMarkdownDraft(""); setEditingMarkdown(true); }} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">{polish ? "Napisz notatki" : "Write notes"}</button>
+                  <button onClick={() => { setMarkdownDraft(""); setEditingMarkdown(true); }} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink">Write notes</button>
                 </div>
               ))}
 
