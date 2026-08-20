@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
 import { normalizeHostUrl } from "./src/lib/host-logic";
 import { listHosts } from "./src/lib/hosts";
-import { configurePushNotifications, extractBotTarget, requestPushPermission } from "./src/lib/push";
+import { configurePushNotifications, ensurePushRegistered, extractBotTarget } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
@@ -49,13 +49,13 @@ export default function App() {
     hostsRef.current = hosts;
   }, [hosts]);
 
-  // Push: ask for permission once at launch, then route a tapped notification
-  // to the right host's WebView (scrolled to its bot). The server-side push
-  // backend is still missing in server/, so notifications only start arriving
-  // once that ships — the shell is ready for them now.
+  // Push: stuknięcie w powiadomienie ma otworzyć WebView właściwego hosta
+  // (przewinięty do bota). O zgodę na powiadomienia nie pytamy tutaj —
+  // robi to rejestracja niżej, czyli dopiero wtedy, gdy jest host, któremu
+  // można oddać token. Dwa równoległe pytania o to samo uprawnienie potrafią
+  // się zablokować nawzajem.
   useEffect(() => {
     configurePushNotifications();
-    void requestPushPermission();
 
     const openFromTarget = (target: ReturnType<typeof extractBotTarget>) => {
       if (!target.hostUrl) {
@@ -85,6 +85,23 @@ export default function App() {
 
     return () => sub.remove();
   }, []);
+
+  // Rejestracja tokenu push na hoście. Serwer wysyła powiadomienia wyłącznie
+  // na tokeny, które sam dostał trasą `POST /api/devices/:id/push` — bez tego
+  // kroku jego lista urządzeń zostaje pusta i telefon nie dostaje NIC, mimo że
+  // reszta łańcucha (wyzwalacz `needsAttention`, wysyłka do exp.host) działa.
+  // Ponawiamy przy każdym powrocie aplikacji na wierzch, bo pierwsza próba
+  // pada, kiedy telefon jest chwilowo poza siecią hosta (np. Tailscale jeszcze
+  // nie wstał), a wtedy jedna nieudana próba uciszyłaby powiadomienia na stałe.
+  useEffect(() => {
+    const host = hosts[0];
+    if (!host) return;
+    void ensurePushRegistered(host);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void ensurePushRegistered(host);
+    });
+    return () => sub.remove();
+  }, [hosts]);
 
   useEffect(() => {
     if (__DEV__ || !Updates.isEnabled) {
