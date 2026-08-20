@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 import {
   CalendarClock,
   Check,
+  ClipboardCopy,
   Loader2,
   Pencil,
   Play,
   Plus,
   Trash2,
+  Webhook,
   X,
 } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
@@ -284,6 +286,17 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   const [busy, setBusy] = useState<string | null>(null); // "<action>:<rid>"
   const [ranId, setRanId] = useState<string | null>(null); // transient "Queued" po Run now
   const [error, setError] = useState<string | null>(null);
+  // multibot (webhook): sekret z odpowiedzi `enable` pokazany TYLKO raz — nie
+  // wraca w list(), więc jedyny moment, w którym może go zobaczyć, to ta
+  // odpowiedź. Po zamknięciu (OK) znika na dobre.
+  const [revealed, setRevealed] = useState<{ rid: string; url: string; secret: string } | null>(null);
+  const [copied, setCopied] = useState<string | null>(null); // transient "Copied"
+
+  const copy = (rid: string, value: string) => {
+    void navigator.clipboard?.writeText(value);
+    setCopied(rid);
+    setTimeout(() => setCopied((cur) => (cur === rid ? null : cur)), 1500);
+  };
 
   const load = () =>
     api(routinePath).then((rs: Routine[]) => {
@@ -322,6 +335,20 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
     setError(null);
     api(`${routinePath}/${rid}`, { method: "DELETE" })
       .then(() => setRoutines((rs) => rs.filter((r) => r.id !== rid)))
+      .catch(showError)
+      .finally(() => setBusy(null));
+  };
+
+  // multibot (webhook): włącz trigger webhooka rutyny. Odpowiedź niesie sekret
+  // JEDEN raz — trzymamy go tylko w tym stanie, nigdy nie w list().
+  const enableWebhook = (rid: string) => {
+    setBusy(`webhook:${rid}`);
+    setError(null);
+    api(`${routinePath}/${rid}/webhook`, { method: "POST" })
+      .then((hook: { url: string; secret: string }) => {
+        setRevealed({ rid, url: hook.url, secret: hook.secret });
+        load().catch(() => setStatus("offline"));
+      })
       .catch(showError)
       .finally(() => setBusy(null));
   };
@@ -457,8 +484,71 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
                           <Trash2 size={15} />
                         )}
                       </button>
+                      {/* multibot (webhook): trigger dla rutyn CLI — włączany
+                          przyciskiem; po włączeniu karta pokazuje adres */}
+                      {!r.trigger && (
+                        <button
+                          onClick={() => enableWebhook(r.id)}
+                          disabled={busy === `webhook:${r.id}`}
+                          className="rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-50"
+                          title={polish ? "Włącz webhook" : "Enable webhook"}
+                        >
+                          {busy === `webhook:${r.id}` ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Webhook size={15} />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {revealed?.rid === r.id ? (
+                    <div className="mt-2 rounded-lg border border-hairline/40 bg-inset p-2.5 text-[12px]">
+                      <div className="mb-1.5 text-ink-secondary">
+                        {polish
+                          ? "Webhook włączony — sekret pokazany tylko raz, skopiuj go teraz:"
+                          : "Webhook enabled — the secret is shown only once, copy it now:"}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <code className="min-w-0 flex-1 truncate rounded bg-panel px-2 py-1 text-ink">{revealed.url}</code>
+                        <button
+                          onClick={() => copy(`url:${r.id}`, revealed.url)}
+                          className="shrink-0 rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+                          title={polish ? "Kopiuj adres" : "Copy URL"}
+                        >
+                          {copied === `url:${r.id}` ? <Check size={13} className="text-success" /> : <ClipboardCopy size={13} />}
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <code className="min-w-0 flex-1 truncate rounded bg-panel px-2 py-1 text-ink">{revealed.secret}</code>
+                        <button
+                          onClick={() => copy(`secret:${r.id}`, revealed.secret)}
+                          className="shrink-0 rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+                          title={polish ? "Kopiuj sekret" : "Copy secret"}
+                        >
+                          {copied === `secret:${r.id}` ? <Check size={13} className="text-success" /> : <ClipboardCopy size={13} />}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setRevealed(null)}
+                        className="mt-2 rounded-md bg-raised px-2.5 py-1 text-[12px] text-ink hover:bg-raised-hover"
+                      >
+                        {polish ? "OK, ukryj sekret" : "OK, hide secret"}
+                      </button>
+                    </div>
+                  ) : r.trigger ? (
+                    <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-hairline/40 bg-inset p-2 text-[12px]">
+                      <code className="min-w-0 flex-1 truncate text-ink" title={r.trigger.url}>{r.trigger.url}</code>
+                      <button
+                        onClick={() => copy(`url:${r.id}`, r.trigger!.url)}
+                        className="shrink-0 rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+                        title={polish ? "Kopiuj adres webhooka" : "Copy webhook URL"}
+                      >
+                        {copied === `url:${r.id}` ? <Check size={13} className="text-success" /> : <ClipboardCopy size={13} />}
+                      </button>
+                    </div>
+                  ) : null}
 
                   {ranId === r.id && (
                     <div className="mt-2 text-[12px] text-success">{polish ? "W kolejce — uruchomi się w ciągu minuty" : "Queued — runs within a minute"}</div>

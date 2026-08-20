@@ -19,6 +19,8 @@ import { notifyBrowser } from "@/lib/notifications";
 
 export type { MausColor } from "@/lib/mascot";
 
+const SELECTED_BOT_KEY = "multibot.selectedBot";
+
 export interface OptionCardData {
   title: string;
   subtitle: string;
@@ -67,6 +69,9 @@ export interface Bot {
   mascotExpression?: string | null;
   mascotShape?: MascotShape;
   unread: boolean;
+  /** multibot: id pierwszej nieprzeczytanej wiadomości — nad nią rysujemy
+   *  separator "NEW" (wyczyszczany przy otwarciu czatu / select). */
+  firstUnreadId?: string | null;
   busy?: boolean;
   // multibot: why the bot is waiting on a human (login/captcha/question); null/absent = not waiting.
   // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
@@ -235,11 +240,19 @@ function patchCard(state: AppState, botId: string, messageId: string, patch: Par
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate": {
-      const selectedId =
-        action.bots.some((b) => b.id === state.selectedId) && state.selectedId
+      const saved =
+        typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_BOT_KEY) : null;
+      const selectedId = saved && action.bots.some((b) => b.id === saved)
+        ? saved
+        : action.bots.some((b) => b.id === state.selectedId) && state.selectedId
           ? state.selectedId
           : (action.bots[0]?.id ?? "");
-      return { ...state, bots: action.bots, selectedId };
+      // multibot: bot oznaczony przez serwer jako nieprzeczytany, a nie jest
+      // właśnie otwarty → zapamiętaj pierwszą nieprzeczytaną wiadomość (ost. wpis)
+      const bots = action.bots.map((b) =>
+        b.unread && b.id !== selectedId ? { ...b, firstUnreadId: b.messages[b.messages.length - 1]?.id ?? null } : b,
+      );
+      return { ...state, bots, selectedId };
     }
     case "instances":
       return { ...state, instances: action.instances };
@@ -248,12 +261,19 @@ function reducer(state: AppState, action: Action): AppState {
     case "configStatus":
       return { ...state, config: action.config };
     // multibot: selecting a bot leaves group conversation mode.
-    case "select":
-      return updateBot(
+    case "select": {
+      // Otwierany bot: czyść unread, ale ZOSTAW firstUnreadId — separator "NEW"
+      // ma być widoczny właśnie po otwarciu czatu (pokazuje granicę nowych).
+      const entered = updateBot(
         withMascotMotion({ ...state, selectedId: action.id, groupOpen: null, roomOpen: null }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
+      const leavingId = state.selectedId;
+      if (!leavingId || leavingId === action.id) return entered;
+      // Odchodzimy od innego bota → kasujemy jego marker (już go przejrzałeś).
+      return updateBot(entered, leavingId, (b) => ({ ...b, firstUnreadId: null }));
+    }
     case "selectComputer":
       return { ...state, selectedId: action.id };
     // optimistic card settle; the server's message.patch confirms it later
@@ -278,11 +298,16 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, bots, selectedId };
     }
     case "markUnread":
-      return updateBot(withMascotMotion(state, action.botId, "surprise"), action.botId, (b) => ({ ...b, unread: true }));
+      return updateBot(withMascotMotion(state, action.botId, "surprise"), action.botId, (b) => ({
+        ...b,
+        unread: true,
+        firstUnreadId: b.messages[b.messages.length - 1]?.id ?? null,
+      }));
     case "botPatched": {
       const before = state.bots.find((b) => b.id === action.bot.id);
+      const becameUnread = Boolean(action.bot.unread) && !before?.unread;
       const kind =
-        action.bot.unread && !before?.unread
+        becameUnread
           ? "surprise"
           : action.bot.busy === true && !before?.busy
             ? "working"
@@ -290,7 +315,14 @@ function reducer(state: AppState, action: Action): AppState {
               ? "celebrate"
               : null;
       const next = kind ? withMascotMotion(state, action.bot.id, kind) : state;
-      return updateBot(next, action.bot.id, (b) => ({ ...b, ...action.bot, messages: b.messages }));
+      // multibot: przejście read→unread zaczyna separatorek "NEW" nad pierwszą
+      // nową wiadomością; `...action.bot` (bez firstUnreadId) nie nadpisuje go
+      return updateBot(next, action.bot.id, (b) => ({
+        ...b,
+        ...action.bot,
+        messages: b.messages,
+        firstUnreadId: becameUnread ? (b.messages[b.messages.length - 1]?.id ?? null) : b.firstUnreadId,
+      }));
     }
     case "messageAdded": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);
@@ -300,11 +332,20 @@ function reducer(state: AppState, action: Action): AppState {
         action.message.role === "user"
           ? (msgs: Message[]) => msgs.filter((m) => !(m.role === "user" && m.pending))
           : (msgs: Message[]) => msgs;
+      // multibot: jak czytasz bota na żywo (jest otwarty), granica "NEW" jest
+      // nieaktualna — kasujemy ją przy każdej nowej wiadomości na tym wątku.
+      // Gdy bot jest nieprzeczytany i nieotwarty, pierwsza taka wiadomość
+      // stawia granicę (odporne na kolejność SSE message vs bot.unread).
+      const viewing = bot.id === state.selectedId;
       const next = updateBot(state, bot.id, (b) => {
         const msgs = withoutPending(b.messages);
-        return msgs.some((m) => m.id === action.message.id)
-          ? { ...b, messages: msgs }
-          : { ...b, messages: [...msgs, action.message] };
+        const messages = msgs.some((m) => m.id === action.message.id)
+          ? msgs
+          : [...msgs, action.message];
+        const firstUnreadId = viewing
+          ? null
+          : (b.unread && !b.firstUnreadId ? action.message.id : b.firstUnreadId);
+        return { ...b, messages, firstUnreadId };
       });
       const motion =
         action.message.kind === "options"
@@ -570,6 +611,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const notificationState = useRef(new Map<string, { unread: boolean; attention: string | null }>());
 
   useEffect(() => {
+    if (state.selectedId) window.localStorage.setItem(SELECTED_BOT_KEY, state.selectedId);
+  }, [state.selectedId]);
+
+  useEffect(() => {
     const seen = notificationState.current;
     for (const bot of state.bots) {
       const before = seen.get(bot.id);
@@ -693,6 +738,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (bot?.unread) {
             api(`/api/bots/${action.id}`, { method: "PATCH", body: JSON.stringify({ unread: false }) }).catch(() => {});
           }
+          // multibot (A2): otwarcie bota rozgrzewa jego proces CLI, żeby pierwsza
+          // wiadomość nie płaciła zimnego startu. Fire-and-forget — błąd niczego
+          // tu nie zmienia, bo tura i tak postawi proces sama, tylko wolniej.
+          api(`/api/bots/${action.id}/warm`, { method: "POST" }).catch(() => {});
           break;
         }
         case "setModel":

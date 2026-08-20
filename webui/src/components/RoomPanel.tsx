@@ -95,7 +95,7 @@ export function RoomPanel() {
             <Users size={22} />
             <div className="text-[13px] font-medium text-ink">{polish ? "Pokój już nie istnieje" : "This room no longer exists"}</div>
             <span className="text-[12px]">
-              {polish ? "Chwilowe pokoje znikają 5 minut po ostatniej wiadomości." : "Temporary rooms disappear 5 minutes after the last message."}
+              {polish ? "Chwilowe pokoje znikają po dłuższej bezczynności." : "Temporary rooms disappear after a long idle."}
             </span>
           </div>
         ) : room.transcript.length === 0 ? (

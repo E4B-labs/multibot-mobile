@@ -3,6 +3,10 @@ export {};
 
 declare global {
   interface Window {
+    /** Wstrzykiwane przez proxy trybu zdalnego (electron/remote-ui.mjs) do
+     * `index.html`. Nieobecne wszędzie indziej: w przeglądarce i pod
+     * Electronem z lokalnym serwerem. */
+    __MULTIBOT_REMOTE__?: true;
     ogb?: {
       screenFrame(): Promise<string | null>;
       speechStart(): Promise<void>;
@@ -19,6 +23,10 @@ declare global {
       permRequestMic(): Promise<boolean>;
       /** Opens System Settings on a privacy pane: mic|screen|speech. */
       permOpenSettings(pane: "mic" | "screen" | "speech"): Promise<void>;
+      /** Saves a remote host and switches the shell to it (onboarding
+       * "connect"). Optional — older shells don't expose it, so callers must
+       * feature-detect and fall back to a plain navigation. */
+      addRemoteHost?(url: string): Promise<void>;
       /** In-app auto-update (packaged app only; dormant in dev). onState
        * fires immediately with the current state, then on transitions. */
       updater?: {

@@ -3,6 +3,10 @@ import { Loader2 } from "lucide-react";
 import { StoreProvider, useStore } from "@/state/store";
 import { Onboarding } from "@/components/Onboarding";
 import { emailGateDone, initAnalytics } from "@/lib/analytics";
+// multibot: trzecia kopia tej samej linii (Onboarding.tsx, Sidebar.tsx) —
+// zostaje lokalnie, bo wspólny moduł na jedno wyrażenie to więcej pliku niż
+// treści. ponytail: wyciągnąć do `src/lib/`, gdyby doszła czwarta.
+const isElectron = navigator.userAgent.includes("Electron");
 import { Sidebar } from "@/components/Sidebar";
 import { ChatView } from "@/components/ChatView";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -126,18 +130,6 @@ function Shell() {
   const { state } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
-  // Drawer to panel startowy aplikacji: przy (re)otwarciu apki otwieramy
-  // panel boczny (klasa `mb-drawer-open`), nawet gdy Android nie przeładował
-  // WebView i stan dokumentu przetrwał w tle.
-  useEffect(() => {
-    const open = () => document.body.classList.add("mb-drawer-open");
-    open();
-    const onVis = () => {
-      if (document.visibilityState === "visible") open();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
@@ -182,13 +174,31 @@ function Shell() {
 }
 
 export default function App() {
-  // Port poprawki z oryginału (ff08c703/67b0c15): zapisany token dostępu to
-  // dowód konfiguracji. W powłoce mobilnej token wchodzi do localStorage przed
-  // startem strony (WebViewScreen bootstrap), więc onboarding NIGDY nie ma się
-  // tu pokazać — serwer już stoi, logowanie zrobiła natywna część aplikacji.
-  // Bez tego nakładka „Set up a server / Sign in to a server" wisiała nad
-  // zalogowanym czatem i wyglądała jak drugie logowanie.
-  const configured = emailGateDone() || Boolean(getAuthToken());
+  // multibot: onboarding pokazujemy, dopóki użytkownik go nie domknął. Token w
+  // localStorage traktujemy jak dowód konfiguracji TYLKO w przeglądarce: tam
+  // musiał go skądś wziąć, więc po deployu i reloadzie gate nie wraca.
+  //
+  // Pod Electronem token nie dowodzi niczego — spakowana apka wstawia własny
+  // przez fragment adresu przy PIERWSZYM starcie. Zliczanie go jako
+  // konfiguracji kasowało onboarding, zanim się pokazał, a razem z nim jedyne
+  // wejście do instalacji silnika (`POST /api/provision` woła wyłącznie
+  // Onboarding). Efekt: świeża instalacja desktopowa wchodziła od razu do
+  // aplikacji i pisała „Usługa offline", bo silnika nikt nigdy nie zainstalował.
+  // …ALE ten wyjątek dotyczy tylko Electrona z LOKALNYM serwerem. W trybie
+  // zdalnym (C2) okno ładuje interfejs prosto z cudzego hosta, a token wjeżdża
+  // fragmentem adresu — Electron jest wtedy tylko widzem i onboarding „postaw
+  // serwer" nie ma sensu; bez tego rozróżnienia panel wyboru wyskakiwał w
+  // aplikacji desktopowej przy każdym połączeniu ze zdalnym serwerem.
+  // Sam hostname już nie wystarcza: w trybie zdalnym apka podnosi u siebie
+  // proxy na 127.0.0.1 i to z niego bierze interfejs (electron/remote-ui.mjs),
+  // więc oba tryby wyglądają stąd tak samo i panel „postaw serwer" wracał w
+  // trybie zdalnym po aktualizacji. Rozstrzyga flaga, którą proxy wstrzykuje
+  // do `index.html` — lokalny harness nigdy jej nie wysyła. Hostname ZOSTAJE
+  // jako drugi warunek, bo gdy proxy nie wstanie, main.mjs celowo ładuje
+  // interfejs prosto z hosta: flagi wtedy nie ma, ale adres jest zdalny.
+  const electronLocal =
+    isElectron && !window.__MULTIBOT_REMOTE__ && ["127.0.0.1", "localhost"].includes(window.location.hostname);
+  const configured = emailGateDone() || (Boolean(getAuthToken()) && !electronLocal);
   const [gated, setGated] = useState(() => !configured);
   // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
   // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.
@@ -202,7 +212,12 @@ export default function App() {
     window.addEventListener(authEventName(), onAuthRequired);
     return () => window.removeEventListener(authEventName(), onAuthRequired);
   }, []);
-  if (!authenticated) return <LoginScreen onLogin={() => setAuthenticated(true)} />;
+  // Zalogowanie gasi też bramkę: skoro serwer przyjął token (albo ciasteczko,
+  // albo Google), to istnieje i jest skonfigurowany — onboarding „postaw
+  // serwer" nie ma po nim sensu. Bez tego świeża przeglądarka liczyła
+  // `configured` PRZED zalogowaniem (token jeszcze pusty), więc zaraz po
+  // wpisaniu tokenu nad aplikacją wyskakiwał drugi panel logowania.
+  if (!authenticated) return <LoginScreen onLogin={() => { setAuthenticated(true); setGated(false); }} />;
   return (
     <StoreProvider>
       <Shell />

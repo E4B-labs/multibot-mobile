@@ -11,7 +11,7 @@
 // continues either way (agent can always watch, never blocked from reading).
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Loader2, Maximize2, Settings, X } from "lucide-react";
+import { AlertTriangle, GraduationCap, Hand, Loader2, Maximize2, MousePointer2, Settings, Square, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch, getAuthToken } from "@/lib/auth";
@@ -52,7 +52,16 @@ export function computerStateLabel(state: ComputerState, polish: boolean): strin
  *  `token` (optional) is appended to the websockify path, not to the page URL:
  *  the page + assets are served public (statyczny klient noVNC), a mobile
  *  WebView iframe carries no cookie, and noVNC builds its WebSocket URL from
- *  the `path` param — so the bearer rides the upgrade request as ?token=. */
+ *  the `path` param — so the bearer rides the upgrade request as ?token=.
+ *
+ *  Adres jest BEZWZGLĘDNY i to nie jest kosmetyka. Aplikacja mobilna wstrzykuje
+ *  interfejs przez `loadDataWithBaseURL`: `location` udaje adres hosta, ale
+ *  prawdziwym adresem dokumentu zostaje wstrzyknięta treść. `fetch("/api/...")`
+ *  działa, bo idzie po `document.baseURI`; względny `src` iframe'a rozwiązuje
+ *  się względem tego prawdziwego adresu i nie prowadzi donikąd. Iframe zostawał
+ *  wtedy na `about:blank` — odpalał `load`, `stripVncChrome` malowało mu tło na
+ *  czarno i to był cały „czarny ekran komputera": ani jednego żądania do
+ *  serwera. */
 /** Pochodzenie hosta, sklejane z `protocol` i `host`, nigdy z `location.origin`.
  *  W dokumencie wstrzykniętym przez `loadDataWithBaseURL` `origin` bywa napisem
  *  `"null"` (pochodzenie nieprzejrzyste), a wtedy adres iframe'a zaczyna się od
@@ -69,13 +78,6 @@ export function computerVncSrc(botId: string, controlOwner: ControlOwner, token 
   // klient VNC — sterowanie ma UI panelu. Lite umie dokładnie to, czego
   // potrzebujemy: `path`, `scale`, `view_only`.
   const ws = `api/bots/${botId}/computer/vnc/websockify${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-  // Adres MUSI być bezwzględny. Aplikacja wstrzykuje interfejs przez
-  // `loadDataWithBaseURL`: `location` udaje adres hosta, ale prawdziwym adresem
-  // dokumentu zostaje wstrzyknięta treść. `fetch("/api/...")` działa, bo idzie
-  // po `document.baseURI`; względny `src` iframe'a rozwiązuje się względem tego
-  // prawdziwego adresu i nie prowadzi donikąd. Iframe zostawał wtedy na
-  // `about:blank` — odpalał `load`, `stripVncChrome` malowało mu tło na czarno
-  // i to był cały „czarny ekran komputera": ani jednego żądania do serwera.
   const base = `${vncOrigin()}/api/bots/${botId}/computer/vnc/vnc_lite.html?scale=true&path=${ws}`;
   return controlOwner === "agent" ? `${base}&view_only=1` : base;
 }
@@ -212,15 +214,16 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     setRemoteCursorHidden(screenRef.current?.contentDocument, owner === "agent");
   }, [owner, computerState, fullscreen]);
 
-  // K5: faza nagrywania skilla leci z TeachCard (boczny) jako zdarzenie, żeby
-  // pilulka "Naucz z demonstracji" i pasek nagrywania mogły siedzieć NA ekranie
-  // komputera, a nie tylko w panelu bocznym.
+  // K5: faza nagrywania skilla leci z TeachCard (karta pod ekranem) jako
+  // zdarzenie, żeby czerwona ramka i pasek nagrywania mogły siedzieć NA ekranie
+  // komputera, a nie tylko w karcie.
   const [teachPhase, setTeachPhase] = useState<string>("idle");
   useEffect(() => {
     const onPhase = (e: Event) => setTeachPhase(((e as CustomEvent).detail as { phase: string }).phase);
     window.addEventListener("mb:teach:phase", onPhase);
     return () => window.removeEventListener("mb:teach:phase", onPhase);
   }, []);
+  const teachRecording = teachPhase === "recording" || teachPhase === "stopping";
 
   const acquireControl = () => {
     setControlPending(true);
@@ -237,17 +240,68 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       .finally(() => setControlPending(false));
   };
 
+  // multibot: sterowanie i nagrywanie to dwie ikony obok siebie. Napisy poszły,
+  // bo rząd wchodzi też do nagłówka pełnego ekranu, gdzie dwa pełne przyciski
+  // zjadały miejsce nazwie. Stan czyta się z koloru: wypełniony = aktywne.
+  const controlLabel =
+    owner === "user"
+      ? polish ? "Oddaj sterowanie" : "Hand back"
+      : polish ? "Przejmij sterowanie" : "Take control";
   const controlButton = computerState === "ready" && (
     <button
       type="button"
       onClick={owner === "user" ? releaseControl : acquireControl}
       disabled={controlPending}
+      title={controlLabel}
+      aria-label={controlLabel}
+      aria-pressed={owner === "user"}
       className={cn(
-        "rounded-lg px-3 py-1.5 text-[13px] font-medium disabled:opacity-50",
-        owner === "user" ? "bg-accent text-white" : "bg-raised text-ink hover:bg-raised-hover",
+        "rounded-lg p-2 disabled:opacity-50",
+        owner === "user" ? "bg-accent text-white" : "bg-raised text-ink-secondary hover:bg-raised-hover hover:text-ink",
       )}
     >
-      {owner === "user" ? (polish ? "Oddaj sterowanie" : "Hand back") : polish ? "Przejmij sterowanie" : "Take control"}
+      {controlPending ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : owner === "user" ? (
+        <Hand size={16} />
+      ) : (
+        <MousePointer2 size={16} />
+      )}
+    </button>
+  );
+  // multibot: nagrywanie startuje z ikony przy „Przejmij sterowanie", a stan
+  // trzyma TeachCard pod ekranem — stąd zdarzenie zamiast wspólnego reduktora.
+  // Ta sama ikona zatrzymuje, więc jeden guzik zamiast dwóch obok siebie.
+  const teachButton = computerState === "ready" && (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent(teachRecording ? "mb:teach:stop" : "mb:teach:start"))
+      }
+      disabled={teachPhase === "starting" || teachPhase === "stopping"}
+      title={
+        teachRecording
+          ? polish ? "Zatrzymaj nagrywanie" : "Stop recording"
+          : polish ? "Naucz umiejętności — nagraj demonstrację" : "Teach a skill — record a demonstration"
+      }
+      aria-label={
+        teachRecording
+          ? polish ? "Zatrzymaj nagrywanie" : "Stop recording"
+          : polish ? "Naucz umiejętności" : "Teach a skill"
+      }
+      aria-pressed={teachRecording}
+      className={cn(
+        "rounded-lg p-2 disabled:opacity-50",
+        teachRecording ? "bg-danger text-white" : "bg-raised text-ink-secondary hover:bg-raised-hover hover:text-ink",
+      )}
+    >
+      {teachPhase === "starting" || teachPhase === "stopping" ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : teachRecording ? (
+        <Square size={16} />
+      ) : (
+        <GraduationCap size={16} />
+      )}
     </button>
   );
   const agentName = state.bots.find((item) => item.id === agentQueue.agentOwner)?.name ?? agentQueue.agentOwner;
@@ -327,33 +381,15 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             className="absolute inset-0 cursor-zoom-in"
           />
         )}
-        {/* K5: pilulka "Naucz z demonstracji" NA ekranie komputera — start
-            nagrywania stąd, a nie z bocznego panelu. Znika, gdy nagrywanie
-            trwa (wtedy jest pasek u góry). */}
-        {teachPhase === "idle" && (
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:start"))}
-            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-[13px] font-medium text-white backdrop-blur hover:bg-black/80"
-          >
-            {polish ? "Naucz z demonstracji" : "Learn from demonstration"}
-          </button>
-        )}
-        {(teachPhase === "recording" || teachPhase === "stopping") && (
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 bg-danger/90 px-3 py-1.5 text-[12px] font-medium text-white">
-            <span className="size-2 animate-pulse rounded-full bg-white" />
-            {polish
-              ? "Nagrywanie — pokaż zadanie na komputerze bota"
-              : "Recording — demonstrate the task on the bot's computer"}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent("mb:teach:stop"))}
-              className="ml-1 rounded p-0.5 hover:bg-white/20"
-              aria-label={polish ? "Zatrzymaj" : "Stop"}
-            >
-              <X size={14} />
-            </button>
-          </div>
+        {/* multibot: czerwona ramka dookoła nagrywanego obszaru (UI-SPEC §8) —
+            i nic poza nią. Pasek z napisem „Nagrywanie…" zasłaniał górę ekranu
+            bota dokładnie wtedy, gdy użytkownik pokazuje tam zadanie; stop
+            siedzi w ikonie nad ekranem, więc pasek nie niósł nic własnego.
+            Osobna warstwa, nie obramowanie kontenera: `pointer-events-none`
+            przepuszcza kliknięcia do ekranu, a ramka nie zabiera iframe'owi
+            pikseli, więc obraz nie skacze przy starcie nagrywania. */}
+        {teachRecording && (
+          <div className="pointer-events-none absolute inset-0 z-20 border-2 border-danger" />
         )}
       </div>
     ) : (
@@ -366,7 +402,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
   const panel = (
     <>
-      <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+      <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -401,10 +437,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             <button
               type="button"
               onClick={() => setFullscreen(true)}
-              className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium hover:bg-raised hover:text-ink"
+              title={polish ? "Pełny ekran" : "Full screen"}
+              aria-label={polish ? "Pełny ekran" : "Full screen"}
+              className="rounded-md p-1 hover:bg-raised hover:text-ink"
             >
-              <Maximize2 size={12} />
-              {polish ? "Pełny ekran" : "Full screen"}
+              <Maximize2 size={14} />
             </button>
           </div>
           {(agentName || queuedCount > 0) && (
@@ -423,7 +460,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             {!fullscreen && screen(false)}
           </div>
 
-          {controlButton && <div className="mt-3 flex justify-end">{controlButton}</div>}
+          {controlButton && (
+            <div className="mt-3 flex items-center justify-end gap-2">
+              {teachButton}
+              {controlButton}
+            </div>
+          )}
 
           <TeachCard
             engineBotId={`mb-${bot.threadId}`}
@@ -438,10 +480,14 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
+        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
+        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px]">
+          {/* multibot: same ikony, bez tytułu — na pełnym ekranie liczy się
+              obraz, a nazwa panelu i tak stoi w nagłówku panelu obok. */}
+          <div className="flex items-center justify-end px-1 py-2">
             <div className="flex items-center gap-2">
+              {teachButton}
               {controlButton}
               <button
                 onClick={() => setFullscreen(false)}
@@ -461,5 +507,6 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     </>
   );
 
+  // Na mobile panel idzie do document.body: warstwa najwyzsza nad drawerem.
   return mobile ? createPortal(panel, document.body) : panel;
 }

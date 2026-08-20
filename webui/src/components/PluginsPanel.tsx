@@ -610,14 +610,11 @@ export function PluginsPanel() {
 
   return (
     <div
-      // Na mobile modal przykrywa cały ekran (fixed, wyższy niż drawer/scrim),
-      // by nie kolidować z otwartym drawerem; na szerokim ekranie zostaje
-      // absolute wewnątrz głównego obszaru (nie przykrywa paska bocznego).
-      className="plugins-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3 md:absolute md:inset-0 md:z-20"
+      className="absolute inset-0 z-20 flex items-center justify-center bg-black/40"
       onClick={() => dispatch({ type: "togglePlugins", open: false })}
     >
       <div
-        className="animate-pop-in flex max-h-[85%] w-full max-w-[560px] flex-col rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl"
+        className="animate-pop-in flex max-h-[80%] w-[560px] flex-col rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

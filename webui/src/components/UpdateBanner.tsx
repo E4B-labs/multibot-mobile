@@ -28,7 +28,9 @@ export function UpdateBanner() {
           : polish ? "Sprawdzanie aktualizacji nieudane" : "Update check failed";
   const subtitle =
     s.status === "available"
-      ? polish ? "Nowsza wersja jest gotowa do pobrania." : "A newer version is ready to download."
+      ? polish
+        ? "Kliknij, aby pobrać i zainstalować (aplikacja uruchomi się ponownie)."
+        : "Click to download and install (the app will restart)."
       : s.status === "downloading"
         ? `${Math.round(s.percent ?? 0)}%`
         : s.status === "downloaded"
@@ -36,7 +38,7 @@ export function UpdateBanner() {
         : (s.message ?? (polish ? "Coś poszło nie tak." : "Something went wrong."));
 
   return (
-    <div className="animate-panel-in fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-50 w-[300px] rounded-xl border border-hairline/40 bg-panel p-3.5 shadow-2xl shadow-black/50">
+    <div className="animate-panel-in fixed bottom-4 left-4 z-50 w-[300px] rounded-xl border border-hairline/40 bg-panel p-3.5 shadow-2xl shadow-black/50">
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
           <Sparkles size={14} />
@@ -74,7 +76,7 @@ export function UpdateBanner() {
               onClick={() => void updater.download()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent py-1.5 text-[13px] font-medium text-white"
             >
-              <ArrowDownToLine size={13} /> {polish ? "Pobierz" : "Download"}
+              <ArrowDownToLine size={13} /> {polish ? "Aktualizuj" : "Update"}
             </button>
           )}
           {s.status === "downloaded" && (
