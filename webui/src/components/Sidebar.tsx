@@ -195,7 +195,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         // Szuflada ma 8 px wcięcia od lewej (styles.css), więc podświetlenie nie
         // dotyka krawędzi i zaokrąglenie z obu stron ma sens; `pl-2` daje
         // awatarowi oddech od łuku.
-        "flex w-full select-none items-center gap-3 rounded-2xl pl-2 pr-3 py-3 text-left",
+        "flex w-full select-none items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left",
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
@@ -203,14 +203,14 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         color={bot.color}
         shape={bot.mascotShape}
         state={stateForBot(bot)}
-        size={56}
+        size={36}
         motion={mascotMotion?.kind ?? "none"}
         motionKey={mascotMotion?.nonce ?? 0}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[15px] font-semibold text-ink">{bot.name}</span>
+            <span className="truncate text-[14px] font-semibold text-ink">{bot.name}</span>
             {bot.description && (
               <span className="max-w-[120px] shrink-0 truncate rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-ink-secondary">
                 {bot.description}
@@ -222,7 +222,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
           )}
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <span className="truncate text-[13px] text-ink-secondary">{preview(bot)}</span>
+          <span className="truncate text-[12px] text-ink-secondary">{preview(bot)}</span>
           {bot.needsAttention != null ? (
             <span
               title={bot.needsAttention}
@@ -698,7 +698,7 @@ export function Sidebar() {
   }, [searchOpen]);
 
   return (
-    <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
+    <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[266px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu.
           Bez marginesu poziomego — lista botów ma dochodzić do lewej krawędzi. */}
       <div className="relative my-2 flex h-[calc(100%-1rem)] w-full flex-col overflow-hidden rounded-[28px] bg-black shadow-2xl shadow-black/60 md:my-0 md:h-full md:rounded-none">
