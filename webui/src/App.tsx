@@ -130,8 +130,9 @@ function Shell() {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
-  // multibot: tapnięcie w powiadomienie ustawia `#bot=<id>` — powłoka
-  // wstrzykuje hash i przy starcie, i przy otwartej aplikacji.
+  // multibot: tapnięcie w powiadomienie na telefonie ustawia `#bot=<id>` —
+  // powłoka mobilna wstrzykuje hash i przy starcie, i przy otwartej aplikacji,
+  // więc czytamy go też z `hashchange`.
   useEffect(() => {
     const openFromHash = () => {
       const id = new URLSearchParams(location.hash.slice(1)).get("bot");
@@ -141,7 +142,7 @@ function Shell() {
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
   }, [state.bots, state.selectedId, dispatch]);
-  // …a powłoka musi wiedzieć, który bot jest na ekranie, żeby nie pokazywać
+  // …a powłoka musi wiedzieć, który bot jest na ekranie, żeby nie wyświetlać
   // powiadomienia o bocie, na który użytkownik właśnie patrzy.
   useEffect(() => {
     const rn = (window as unknown as { ReactNativeWebView?: { postMessage(m: string): void } }).ReactNativeWebView;
