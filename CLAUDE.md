@@ -3,7 +3,36 @@
 Instrukcje dla agentów pracujących w tym repo. Rzeczy, których nie da się
 wyczytać z kodu, i pułapki, które kosztowały już cały dzień.
 
-Repo: `clewkord/multibot2` (prywatne), gałąź `main`.
+Repo: `E4B-labs/multibot2` (prywatne; stary adres `clewkord/multibot2`
+przekierowuje), gałąź `main`. Oryginał interfejsu: `E4B-labs/multibot`
+(PUBLICZNE) — jego reguły pracy są w `CLAUDE.md` na lokalnej gałęzi
+`historia-prywatna` tamtego repo (`git -C G:/Projects/multibot show historia-prywatna:CLAUDE.md`).
+
+---
+
+## 0. Sposób pracy: subagenci, wydanie po KAŻDEJ zmianie, dwa repo naraz
+
+Reguły Kacpra (21.08.2026), nadrzędne wobec reszty pliku.
+
+- **Subagenci robią robotę** (model Opus), każdy z wąskim briefem: pliki,
+  co już jest w kodzie, czego nie wolno, jak weryfikować, jaki commit. Niezależne
+  zadania równolegle. Raport z LICZBAMI z testów, hashem commitu i „czego NIE
+  robi". Pliki tymczasowe tylko w `D:\tmp`, nigdy na `C:`.
+- **Push to nie wydanie.** Zmiana w tym repo jest skończona dopiero po
+  `eas update --channel production` i jednym zdaniu dla Kacpra: Group ID, co
+  kliknąć (zabić apkę i otworzyć dwa razy).
+- **Interfejs żyje w dwóch repo.** Zmiana wspólna (czat, panele, store)
+  powstaje w `multibot/src`, wydaje się tam (telefon-serwer + desktop), a tu
+  wchodzi portem **3-way per plik** (sekcja 4) + `npm run webui` + `eas update`.
+  Zmiana tylko pod telefon (skorupa `src/`, pliki z `PHONE_OWNED`) — tylko tu,
+  tylko `eas update`.
+- **`sync-webui.mjs` sam z siebie kasuje przeróbki mobilne** spoza
+  `PHONE_OWNED` (hamburger w czacie, portale nad szufladą, ModelPicker jako
+  szuflada, dyktowanie). Stało się dwa razy (17.08, 20.08); użytkownik widzi
+  „aplikacja wróciła do starszej wersji". Procedura 3-way i hash bazy są w
+  komentarzu na górze skryptu — podbij hash w tym samym commicie co port.
+- Zakazy: `git add -A`, `--force`, zmiany `app.json`/`eas.json`/`runtimeVersion`
+  bez decyzji, nowe zależności, token hosta w jakimkolwiek wyjściu.
 **To repo JEST aplikacją na telefon.** Korzeń repo to projekt Expo, tak samo
 jak w TaskTree. Nie ma tu serwera, silnika ani wersji na komputer.
 
