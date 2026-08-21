@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, Brain, CalendarClock, Check, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2, X } from "lucide-react";
+import { ArrowDown, Brain, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";
 // multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
@@ -10,6 +10,7 @@ import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
+import { ComputerHandoffCard } from "./ComputerHandoffCard";
 import { Composer } from "./Composer";
 // multibot: TTS głośniczek przy wiadomościach bota (tylko driver slafy)
 import { SpeakButton } from "./SpeakButton";
@@ -132,32 +133,6 @@ function Bubble({ botId, message }: { botId: string; message: Message }) {
             <SpeakButton text={text} />
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-/** A tool run: spinner while live, check/cross once settled. */
-function ActivityChip({ message }: { message: Message }) {
-  const tool = message.tool;
-  if (!tool) return null;
-  const failed = tool.ok === false;
-  return (
-    <div className="flex justify-start">
-      <div
-        className={cn(
-          "flex items-center gap-2 rounded-xl border border-hairline/40 bg-panel px-3 py-1.5 text-[13px]",
-          failed ? "text-danger" : "text-ink-secondary",
-        )}
-      >
-        {tool.ok === undefined ? (
-          <Loader2 size={13} className="animate-spin" />
-        ) : failed ? (
-          <X size={13} />
-        ) : (
-          <Check size={13} className="text-success" />
-        )}
-        <span className="min-w-0 max-w-[480px] break-all font-mono">{tool.name}</span>
       </div>
     </div>
   );
@@ -463,10 +438,17 @@ export function ChatView({ bot }: { bot: Bot }) {
             let child: ReactNode;
             switch (m.kind) {
               case "options":
-                child = <OptionCard key={m.id} botId={bot.id} message={m} />;
+                // multibot: karta przekazania komputera ma własny render
+                // (miniatura ekranu + przejmij/gotowe/pomiń), reszta kart bez zmian
+                child = m.card?.kind === "computer-handoff"
+                  ? <ComputerHandoffCard key={m.id} botId={bot.id} message={m} />
+                  : <OptionCard key={m.id} botId={bot.id} message={m} />;
                 break;
+              // multibot: wywołania narzędzi lecą dalej do stanu (Sidebar pokazuje
+              // last.tool.name jako status), ale w czacie są niewidoczne —
+              // decyzja Kacpra 21.08: żadnych chipów narzędzi w transkrypcie.
               case "activity":
-                child = <ActivityChip key={m.id} message={m} />;
+                child = null;
                 break;
               case "event":
                 child = <EventPill key={m.id} message={m} polish={polish} />;
