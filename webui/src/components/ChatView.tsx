@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, Brain, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2 } from "lucide-react";
+import { ArrowDown, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";
 // multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
@@ -378,7 +378,6 @@ export function ChatView({ bot }: { bot: Bot }) {
                 {(
                   [
                     ["toggleComputer", state.computerOpen, Monitor, polish ? "Komputer bota" : "Bot's computer"],
-                    ["toggleMemory", state.memoryOpen, Brain, polish ? "Pamięć bota" : "Bot memory"],
                     ["toggleRoutines", state.routinesOpen, CalendarClock, polish ? "Rutyny bota" : "Bot routines"],
                     ["toggleSkills", state.skillsOpen, Wand2, polish ? "Umiejętności bota" : "Bot skills"],
                   ] as const
