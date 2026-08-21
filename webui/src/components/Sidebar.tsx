@@ -424,30 +424,30 @@ export function Sidebar() {
         {searchOpen && (
           <div
             data-search-menu
-            className="absolute inset-x-2 top-2 z-40 rounded-xl border border-white/10 bg-card p-3 shadow-lg"
+            className="absolute inset-x-2 top-2 z-40 flex items-center gap-1 rounded-2xl border border-white/10 bg-card p-2 shadow-lg"
           >
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[13px] text-ink-secondary">
-                {polish ? "Szukaj" : "Search"}
-              </span>
-              <button
-                onClick={() => {
-                  setSearchOpen(false);
-                  setQuery("");
-                }}
-                className="rounded-md p-1 text-ink-secondary hover:bg-white/10 hover:text-ink"
-                aria-label={polish ? "Zamknij szukanie" : "Close search"}
-              >
-                <X size={18} />
-              </button>
+            {/* Jeden wiersz: pole szukania + X. Osobny nagłówek „Szukaj" nad
+                polem z własną ramką robił dwie ramki i pusty pas u góry —
+                Kacper 21.08: „dziwny spacing". */}
+            <div className="min-w-0 flex-1">
+              <SearchPalette
+                query={query}
+                onQueryChange={setQuery}
+                activeTab={tab}
+                onTabChange={setTab}
+                inputRef={searchInputRef}
+              />
             </div>
-            <SearchPalette
-              query={query}
-              onQueryChange={setQuery}
-              activeTab={tab}
-              onTabChange={setTab}
-              inputRef={searchInputRef}
-            />
+            <button
+              onClick={() => {
+                setSearchOpen(false);
+                setQuery("");
+              }}
+              className="shrink-0 rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
+              aria-label={polish ? "Zamknij szukanie" : "Close search"}
+            >
+              <X size={18} />
+            </button>
           </div>
         )}
 
