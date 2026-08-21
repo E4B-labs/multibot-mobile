@@ -70,21 +70,14 @@ describe("computerVncSrc", () => {
 });
 
 describe("stripVncChrome", () => {
-  // Pasek ma ZNIKNĄĆ Z OCZU, ale ZOSTAĆ W DOM. `load` ramki potrafi paść przed
-  // wykonaniem modułu `vnc_lite.html`, a ten zaczyna od
-  // `getElementById('sendCtrlAltDelButton').onclick = …` — czyli od dziecka
-  // `#top_bar`. Usunięty pasek wywracał moduł na `TypeError` i RFB nigdy nie
-  // powstawało: ekran komputera zostawał czarny na zawsze.
-  it("hides the noVNC status bar without taking it out of the document", () => {
+  it("takes the noVNC status bar off the bot's screen", () => {
     let removed = false;
-    const bar = { remove: () => (removed = true), style: { display: "" } };
     const doc = {
-      getElementById: (id: string) => (id === "top_bar" ? bar : null),
+      getElementById: (id: string) => (id === "top_bar" ? { remove: () => (removed = true) } : null),
       body: { style: { backgroundColor: "dimgrey" } },
     } as unknown as Document;
     stripVncChrome(doc);
-    expect(removed).toBe(false);
-    expect(bar.style.display).toBe("none");
+    expect(removed).toBe(true);
     expect(doc.body.style.backgroundColor).toBe("#000");
   });
 

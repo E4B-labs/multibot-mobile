@@ -15,7 +15,8 @@ import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 // multibot: F6 — panel rutyn silnika slafy
 import { RoutinesPanel } from "@/components/RoutinesPanel";
-// multibot: F8 — panel skilli silnika slafy
+// multibot: F8 — panele pamięci i skilli silnika slafy
+import { MemoryPanel } from "@/components/MemoryPanel";
 import { SkillsPanel } from "@/components/SkillsPanel";
 // multibot: F9-FE — pokój grupowy silnika slafy
 import { GroupPanel } from "@/components/GroupPanel";
@@ -126,39 +127,9 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 function Shell() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
-  // multibot: tapnięcie w powiadomienie na telefonie ustawia `#bot=<id>` —
-  // powłoka mobilna wstrzykuje hash i przy starcie, i przy otwartej aplikacji,
-  // więc czytamy go też z `hashchange`.
-  useEffect(() => {
-    const openFromHash = () => {
-      const id = new URLSearchParams(location.hash.slice(1)).get("bot");
-      if (id && state.bots.some((b) => b.id === id) && id !== state.selectedId) dispatch({ type: "select", id });
-    };
-    openFromHash();
-    window.addEventListener("hashchange", openFromHash);
-    return () => window.removeEventListener("hashchange", openFromHash);
-  }, [state.bots, state.selectedId, dispatch]);
-  // …a powłoka musi wiedzieć, który bot jest na ekranie, żeby nie wyświetlać
-  // powiadomienia o bocie, na który użytkownik właśnie patrzy.
-  useEffect(() => {
-    const rn = (window as unknown as { ReactNativeWebView?: { postMessage(m: string): void } }).ReactNativeWebView;
-    if (rn && bot) rn.postMessage(JSON.stringify({ type: "bot.selected", botId: bot.id }));
-  }, [bot?.id]);
-  // Drawer to panel startowy aplikacji: przy (re)otwarciu apki otwieramy
-  // panel boczny (klasa `mb-drawer-open`), nawet gdy Android nie przeładował
-  // WebView i stan dokumentu przetrwał w tle.
-  useEffect(() => {
-    const open = () => document.body.classList.add("mb-drawer-open");
-    open();
-    const onVis = () => {
-      if (document.visibilityState === "visible") open();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
@@ -190,6 +161,8 @@ function Shell() {
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {/* multibot: routines are harness-owned and available for every driver. */}
       {state.routinesOpen && bot && <RoutinesPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
+      {/* multibot: workspace memory/skills are provider-neutral shadow profiles. */}
+      {state.memoryOpen && bot && <MemoryPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
       {state.skillsOpen && bot && <SkillsPanel key={`${bot.id}-${state.workspaceVersion}`} bot={bot} />}
       {/* multibot: F9-FE — pokój grupowy; otwierany wyłącznie z sekcji Groups
           (widocznej tylko przy botach slafy), klucz per grupę = świeży mount */}
@@ -226,10 +199,6 @@ export default function App() {
   const electronLocal =
     isElectron && !window.__MULTIBOT_REMOTE__ && ["127.0.0.1", "localhost"].includes(window.location.hostname);
   const configured = emailGateDone() || (Boolean(getAuthToken()) && !electronLocal);
-  // Na telefonie `isElectron` jest fałszem, więc `electronLocal` nigdy się nie
-  // zapala: zapisany token nadal wycisza onboarding, tak jak przed synchronizacją.
-  // Powłoka mobilna wstawia go do localStorage przed startem strony, więc panel
-  // „postaw serwer" wisiałby nad zalogowanym czatem jako drugie logowanie.
   const [gated, setGated] = useState(() => !configured);
   // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
   // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.

@@ -1,6 +1,5 @@
 import { ChevronLeft, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import {
@@ -154,21 +153,9 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
-  // Na mobile panel idzie do document.body (createPortal), by na pewno był
-  // warstwą najwyższą nad drawerem (z-[60]) — niezależnie od kontekstu
-  // nakładania wewnątrz .multibot-shell. Na desktopie render w miejscu
-  // (prawa kolumna), więc portal nie gra.
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 700px)");
-    const update = () => setMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
-  const panel = (
-    <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+  return (
+    <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <button
@@ -333,6 +320,4 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       </div>
     </aside>
   );
-
-  return mobile ? createPortal(panel, document.body) : panel;
 }

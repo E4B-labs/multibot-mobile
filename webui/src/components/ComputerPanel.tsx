@@ -10,7 +10,6 @@
 // the agent owns input by default; the user can take it, see-through
 // continues either way (agent can always watch, never blocked from reading).
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AlertTriangle, GraduationCap, Hand, Loader2, Maximize2, MousePointer2, Settings, Square, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -83,19 +82,10 @@ export function computerVncSrc(botId: string, controlOwner: ControlOwner, token 
 }
 
 /** Lite zostawia u góry pasek stanu z „Send CtrlAltDel". Strona jedzie z naszego
- *  origin (proxy harnessu), więc chowamy go stąd — zamiast utrzymywać własną
- *  kopię noVNC albo przepisywać HTML w proxy.
- *
- *  CHOWAMY, nie usuwamy, i to nie jest kosmetyka. `load` ramki potrafi paść
- *  PRZED wykonaniem modułu `vnc_lite.html` (zmierzone w Electronie: load 1189 ms,
- *  pierwszy canvas 1223 ms), a pierwsza instrukcja tego modułu to
- *  `document.getElementById('sendCtrlAltDelButton').onclick = …`. Po `remove()`
- *  guzik już nie istnieje, moduł leci na
- *  `TypeError: Cannot set properties of null` i RFB NIGDY nie powstaje: brak
- *  canvasu, brak WebSocketa, ekran komputera zostaje czarny na zawsze. */
+ *  origin (proxy harnessu), więc po prostu go stąd usuwamy — zamiast utrzymywać
+ *  własną kopię noVNC albo przepisywać HTML w proxy. */
 export function stripVncChrome(doc: Document | null | undefined): void {
-  const bar = doc?.getElementById("top_bar");
-  if (bar) (bar as HTMLElement).style.display = "none";
+  doc?.getElementById("top_bar")?.remove();
   if (doc?.body) doc.body.style.backgroundColor = "#000";
 }
 
@@ -139,17 +129,6 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   // w aplikacji" schodziła przez to na zgadywanie. Tu iframe mówi, co mu jest.
   const [screenNote, setScreenNote] = useState<string | null>(null);
   const [screenLoaded, setScreenLoaded] = useState(false);
-  // Na mobile panel idzie do document.body (createPortal), by był warstwą
-  // najwyższą (z-[90]) nad drawerem (z-[60]) — niezależnie od kontekstu
-  // nakładania. Na desktopie render w miejscu (prawa kolumna).
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 700px)");
-    const update = () => setMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
   // poll the harness for the container's state; ready/provisioning/
   // recovering/error only — never a user-facing "off"
@@ -367,18 +346,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               setRemoteCursorHidden(e.currentTarget.contentDocument, ownerRef.current === "agent");
               setScreenNote(null);
             } catch (err) {
-              // Wyjątek TUTAJ znaczy, że strona się wczytała, ale dokument
-              // iframe'a jest dla nas obcym pochodzeniem — dokładnie ten
-              // przypadek daje WebView aplikacji mobilnej.
               setScreenNote(`Ekran wczytany, brak dostępu do jego dokumentu: ${(err as Error).message}`);
             }
           }}
           onError={() => setScreenNote("Przeglądarka nie wczytała adresu ekranu.")}
-          // Do `load` ramka pokazuje niebieski pasek noVNC („Loading",
-          // „Send CtrlAltDel") — chowamy go dopiero w `onLoad`, więc bez tego
-          // mruga na starcie. `invisible` (visibility), nie `hidden`: noVNC
-          // liczy `scaleViewport` z realnych wymiarów ramki.
-          className={cn("h-full w-full border-0", !screenLoaded && "invisible")}
+          className="h-full w-full border-0"
         />
         {(!screenLoaded || screenNote) && (
           <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20 rounded-lg bg-danger px-3 py-2 text-[11px] leading-snug text-white">
@@ -413,9 +385,9 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </div>
     );
 
-  const panel = (
+  return (
     <>
-      <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+      <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -493,21 +465,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </aside>
 
       {fullscreen && (
-        <div
-          className={cn(
-            "fixed inset-0 flex flex-col",
-            // Na telefonie pełny ekran nad szufladą i z odsunięciem od pasków
-            // systemowych Androida; na komputerze duży panel na środku (K6),
-            // bo tam MultiBot pod spodem ma zostać widoczny.
-            mobile
-              ? "z-[100] bg-app pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
-              : "z-50 bg-black/50 p-[5%] backdrop-blur-[1px]",
-          )}
-        >
-          <div className={cn("flex items-center py-2", mobile ? "justify-between px-4" : "justify-end px-1")}>
-            {mobile && (
-              <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
-            )}
+        // K6: duży panel na środku, nie cały ekran — MultiBot pod spodem zostaje
+        // widoczny (lekko przyciemnione tło), róg zaokrąglony jak w kartach.
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/50 p-[5%] backdrop-blur-[1px]">
+          {/* multibot: same ikony, bez tytułu — na pełnym ekranie liczy się
+              obraz, a nazwa panelu i tak stoi w nagłówku panelu obok. */}
+          <div className="flex items-center justify-end px-1 py-2">
             <div className="flex items-center gap-2">
               {teachButton}
               {controlButton}
@@ -528,7 +491,4 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       )}
     </>
   );
-
-  // Na mobile panel idzie do document.body: warstwa najwyzsza nad drawerem.
-  return mobile ? createPortal(panel, document.body) : panel;
 }

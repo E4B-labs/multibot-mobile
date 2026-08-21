@@ -4,16 +4,11 @@
 // HTML: no rehype-raw, so HTML in the text renders as text; Shiki's output is
 // generator-escaped. While a message is still streaming, code blocks render
 // as plain <pre> and nothing is cached — partial fences would poison it.
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
 import { useLanguage } from "@/lib/language";
-import { normalizeState } from "@/lib/mascot";
-import { MausAvatar } from "./Avatar";
-import { useStore } from "@/state/store";
-// multibot (2.4): wzmianki jako chip — logika wtyczki w osobnym, testowanym pliku.
-import { mentionPlugins } from "@/lib/mentions";
 
 // tiny highlight cache so revisiting a thread doesn't re-tokenize settled
 // blocks; keys are content-hashed, capped, never written while streaming
@@ -27,10 +22,6 @@ const hash = (s: string) => {
   }
   return (h >>> 0).toString(36);
 };
-
-// multibot (2.4): typ bota ze store'a — wzmianka rysuje jego awatar, więc
-// potrzebuje więcej niż imienia. Sama wtyczka siedzi w `@/lib/mentions`.
-type MentionBot = ReturnType<typeof useStore>["state"]["bots"][number];
 
 function CodeBlock({ code, lang, streaming }: { code: string; lang: string; streaming: boolean }) {
   const polish = useLanguage() === "pl";
@@ -98,25 +89,11 @@ function CodeBlock({ code, lang, streaming }: { code: string; lang: string; stre
 }
 
 function ChatMarkdownComponent({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  const { state } = useStore();
-  const bots = useMemo<MentionBot[]>(() => state.bots, [state.bots]);
-  const remarkPlugins = useMemo<any[]>(() => mentionPlugins(remarkGfm, bots) as any[], [bots]);
   return (
     <div className="chat-md min-w-0 [&>*+*]:mt-2">
       <Markdown
-        remarkPlugins={remarkPlugins}
+        remarkPlugins={[remarkGfm]}
         components={{
-          span({ node, children }: { node?: any; children?: ReactNode }) {
-            const mention = node?.properties?.dataMention ?? node?.properties?.["data-mention"];
-            const bot = typeof mention === "string" ? bots.find((b) => b.name.toLowerCase() === mention.toLowerCase()) : undefined;
-            if (!bot) return <span>{children}</span>;
-            return (
-              <span className="inline-flex translate-y-px items-center gap-1 rounded-full bg-raised px-2 py-0.5 align-middle text-[13px] font-medium text-ink">
-                <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? "happy"} size={16} animated={false} />
-                {children}
-              </span>
-            );
-          },
           pre({ children }: { children?: ReactNode }) {
             // fenced code arrives as <pre><code class="language-x">…</code></pre>
             const child: any = Array.isArray(children) ? children[0] : children;
