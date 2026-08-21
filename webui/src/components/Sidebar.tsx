@@ -188,9 +188,10 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       }}
       style={{ WebkitTouchCallout: "none" }}
       className={cn(
-        // Wiersz dochodzi do lewej krawędzi ekranu (pl-0), więc podświetlenie
-        // zaznaczenia jest tam proste — zaokrąglony róg wisiałby w powietrzu.
-        "flex w-full select-none items-center gap-3 rounded-r-2xl pl-0 pr-3 py-3 text-left",
+        // Szuflada ma 8 px wcięcia od lewej (styles.css), więc podświetlenie nie
+        // dotyka krawędzi i zaokrąglenie z obu stron ma sens; `pl-2` daje
+        // awatarowi oddech od łuku.
+        "flex w-full select-none items-center gap-3 rounded-2xl pl-2 pr-3 py-3 text-left",
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
