@@ -107,14 +107,12 @@ body {
     padding-top: var(--safe-top);
     padding-right: var(--safe-right);
     padding-bottom: var(--safe-bottom);
-    /* Po lewej ŻADNEGO wcięcia — lista botów ma dotykać krawędzi ekranu, a to
-       była ostatnia warstwa, która ją odsuwała (karta `mx-2`, kontener `px-2`
-       i wiersz `px-3` zniknęły wcześniej). `env(safe-area-inset-left)` na
-       Androidzie w pionie i tak zwraca 0, a w poziomie chroniłby przed
-       wcięciem ekranu — ale tu po lewej stoi tylko awatar, którego obcięcie
-       niczego nie kosztuje, a wcięcie psuje cały efekt. Góra, dół i prawa
-       strona zostają, bo tam są paski systemu i godziny wiadomości. */
-    padding-left: 0;
+    /* Po lewej małe wcięcie (8 px), nie safe-area: `env(safe-area-inset-left)`
+       na Androidzie w pionie i tak daje 0, a w poziomie odsuwałby listę o cały
+       notch. Zero wcięcia (wersja z 20.08) kleiło awatary do krawędzi i
+       wyglądało jak błąd układu — Kacper 21.08. Góra, dół i prawa strona
+       zostają, bo tam są paski systemu i godziny wiadomości. */
+    padding-left: 8px;
   }
   body.mb-drawer-open .multibot-shell > div.relative > aside:first-child {
     transform: translateX(0);
