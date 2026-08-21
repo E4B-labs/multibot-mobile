@@ -29,7 +29,7 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `f277d92f` w repo `multibot`
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `8494725a` w repo `multibot`
 // (stan `src/` wciągnięty tutaj 2026-08-21). Po kolejnej synchronizacji
 // podmień ten hash na świeży, inaczej trzystronne scalanie liczy różnice od
 // złej bazy i znowu wywali przeróbki mobilne.
@@ -104,5 +104,6 @@ for (const file of files) {
 console.log(`Skopiowane z ${REF}: ${copied} plików do webui/src/`);
 if (skipped.length > 0) console.log(`Pominięte jako mobilne: ${skipped.join(", ")}`);
 console.log("Sprawdź `git diff`, potem `npm run webui` i commit.");
+
 
 
