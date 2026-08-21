@@ -10,6 +10,8 @@ interface Props {
   host: Host;
   botId?: string;
   onBack: () => void;
+  /** Który bot jest właśnie na ekranie — powłoka wycisza jego powiadomienia. */
+  onBotVisible?: (botId: string | null) => void;
 }
 
 // W Android WebView `env(safe-area-inset-top)` nie obejmuje paska stanu (tylko
@@ -26,7 +28,7 @@ const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?
 // whether it was the network, the token, or the WebView.
 const LOAD_TIMEOUT_MS = 15_000;
 
-export default function WebViewScreen({ host, botId, onBack }: Props) {
+export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
   const webRef = useRef<WebView>(null);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
@@ -108,6 +110,13 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
     return () => sub.remove();
   }, [canGoBack, onBack]);
 
+  // Tapnięcie w powiadomienie przy JUŻ otwartej aplikacji: bootstrap poszedł
+  // dawno temu, więc hash trzeba wstrzyknąć teraz.
+  useEffect(() => {
+    if (!botId || !loaded) return;
+    webRef.current?.injectJavaScript(`location.hash = ${JSON.stringify(`#bot=${botId}`)}; true;`);
+  }, [botId, loaded]);
+
   function handleBack() {
     if (canGoBack) webRef.current?.goBack();
     else onBack();
@@ -174,6 +183,14 @@ export default function WebViewScreen({ host, botId, onBack }: Props) {
         // wgrywania czegokolwiek na serwer MultiBota.
         source={{ html: WEBUI_HTML, baseUrl: host.url.replace(/\/$/, "") }}
         injectedJavaScriptBeforeContentLoaded={bootstrap}
+        onMessage={({ nativeEvent }) => {
+          try {
+            const msg = JSON.parse(nativeEvent.data);
+            if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+          } catch {
+            /* interfejs wysyła też inne wiadomości — nie nasza sprawa */
+          }
+        }}
         style={[styles.flex, expanded ? { paddingTop: STATUS_BAR_HEIGHT } : undefined]}
         // The harness UI — including the bot-computer noVNC iframe reached
         // through /api/bots/:id/computer/vnc/... — needs JS, DOM storage

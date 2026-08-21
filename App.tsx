@@ -6,7 +6,7 @@ import * as Notifications from "expo-notifications";
 import type { Host } from "./src/lib/host-logic";
 import { normalizeHostUrl } from "./src/lib/host-logic";
 import { listHosts } from "./src/lib/hosts";
-import { configurePushNotifications, ensurePushRegistered, extractBotTarget } from "./src/lib/push";
+import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
@@ -62,7 +62,9 @@ export default function App() {
         // Bez adresu hosta otwieramy zapisanego hosta (aplikacja obsługuje
         // jednego) — ekran listy został usunięty.
         const existing = hostsRef.current[0];
-        if (existing) setRoute({ name: "webview", host: existing });
+        // `botId` przekazujemy TAKŻE tutaj — serwer nie wysyła `hostUrl`, więc
+        // bez tego tapnięcie otwierało aplikację, ale nie tego bota.
+        if (existing) setRoute({ name: "webview", host: existing, botId: target.botId });
         return;
       }
       let normalized: string;
@@ -181,7 +183,7 @@ export default function App() {
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={() => {}} />
+          <WebViewScreen host={route.host} botId={route.botId} onBack={() => {}} onBotVisible={setVisibleBot} />
         )}
       </SafeAreaView>
 

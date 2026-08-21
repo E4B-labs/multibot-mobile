@@ -12,23 +12,50 @@
 // Bez kroku rejestracji serwer nie ma dokąd wysłać powiadomienia: lista
 // urządzeń w jego configu (`pushDevices`) zostaje pusta i `notifyPushDevices`
 // wychodzi natychmiast. To tutaj przestaje działać cały łańcuch.
+import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
 import type { Host } from "./host-logic";
 import { getHostToken } from "./hosts";
 
+// Bot otwarty na ekranie w tej chwili. Powiadomienie o NIM byłoby szumem —
+// użytkownik i tak patrzy na tę rozmowę. Ustawiane z powłoki (WebView melduje
+// wybór bota przez `postMessage`).
+let visibleBotId: string | null = null;
+export function setVisibleBot(botId: string | null): void {
+  visibleBotId = botId;
+}
+
 // Without this, foreground/background notifications arrive but never render an
 // alert, so the user would get a silent push they can't act on.
 export function configurePushNotifications(): void {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
+    // `handleNotification` odpala się WYŁĄCZNIE gdy aplikacja jest na
+    // pierwszym planie — więc wystarczy porównać bota z tym na ekranie.
+    handleNotification: async (notification) => {
+      const { botId } = extractBotTarget(notification.request.content.data as Record<string, unknown> | undefined);
+      const onScreen = Boolean(botId) && botId === visibleBotId;
+      return {
+        shouldShowAlert: !onScreen,
+        shouldShowBanner: !onScreen,
+        shouldShowList: !onScreen,
+        shouldPlaySound: !onScreen,
+        shouldSetBadge: false,
+      };
+    },
   });
+  // Android bierze dźwięk i wagę wyłącznie z kanału, a nie z ładunku pushu.
+  // Bez kanału `default` (tak nazywa go Expo, gdy serwer nie poda `channelId`)
+  // powiadomienia wchodzą ciche i bez wyskakującego banera.
+  if (Platform.OS === "android") {
+    void Notifications.setNotificationChannelAsync("default", {
+      name: "MultiBot",
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: "default",
+      vibrationPattern: [0, 250, 250, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  }
 }
 
 // Asks the OS for permission and returns the Expo push token, or null when the

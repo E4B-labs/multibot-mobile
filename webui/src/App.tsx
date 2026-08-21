@@ -127,9 +127,26 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 function Shell() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
+  // multibot: tapnięcie w powiadomienie ustawia `#bot=<id>` — powłoka
+  // wstrzykuje hash i przy starcie, i przy otwartej aplikacji.
+  useEffect(() => {
+    const openFromHash = () => {
+      const id = new URLSearchParams(location.hash.slice(1)).get("bot");
+      if (id && state.bots.some((b) => b.id === id) && id !== state.selectedId) dispatch({ type: "select", id });
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, [state.bots, state.selectedId, dispatch]);
+  // …a powłoka musi wiedzieć, który bot jest na ekranie, żeby nie pokazywać
+  // powiadomienia o bocie, na który użytkownik właśnie patrzy.
+  useEffect(() => {
+    const rn = (window as unknown as { ReactNativeWebView?: { postMessage(m: string): void } }).ReactNativeWebView;
+    if (rn && bot) rn.postMessage(JSON.stringify({ type: "bot.selected", botId: bot.id }));
+  }, [bot?.id]);
   // Drawer to panel startowy aplikacji: przy (re)otwarciu apki otwieramy
   // panel boczny (klasa `mb-drawer-open`), nawet gdy Android nie przeładował
   // WebView i stan dokumentu przetrwał w tle.
