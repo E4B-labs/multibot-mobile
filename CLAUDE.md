@@ -41,6 +41,39 @@ tylko jednym kanałem — patrz sekcja 4.
 
 ---
 
+## 0.4 Baza wydania i cofanie wyglądu
+
+Reguła po dwóch powtórzonych awariach (22.08.2026), ta sama co w `multibot`
+(`AGENTS.md`, sekcja 2).
+
+- **Bazą jest to, co realnie schodzi na telefony**, nie ostatni commit w repo.
+  Sprawdź przed robotą:
+  ```
+  npx eas-cli update:list --branch production --limit 5
+  git log --oneline -5
+  ```
+  Repo niżej niż opublikowana grupa = ktoś publikował z innego drzewa.
+  Zatrzymaj się i zapytaj.
+- **Powrót do starszego wyglądu robi się przez `update:republish`**, nie przez
+  budowanie starego kodu od nowa:
+  ```
+  npx eas-cli update:republish --group <id> --message "powrot do ..."
+  ```
+  Idzie w kilkanaście sekund i jest dokładnie tym stanem, który kiedyś działał.
+  Zaraz potem doprowadź repo do tego samego stanu, żeby kod i produkcja się
+  nie rozjeżdżały — z dowodem:
+  ```
+  git checkout <dobry-commit> -- .
+  git diff --name-only --diff-filter=A <dobry-commit> HEAD | xargs git rm -f
+  git diff --quiet <dobry-commit> -- . && echo "drzewo identyczne"
+  ```
+- **Stare grupy EAS zostają.** To jedyna droga powrotu; nie kasujesz ich.
+- **Telefon i desktop mogą stać na różnym kodzie i to bywa zamierzone.**
+  22.08.2026 desktop świadomie wyprzedza telefon o zestaw zmian interfejsu.
+  Nie „wyrównuj" tego z własnej inicjatywy — pytaj.
+- **Zanim cokolwiek wycofasz**, `git log --oneline <baza>..HEAD` i wypisz
+  w raporcie, co wypada.
+
 ## 1. Z czego składa się aplikacja
 
 | Katalog | Co to |
