@@ -27,7 +27,11 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      }
     },
     "plugins": [
       [
@@ -54,6 +58,7 @@
     "owner": "slafy",
     "updates": {
       "url": "https://u.expo.dev/ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }
