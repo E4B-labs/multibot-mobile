@@ -5,7 +5,7 @@ import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
-import { normalizeState, stateForBot } from "@/lib/mascot";
+import { normalizeState } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
 import { AttachmentCard } from "./AttachmentCard";
@@ -162,7 +162,16 @@ export function Composer({ bot }: { bot: Bot }) {
   // the browser exception, plain LAN HTTP must explain limitation clearly.
   const secureContext = window.isSecureContext || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const webSpeechActive = !!WebSpeech && !window.ogb && secureContext;
+  // multibot: w Android/iOS WebView nie ma Web Speech (brak usługi rozpoznawania)
+  // i secureContext jest fałszywy (host to http/LAN); okno.ogb to mostek desktopu.
+  // Bez tego voice nie zadziała — trzeba mostka natywnego (eas build).
+  const voiceAvailable = webSpeechActive || !!window.ogb;
   const webRec = useRef<any>(null);
+  // multibot: to WebView podaje e.results jako LISTĘ SKUMULOWANĄ, która rośnie
+  // przez wielokrotne dołączanie tego samego (rozszerzającego się) wyniku
+  // finalnego — stąd dublowanie przy łączeniu wszystkich finali. Bierzemy
+  // TYLKO OSTATNI wynik finalny (przy rosnącej re-emisji to najpełniejsza
+  // wersja) i obcinamy ewentualne echo w interim.
   useEffect(() => {
     if (!recording || !webSpeechActive) return;
     setSpeechError(null);
@@ -173,20 +182,20 @@ export function Composer({ bot }: { bot: Bot }) {
     rec.interimResults = true;
     rec.onresult = (e: any) => {
       let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) {
-          const t = String(r[0]?.transcript ?? "").trim();
-          if (t) baseText.current = baseText.current ? `${baseText.current} ${t}` : t;
-        } else {
-          interim += r[0]?.transcript ?? "";
-        }
+      let lastFinal = "";
+      const results = e.results as any;
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const tr = String(r[0]?.transcript ?? "");
+        if (r.isFinal) lastFinal = tr;
+        else interim += tr;
       }
-      const shown = interim.trim()
-        ? baseText.current
-          ? `${baseText.current} ${interim.trim()}`
-          : interim.trim()
-        : baseText.current;
+      // niektóre WebView powtarzają w interim to, co przed chwilą sfinalizowano
+      if (interim && lastFinal && interim.startsWith(lastFinal)) {
+        interim = interim.slice(lastFinal.length);
+      }
+      const recognized = (lastFinal + (interim.trim() ? (lastFinal ? " " : "") + interim.trim() : "")).trim();
+      const shown = [baseText.current, recognized].filter(Boolean).join(" ");
       setText(shown);
     };
     rec.onerror = (e: any) => {
@@ -311,7 +320,6 @@ export function Composer({ bot }: { bot: Bot }) {
       { id: "goal", label: "/goal", hint: polish ? "Cel: bot goni go przez wiele tur" : "Goal: the bot pursues it across turns", kind: "action" },
       { id: "a-settings", label: polish ? "Ustawienia bota" : "Bot settings", hint: here, kind: "action", run: () => dispatch({ type: "toggleSettings", open: true }) },
       { id: "a-computer", label: polish ? "Komputer bota" : "Bot's computer", hint: here, kind: "action", run: () => dispatch({ type: "toggleComputer", open: true }) },
-      { id: "a-memory", label: polish ? "Pamięć" : "Memory", hint: here, kind: "action", run: () => dispatch({ type: "toggleMemory", open: true }) },
       { id: "a-skills", label: polish ? "Umiejętności" : "Skills", hint: here, kind: "action", run: () => dispatch({ type: "toggleSkills", open: true }) },
       { id: "a-routines", label: polish ? "Rutyny" : "Routines", hint: here, kind: "action", run: () => dispatch({ type: "toggleRoutines", open: true }) },
       { id: "a-plugins", label: polish ? "Wtyczki" : "Plugins", hint: app, kind: "action", run: () => dispatch({ type: "togglePlugins", open: true }) },
@@ -431,8 +439,22 @@ export function Composer({ bot }: { bot: Bot }) {
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") setAttachOpen(false);
     };
+    // multibot: menu musi się chować przy tapnięciu obok — na telefonie nie ma
+    // Escape, wiszące menu sprawiało, że pierwszy tap na plusa je zamykał
+    // zamiast otworzyć (objaw „działa od drugiego kliknięcia", lista zmian 8.14).
+    // Mousedown, nie click: zamknięcie zanim zdarzenie doleci do celu, więc
+    // ten sam tap normalnie działa tam, gdzie user tapnął.
+    const closeOnOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("#attachment-menu, [data-attach-toggle]")) return;
+      setAttachOpen(false);
+    };
     document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.removeEventListener("mousedown", closeOnOutside);
+    };
   }, [attachOpen]);
 
   useEffect(() => () => {
@@ -561,24 +583,29 @@ setText("");
   };
 
   return (
-    <div className="px-3 pb-3 pt-1">
-      {!secureContext && !window.ogb && (
-        <div className="mr-auto mb-2 max-w-[1040px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          Dictation needs a secure context: use HTTPS or localhost. Plain HTTP on a LAN cannot access the microphone.
+    <div className="sticky bottom-0 z-20 bg-app px-5 pb-5 pt-2">
+      {!voiceAvailable && (
+        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+          Dyktacja głosowa jest niedostępna w aplikacji mobilnej. Działa w przeglądarce (HTTPS/localhost) oraz w wersji desktopowej.
         </div>
       )}
       {speechError && (
-        <div className="mr-auto mb-2 max-w-[1040px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           {speechError}
         </div>
       )}
       {attachmentError && (
-        <div className="mr-auto mb-2 max-w-[1040px] rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
           {attachmentError}
         </div>
       )}
-      <div className="relative mr-auto w-full max-w-[1040px]">
-        <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+      <div className="relative mx-auto max-w-[900px]">
+        {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
+           ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
+           Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
+           działa i pozwala dołączyć zdjęcie. Prawdziwy aparat w WebView wymaga
+           natywnej obsługi showFileChooser — poza zakresem JS. */}
+        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker po "/", ten sam dropdown co @mention; pięć
@@ -654,9 +681,12 @@ setText("");
         {attachOpen && (
           <div id="attachment-menu" className="absolute bottom-full left-0 z-30 mb-2 min-w-44 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl" role="menu">
             {[
-              { label: polish ? "Aparat" : "Camera", icon: Camera, action: () => cameraRef.current?.click() },
-              { label: polish ? "Zdjęcia" : "Photos", icon: Images, action: () => photosRef.current?.click() },
-              { label: polish ? "Pliki" : "Files", icon: FileIcon, action: () => filesRef.current?.click() },
+              // multibot: click() na inputcie musi iść w tym samym gesture co tap
+              // (inaczej WebView potrafi zignorować otwarcie wyboru pliku),
+              // dopiero po nim chowamy menu.
+              { label: polish ? "Aparat" : "Camera", icon: Camera, action: () => { cameraRef.current?.click(); setAttachOpen(false); } },
+              { label: polish ? "Zdjęcia" : "Photos", icon: Images, action: () => { photosRef.current?.click(); setAttachOpen(false); } },
+              { label: polish ? "Pliki" : "Files", icon: FileIcon, action: () => { filesRef.current?.click(); setAttachOpen(false); } },
             ].map(({ label, icon: Icon, action }) => (
               <button key={label} type="button" role="menuitem" onClick={action} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-raised">
                 <Icon size={16} className="text-ink-secondary" /> {label}
@@ -664,12 +694,10 @@ setText("");
             ))}
           </div>
         )}
-        <div className="group/composer relative flex min-h-11 items-end gap-2 rounded-2xl border border-hairline/40 bg-raised py-1.5 pl-2 pr-2 md:mt-[34px]">
-        <div className="absolute bottom-[calc(100%+6px)] left-1 z-20 hidden size-[26px] items-center justify-center md:flex" title={bot.name}>
-          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={26} motion={bot.busy ? "working" : "none"} motionKey={bot.busy ? 1 : 0} animated />
-        </div>
+        <div className="flex items-end gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-2 pr-2">
         <button
           type="button"
+          data-attach-toggle
           onClick={() => setAttachOpen((open) => !open)}
           aria-expanded={attachOpen}
           aria-haspopup="menu"
@@ -747,9 +775,9 @@ setText("");
           // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
           // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
           // przez `max-height`.
-          className="max-h-64 w-full resize-none overflow-y-auto bg-transparent py-1 text-[14px] leading-5 text-ink placeholder:text-ink-secondary focus:outline-none"
+          className="max-h-64 w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-snug text-ink placeholder:text-ink-secondary focus:outline-none"
         />
-        <div className="relative shrink-0 opacity-100 transition-opacity duration-200 md:opacity-0 md:group-hover/composer:opacity-100 md:focus-within:opacity-100">
+        <div className="relative shrink-0">
           <button
             onClick={() => setReasoningOpen((open) => !open)}
             aria-expanded={reasoningOpen}
@@ -789,13 +817,21 @@ setText("");
         ) : (
           <button
             onClick={toggleMic}
+            disabled={!voiceAvailable || bot.busy || uploading}
             className={cn(
               "flex size-8 shrink-0 items-center justify-center rounded-full",
               recording
                 ? "animate-pulse bg-danger/20 text-danger"
-                : "bg-white text-black hover:bg-white/90",
+                : "text-ink-secondary hover:bg-raised hover:text-ink",
+              (!voiceAvailable || bot.busy || uploading) && "cursor-not-allowed opacity-40",
             )}
-            title={recording ? polish ? "Zatrzymaj dyktowanie (Esc)" : "Stop dictation (Esc)" : polish ? "Dyktuj" : "Dictate"}
+            title={
+              !voiceAvailable
+                ? polish ? "Dyktowanie niedostępne w aplikacji mobilnej" : "Dictation unavailable in the mobile app"
+                : recording
+                  ? polish ? "Zatrzymaj dyktowanie (Esc)" : "Stop dictation (Esc)"
+                  : polish ? "Dyktuj" : "Dictate"
+            }
           >
             <Mic size={18} />
           </button>
