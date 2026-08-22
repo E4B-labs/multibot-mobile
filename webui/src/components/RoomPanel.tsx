@@ -10,6 +10,7 @@ import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { DrawerToggle } from "./DrawerToggle";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -53,7 +54,8 @@ export function RoomPanel() {
 
   return (
     <main className="animate-panel-in flex h-full min-w-0 flex-1 flex-col bg-app">
-      <div className="flex items-center px-5 py-3">
+      <div className="flex h-[42px] items-center border-b border-hairline/30 px-3">
+        <DrawerToggle />
         <div className="flex min-w-0 items-center gap-2.5">
           {members.length > 0 ? (
             <div className="flex -space-x-2 shrink-0">
