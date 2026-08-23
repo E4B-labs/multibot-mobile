@@ -16,7 +16,7 @@ import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 import { getLanguage } from "@/lib/language";
 import { notifyBrowser } from "@/lib/notifications";
-import { parsePeerEnvelope } from "@/lib/peerMessage";
+import { stripPeerEnvelope } from "@/lib/peerMessage";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -40,9 +40,6 @@ export interface Message {
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "event" | "screen" | "room";
   text?: string;
-  /** multibot: wiadomość bot→bot — nazwa nadawcy z koperty serwera
-   *  ([Message from @X, …]); ChatView renderuje wtedy kartę nadawcy. */
-  peerFrom?: string;
   card?: OptionCardData;
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
@@ -245,12 +242,11 @@ function patchCard(state: AppState, botId: string, messageId: string, patch: Par
 }
 
 // multibot: koperta bot→bot ([Message from @X, …]) to kontekst dla modelu
-// odbiorcy — nazwę nadawcy trzymamy w `peerFrom`, a tekst zostaje czysty
-// dla użytkownika. Stosowana przy każdym wejściu wiadomości do stanu.
+// odbiorcy — użytkownik widzi samą treść. Stosowana przy każdym wejściu
+// wiadomości do stanu.
 function withPeerEnvelope(m: Message): Message {
   if (!m.text) return m;
-  const parsed = parsePeerEnvelope(m.text);
-  return parsed ? { ...m, peerFrom: parsed.from, text: parsed.rest } : m;
+  return { ...m, text: stripPeerEnvelope(m.text) };
 }
 
 function reducer(state: AppState, action: Action): AppState {  switch (action.type) {
