@@ -491,23 +491,20 @@ function GroupCreateSheet({
           {bots.map((b) => {
             const id = engineBotId(b.threadId);
             const on = picked.has(id);
+            // Cały wiersz jest celem dotyku i samym podświetleniem mówi,
+            // czy bot jest wybrany — checkbox zniknął, bo kwadracik nie
+            // pasował do języka wizualnego aplikacji.
             return (
-              <label
+              <button
                 key={b.id}
-                // Cały wiersz jest celem dotyku i ma 48 px wysokości — sam
-                // kwadracik checkboksa ma ok. 16 px, czyli grubo poniżej progu
-                // 44 px, przy którym trafia się palcem za pierwszym razem.
+                type="button"
+                onClick={() => toggle(id)}
+                aria-pressed={on}
                 className={cn(
-                  "flex min-h-12 cursor-pointer select-none items-center gap-3 rounded-xl px-2 py-2 text-[15px] text-ink",
+                  "flex min-h-12 cursor-pointer select-none items-center gap-3 rounded-xl px-2 py-2 text-left text-[15px] text-ink",
                   on ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
                 )}
               >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => toggle(id)}
-                  className="size-5 shrink-0 accent-accent"
-                />
                 <MausAvatar
                   color={b.color}
                   shape={b.mascotShape}
@@ -516,7 +513,7 @@ function GroupCreateSheet({
                   animated={false}
                 />
                 <span className="min-w-0 flex-1 truncate">{b.name}</span>
-              </label>
+              </button>
             );
           })}
         </div>
