@@ -374,16 +374,14 @@ function GroupRow({
     >
       {/* Skład grupy zamiast jednej szarej ikony: nachodzące na siebie
           awatary botów (wzorem Groka) mówią od razu, kto w grupie siedzi.
-          Pierścionek `ring-black` oddziela awatary od siebie i od tła; przy
-          botach nieznanych aplikacji zostaje dawne koło, żeby wiersz nie był
-          pusty. Pokazujemy najwyżej trzech członków. */}
+          Bez pierścienia-oddzielnika: czarna obwódka znika na tle drawera,
+          ale na podświetleniu zaznaczonego wiersza wychodziła jako ciemny
+          okrąg. Przy botach nieznanych aplikacji zostaje dawne koło, żeby
+          wiersz nie był pusty. Pokazujemy najwyżej trzech członków. */}
       {members.length > 0 ? (
         <span className="flex shrink-0 items-center">
           {members.slice(0, 3).map((b, i) => (
-            <span
-              key={b.id}
-              className={cn("shrink-0 rounded-full ring-2 ring-black", i > 0 && "-ml-2.5")}
-            >
+            <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-2.5")}>
               <MausAvatar color={b.color} shape={b.mascotShape} size={32} />
             </span>
           ))}
