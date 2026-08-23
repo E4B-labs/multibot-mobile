@@ -16,6 +16,7 @@ import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 import { getLanguage } from "@/lib/language";
 import { notifyBrowser } from "@/lib/notifications";
+import { stripPeerEnvelope } from "@/lib/peerMessage";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -252,9 +253,22 @@ function reducer(state: AppState, action: Action): AppState {
           : (action.bots[0]?.id ?? "");
       // multibot: bot oznaczony przez serwer jako nieprzeczytany, a nie jest
       // właśnie otwarty → zapamiętaj pierwszą nieprzeczytaną wiadomość (ost. wpis)
-      const bots = action.bots.map((b) =>
-        b.unread && b.id !== selectedId ? { ...b, firstUnreadId: b.messages[b.messages.length - 1]?.id ?? null } : b,
-      );
+      const bots = action.bots.map((b) => {
+        // multibot: koperta dorzucana przez serwer do wiadomości bot→bot
+        // ([Message from @X, …]) to kontekst dla modelu, nie treść dla
+        // człowieka — zdejmujemy ją także z historii przy hydratacji.
+        const messages = b.messages?.map((m) =>
+          m.text ? { ...m, text: stripPeerEnvelope(m.text) } : m,
+        );
+        return {
+          ...b,
+          ...(messages && { messages }),
+          firstUnreadId:
+            b.unread && b.id !== selectedId
+              ? (b.messages?.[b.messages.length - 1]?.id ?? null)
+              : b.firstUnreadId,
+        };
+      });
       return { ...state, bots, selectedId };
     }
     case "instances":
@@ -330,9 +344,14 @@ function reducer(state: AppState, action: Action): AppState {
     case "messageAdded": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);
       if (!bot) return state;
+      // multibot: koperta bot→bot ([Message from @X, …]) to kontekst dla
+      // modelu odbiorcy — użytkownik widzi samą treść wiadomości.
+      const message = action.message.text
+        ? { ...action.message, text: stripPeerEnvelope(action.message.text) }
+        : action.message;
       // a confirmed user message replaces the optimistic echo, not duplicates it
       const withoutPending =
-        action.message.role === "user"
+        message.role === "user"
           ? (msgs: Message[]) => msgs.filter((m) => !(m.role === "user" && m.pending))
           : (msgs: Message[]) => msgs;
       // multibot: jak czytasz bota na żywo (jest otwarty), granica "NEW" jest
@@ -342,29 +361,29 @@ function reducer(state: AppState, action: Action): AppState {
       const viewing = bot.id === state.selectedId;
       const next = updateBot(state, bot.id, (b) => {
         const msgs = withoutPending(b.messages);
-        const messages = msgs.some((m) => m.id === action.message.id)
+        const messages = msgs.some((m) => m.id === message.id)
           ? msgs
-          : [...msgs, action.message];
+          : [...msgs, message];
         const firstUnreadId = viewing
           ? null
-          : (b.unread && !b.firstUnreadId ? action.message.id : b.firstUnreadId);
+          : (b.unread && !b.firstUnreadId ? message.id : b.firstUnreadId);
         return { ...b, messages, firstUnreadId };
       });
       const motion =
-        action.message.kind === "options"
+        message.kind === "options"
           ? "thinking"
-          : action.message.kind === "activity"
-            ? action.message.tool?.ok === false
+          : message.kind === "activity"
+            ? message.tool?.ok === false
               ? "failure"
-              : action.message.tool?.ok === true
+              : message.tool?.ok === true
                 ? "success"
                 : "working"
-            : action.message.role === "bot" && action.message.kind === "text"
+            : message.role === "bot" && message.kind === "text"
               ? "blink"
               : null;
       const animated = motion ? withMascotMotion(next, bot.id, motion) : next;
       // a settled assistant bubble replaces the in-flight stream
-      if (action.message.role === "bot" && action.message.kind === "text") {
+      if (message.role === "bot" && message.kind === "text") {
         const { [action.threadId]: _, ...rest } = animated.streaming;
         return { ...animated, streaming: rest };
       }
@@ -373,18 +392,22 @@ function reducer(state: AppState, action: Action): AppState {
     case "messagePatched": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);
       if (!bot) return state;
+      // multibot: ta sama degoltura koperty co w `messageAdded`.
+      const message = action.message.text
+        ? { ...action.message, text: stripPeerEnvelope(action.message.text) }
+        : action.message;
       const motion =
-        action.message.kind === "activity"
-          ? action.message.tool?.ok === false
+        message.kind === "activity"
+          ? message.tool?.ok === false
             ? "failure"
-            : action.message.tool?.ok === true
+            : message.tool?.ok === true
               ? "success"
               : "working"
           : null;
       const next = motion ? withMascotMotion(state, bot.id, motion) : state;
       return updateBot(next, bot.id, (b) => ({
         ...b,
-        messages: b.messages.map((m) => (m.id === action.message.id ? action.message : m)),
+        messages: b.messages.map((m) => (m.id === message.id ? message : m)),
       }));
     }
     case "streamDelta":
