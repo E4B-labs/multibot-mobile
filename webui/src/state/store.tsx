@@ -16,7 +16,7 @@ import type { MausColor, MausMotion } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 import { getLanguage } from "@/lib/language";
 import { notifyBrowser } from "@/lib/notifications";
-import { stripPeerEnvelope } from "@/lib/peerMessage";
+import { parsePeerEnvelope } from "@/lib/peerMessage";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -40,6 +40,9 @@ export interface Message {
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "event" | "screen" | "room";
   text?: string;
+  /** multibot: wiadomość bot→bot — nazwa nadawcy z koperty serwera
+   *  ([Message from @X, …]); ChatView renderuje wtedy kartę nadawcy. */
+  peerFrom?: string;
   card?: OptionCardData;
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
@@ -241,8 +244,16 @@ function patchCard(state: AppState, botId: string, messageId: string, patch: Par
   }));
 }
 
-function reducer(state: AppState, action: Action): AppState {
-  switch (action.type) {
+// multibot: koperta bot→bot ([Message from @X, …]) to kontekst dla modelu
+// odbiorcy — nazwę nadawcy trzymamy w `peerFrom`, a tekst zostaje czysty
+// dla użytkownika. Stosowana przy każdym wejściu wiadomości do stanu.
+function withPeerEnvelope(m: Message): Message {
+  if (!m.text) return m;
+  const parsed = parsePeerEnvelope(m.text);
+  return parsed ? { ...m, peerFrom: parsed.from, text: parsed.rest } : m;
+}
+
+function reducer(state: AppState, action: Action): AppState {  switch (action.type) {
     case "hydrate": {
       const saved =
         typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_BOT_KEY) : null;
@@ -254,12 +265,8 @@ function reducer(state: AppState, action: Action): AppState {
       // multibot: bot oznaczony przez serwer jako nieprzeczytany, a nie jest
       // właśnie otwarty → zapamiętaj pierwszą nieprzeczytaną wiadomość (ost. wpis)
       const bots = action.bots.map((b) => {
-        // multibot: koperta dorzucana przez serwer do wiadomości bot→bot
-        // ([Message from @X, …]) to kontekst dla modelu, nie treść dla
-        // człowieka — zdejmujemy ją także z historii przy hydratacji.
-        const messages = b.messages?.map((m) =>
-          m.text ? { ...m, text: stripPeerEnvelope(m.text) } : m,
-        );
+        // multibot: koperta bot→bot rozpoznawana też w historii przy hydratacji.
+        const messages = b.messages?.map(withPeerEnvelope);
         return {
           ...b,
           ...(messages && { messages }),
@@ -346,9 +353,7 @@ function reducer(state: AppState, action: Action): AppState {
       if (!bot) return state;
       // multibot: koperta bot→bot ([Message from @X, …]) to kontekst dla
       // modelu odbiorcy — użytkownik widzi samą treść wiadomości.
-      const message = action.message.text
-        ? { ...action.message, text: stripPeerEnvelope(action.message.text) }
-        : action.message;
+      const message = withPeerEnvelope(action.message);
       // a confirmed user message replaces the optimistic echo, not duplicates it
       const withoutPending =
         message.role === "user"
@@ -392,10 +397,8 @@ function reducer(state: AppState, action: Action): AppState {
     case "messagePatched": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);
       if (!bot) return state;
-      // multibot: ta sama degoltura koperty co w `messageAdded`.
-      const message = action.message.text
-        ? { ...action.message, text: stripPeerEnvelope(action.message.text) }
-        : action.message;
+      // multibot: ta sama obsługa koperty co w `messageAdded`.
+      const message = withPeerEnvelope(action.message);
       const motion =
         message.kind === "activity"
           ? message.tool?.ok === false

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2 } from "lucide-react";
+import { ArrowDown, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Users, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";
 // multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
@@ -90,7 +90,36 @@ function ModelBadge({ model }: { model: string }) {
   );
 }
 
+/** multibot: wiadomość bot→bot w chacie odbiorcy. Serwer wstrzykuje ją jako
+ *  wiadomość użytkownika z kopertą ([Message from @X, …]), którą store rozbiera
+ *  na `peerFrom` + czysty tekst — tu renderujemy kartę w języku RoomChip:
+ *  nagłówek z awatarem i imieniem nadawcy, pod nim treść (markdown). */
+function PeerMessageCard({ message }: { message: Message }) {
+  const { state } = useStore();
+  const polish = useLanguage() === "pl";
+  const sender = state.bots.find((b) => b.name === message.peerFrom);
+  return (
+    <div className="flex w-full justify-start">
+      <div className="max-w-[70%] rounded-2xl border border-hairline/40 bg-panel px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+        <div className="mb-1.5 flex items-center gap-1.5">
+          {sender ? (
+            <MausAvatar color={sender.color} shape={sender.mascotShape} state={stateForBot(sender)} size={18} />
+          ) : (
+            <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-white/10 text-ink-secondary">
+              <Users size={11} />
+            </span>
+          )}
+          <span className="font-medium text-ink">{message.peerFrom}</span>
+          <span className="text-ink-secondary">{polish ? "napisał(a):" : "wrote:"}</span>
+        </div>
+        <ChatMarkdown text={message.text ?? ""} />
+      </div>
+    </div>
+  );
+}
+
 function Bubble({ botId, message }: { botId: string; message: Message }) {
+  if (message.peerFrom) return <PeerMessageCard key={message.id} message={message} />;
   const polish = useLanguage() === "pl";
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
