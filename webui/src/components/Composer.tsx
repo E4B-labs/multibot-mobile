@@ -228,33 +228,37 @@ export function Composer({ bot }: { bot: Bot }) {
 
   useEffect(() => setHighlight(0), [mention?.start, mention?.query]);
 
-  // multibot: F8 — picker skilli po "/": mechanika 1:1 z @mention (strzałki,
-  // Enter/Tab wstawia, Esc chowa do następnej zmiany tekstu). Listę bierzemy
-  // leniwie przy pierwszym "/" — tylko dla botów na driverze slafy; silnik
-  // offline = brak listy = brak pickera, wiadomość idzie jak zwykły tekst.
-  const slafyDriver =
-    state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId)?.driverKind ===
-    "slafy";
-  const [slashSkills, setSlashSkills] = useState<SlashSkill[] | null>(null);
+  // multibot: F8 — picker skilli po "/" i po "@": mechanika 1:1 z @mention
+  // (strzałki, Enter/Tab wstawia, Esc chowa do następnej zmiany tekstu).
+  // ŹRÓDŁO SKILLI: harness per bot (`/api/bots/{id}/skills`) — ten sam, z którego
+  // czyta panel Umiejętności. Wcześniejszy odczyt z /api/engine/skills pod
+  // bramką slafyDriver zostawiał paletę i "@" puste, choć bot miał skille
+  // (harness trzyma je per bot i wstrzykuje w każdą turę, niezależnie od silnika).
+  // multibot: rutyny są per bot, więc cache trzyma id bota — bez tego
+  // przełączenie bota zostawiłoby w palecie cudzą listę.
+  const [slashSkills, setSlashSkills] = useState<{ botId: string; rows: SlashSkill[] } | null>(
+    null,
+  );
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
-  // `/model` belongs to harness, so it works for every provider. Skill
-  // commands remain engine-backed and only load for local engine bots.
+  // `/model` belongs to harness, so it works for every provider.
   const slashQ = slashQuery(text);
   // multibot: listę skilli doładujemy też dla @mention — picker "@" pokazuje
-  // boty ORAZ skille, a wstawiona komenda i tak jedzie przez gateway silnika.
-  const skillsWanted = slafyDriver && (slashQ !== null || mention !== null);
+  // boty ORAZ skille.
+  const skillsWanted = slashQ !== null || mention !== null;
   useEffect(() => {
-    if (!skillsWanted || slashSkills !== null) return;
+    if (!skillsWanted || slashSkills?.botId === bot.id) return;
     let alive = true;
-    authFetch("/api/engine/skills")
+    authFetch(`/api/bots/${bot.id}/skills`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((ss: SlashSkill[]) => alive && setSlashSkills(ss))
-      .catch(() => alive && setSlashSkills([]));
+      .then((ss: SlashSkill[]) =>
+        alive && setSlashSkills({ botId: bot.id, rows: Array.isArray(ss) ? ss : [] }),
+      )
+      .catch(() => alive && setSlashSkills({ botId: bot.id, rows: [] }));
     return () => {
       alive = false;
     };
-  }, [skillsWanted, slashSkills]);
+  }, [skillsWanted, slashSkills, bot.id]);
 
   // Kandydaci @mention stoją za deklaracją `slashSkills` — skille są częścią
   // tej samej listy. Boty zostają na górze, skille za nimi (max 4).
@@ -269,20 +273,17 @@ export function Composer({ bot }: { bot: Bot }) {
       .filter((b) => !q || b.name.toLowerCase().includes(q))
       .slice(0, 6)
       .map((peer) => ({ type: "bot", peer }));
-    const skillRows: MentionRow[] =
-      slafyDriver && slashSkills
-        ? slashSkills
-            .filter(
-              (s) =>
-                !q ||
-                s.name.toLowerCase().includes(q) ||
-                s.command.toLowerCase().includes(q),
-            )
-            .slice(0, 4)
-            .map((skill) => ({ type: "skill", skill }))
-        : [];
+    const skillRows: MentionRow[] = (slashSkills?.botId === bot.id ? slashSkills.rows : [])
+      .filter(
+        (s) =>
+          !q ||
+          s.name.toLowerCase().includes(q) ||
+          s.command.toLowerCase().includes(q),
+      )
+      .slice(0, 4)
+      .map((skill) => ({ type: "skill", skill }));
     return [...botRows, ...skillRows];
-  }, [mention, dismissedAt, state.bots, bot.id, slafyDriver, slashSkills]);
+  }, [mention, dismissedAt, state.bots, bot.id, slashSkills]);
   const pickerOpen = candidates.length > 0;
   // multibot: wtyczki z tego samego katalogu, z którego żyje panel wtyczek;
   // status połączenia to druga runda, dokładnie jak w PluginsPanel. W palecie
@@ -350,9 +351,9 @@ export function Composer({ bot }: { bot: Bot }) {
       { id: "a-plugins", label: polish ? "Wtyczki" : "Plugins", hint: app, kind: "action", run: () => dispatch({ type: "togglePlugins", open: true }) },
       { id: "a-app", label: polish ? "Ustawienia aplikacji" : "App settings", hint: app, kind: "action", run: () => dispatch({ type: "toggleAppSettings", open: true }) },
       { id: "a-new-bot", label: polish ? "Nowy bot" : "New bot", hint: polish ? "Panel boczny" : "Sidebar", kind: "action", run: () => dispatch({ type: "newBot" }) },
-      ...(slafyDriver && slashSkills ? slashSkills : []).map((skill) => ({
+      ...(slashSkills?.botId === bot.id ? slashSkills.rows : []).map((skill) => ({
         id: `s-${skill.name}`,
-        label: skill.command,
+        label: skill.command ?? `/${skill.name}`,
         hint: skill.description,
         kind: "skill" as const,
       })),
@@ -381,7 +382,7 @@ export function Composer({ bot }: { bot: Bot }) {
       })),
     ];
     return slashVisible(rows, slashQ);
-  }, [slashQ, slashDismissed, slashSkills, slafyDriver, slashPlugins, slashRoutines, state.bots, bot.id, dispatch, polish]);
+  }, [slashQ, slashDismissed, slashSkills, slashPlugins, slashRoutines, state.bots, bot.id, dispatch, polish]);
   const slashOpen = slashCandidates.length > 0;
   // multibot: lista dojeżdża asynchronicznie (wtyczki, rutyny), więc reset
   // podświetlenia idzie też po zmianie jej długości
@@ -694,7 +695,7 @@ setText("");
                       <Wand2 size={15} className="text-accent" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium text-accent">{row.skill.command}</span>
+                      <span className="block truncate text-[14px] font-medium text-accent">{row.skill.command ?? `/${row.skill.name}`}</span>
                       {row.skill.description && (
                         <span className="block truncate text-xs text-ink-secondary">{row.skill.description}</span>
                       )}
