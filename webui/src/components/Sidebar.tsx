@@ -384,7 +384,7 @@ function GroupRow({
               key={b.id}
               className={cn("shrink-0 rounded-full ring-2 ring-black", i > 0 && "-ml-2.5")}
             >
-              <MausAvatar color={b.color} shape={b.mascotShape} size={32} animated={false} />
+              <MausAvatar color={b.color} shape={b.mascotShape} size={32} />
             </span>
           ))}
         </span>
@@ -523,7 +523,6 @@ function GroupCreateSheet({
                   shape={b.mascotShape}
                   state={stateForBot(b)}
                   size={32}
-                  animated={false}
                 />
                 <span className="min-w-0 flex-1 truncate">{b.name}</span>
               </button>
