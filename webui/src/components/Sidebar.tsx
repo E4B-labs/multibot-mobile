@@ -211,11 +211,6 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[15px] font-semibold text-ink">{bot.name}</span>
-            {bot.description && (
-              <span className="max-w-[120px] shrink-0 truncate rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-ink-secondary">
-                {bot.description}
-              </span>
-            )}
           </div>
           {last && (
             <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(last.at)}</span>
