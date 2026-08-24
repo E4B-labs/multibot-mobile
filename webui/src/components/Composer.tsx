@@ -827,7 +827,7 @@ setText("");
           // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
           // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
           // przez `max-height`.
-          className="max-h-64 w-full resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-snug text-ink placeholder:text-ink-secondary focus:outline-none"
+          className="max-h-64 w-full resize-none self-center overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"
         />
         <div className="relative shrink-0">
           <button
