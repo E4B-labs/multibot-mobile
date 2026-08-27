@@ -163,8 +163,8 @@ export function PeerChatIndicator({ bot, view }: { bot: Bot; view: PeerChatView 
       {/* awatary: desktop zostawia lewy slot pusty — wpada tam pływający awatar
           gospodarza z composera; telefon rysuje gospodarza sam */}
       <div className="mb-2 flex items-end gap-2">
-        <span className="hidden size-[60px] md:block" />
-        <span className="size-11 md:hidden">
+        <span className="block size-[48px] shrink-0 md:size-[60px]" />
+        <span className="hidden">
           <MausAvatar
             color={bot.color}
             shape={bot.mascotShape}

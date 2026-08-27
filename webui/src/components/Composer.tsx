@@ -144,6 +144,7 @@ export function Composer({
   onClearReply?: () => void;
 }) {
   const { state, dispatch } = useStore();
+  const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
   const polish = useLanguage() === "pl";
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -780,9 +781,12 @@ setText("");
             margines wsunąłby 48px przerwy i partner nie stałby na równi. */}
         {peerChat && <PeerChatIndicator bot={bot} view={peerChat} />}
         <div className={cn("relative flex min-h-12 items-center gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5", !peerChat && "md:mt-[48px]")}>
-        {/* Desktop agent avatar: 40 px (zmniejszone z 60 per 0.1.58), no frame, anchored above Attach. */}
-        <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 hidden size-[40px] items-center justify-center md:flex" title={bot.name}>
-          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={40} motion={bot.busy ? "working" : "none"} motionKey={bot.busy ? 1 : 0} animated />
+        {/* Agent avatar: 40 px (zmniejszone z 60 per 0.1.58), no frame, anchored
+            above Attach. Widoczny na desktopie i telefonie — na telefonie (flex)
+            siedzi w lewym dolnym rogu nad polem, a przy peer-chatu wpada w pusty
+            slot obok awatara partnera. Napędzany mascotMotion (one-shot). */}
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 flex size-[44px] items-center justify-center" title={bot.name}>
+          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
         </div>
         <button
           type="button"
