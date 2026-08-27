@@ -33,6 +33,7 @@ interface ToolkitCard {
   // vs DELETE /api/connectors/custom/:id.
   source?: "composio" | "custom";
 }
+interface ConnectedAccount { id: string; alias?: string; status: string }
 
 function ServiceIcon({ card }: { card: ToolkitCard }) {
   // 0 = official logo, 1 = favicon by domain, 2 = monogram
@@ -481,11 +482,12 @@ export function PluginsPanel() {
   const [cards, setCards] = useState<ToolkitCard[] | null>(null);
   const [source, setSource] = useState<"api" | "curated">("curated");
   const [configured, setConfigured] = useState(true);
-  const [status, setStatus] = useState<Record<string, { connected: boolean }>>({});
+  const [status, setStatus] = useState<Record<string, { connected: boolean; accounts?: ConnectedAccount[] }>>({});
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"marketplace" | "yours">("marketplace");
   // multibot (F7): otwarty formularz konektora — null = zamknięty,
   // locked = edycja istniejącego (id nie do zmiany)
   const [draft, setDraft] = useState<CustomDraft | null>(null);
@@ -521,7 +523,8 @@ export function PluginsPanel() {
   const connect = (slug: string) => {
     setBusySlug(slug);
     setError(null);
-    api(`/api/connectors/${slug}/authorize`, { method: "POST" })
+    const alias = window.prompt(polish ? "Nazwa konta (opcjonalnie)" : "Account label (optional)", "")?.trim() ?? "";
+    api(`/api/connectors/${slug}/authorize`, { method: "POST", body: JSON.stringify(alias ? { alias } : {}) })
       .then(({ url }) => {
         window.open(url);
         // the user finishes OAuth in the browser; poll a few times to catch it
@@ -535,6 +538,15 @@ export function PluginsPanel() {
       .finally(() => setBusySlug(null));
   };
 
+  const disconnectAccount = (slug: string, accountId: string) => {
+    setBusySlug(`${slug}:${accountId}`);
+    api(`/api/connectors/${slug}/accounts/${encodeURIComponent(accountId)}`, { method: "DELETE" })
+      .then(() => refreshStatus([slug]))
+      .catch((e) => setError(e.message))
+      .finally(() => setBusySlug(null));
+  };
+
+  // multibot: odłączenie z zakładki "Yours" — klik na ✓ Added tam też działa
   const disconnect = (slug: string) => {
     setBusySlug(slug);
     api(`/api/connectors/${slug}`, { method: "DELETE" })
@@ -608,6 +620,11 @@ export function PluginsPanel() {
   const restComposio = composioCards.filter((c) => !scraperSlugs.has(c.slug));
   const restCustom = customCards.filter((c) => !scraperSlugs.has(c.slug));
 
+  // multibot: kategoryzacja jak na screenie Marketplace — Featured (najpopularniejsze),
+  // potem reszta po pierwszym słowie kategorii. Bez klucza Composio curated
+  // i tak daje krótki zestaw, więc kategorie degradują się do jednej listy.
+  const yourCards = tab === "yours" ? composioCards.filter((c) => status[c.slug]?.connected) : [];
+
   return (
     <div
       // Na mobile modal przykrywa cały ekran (fixed, wyższy niż drawer/scrim),
@@ -617,29 +634,50 @@ export function PluginsPanel() {
       onClick={() => dispatch({ type: "togglePlugins", open: false })}
     >
       <div
-        className="animate-pop-in flex max-h-[85%] w-full max-w-[560px] flex-col rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className="animate-pop-in flex max-h-[85%] w-full max-w-[560px] flex-col rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl"        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <div className="text-[17px] font-semibold text-ink">{polish ? "Połączone aplikacje" : "Connected apps"}</div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 40))}
-              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-              title={polish ? "Odśwież status połączeń" : "Refresh connection status"}
-            >
-              <RefreshCw size={15} className={cn(refreshing && "animate-spin")} />
-            </button>
-            <button
-              onClick={() => dispatch({ type: "togglePlugins", open: false })}
-              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
-            >
-              <X size={18} />
-            </button>
-          </div>
+          <div className="text-[17px] font-semibold text-ink">{polish ? "Wtyczki" : "Plugins"}</div>
+          <button
+            onClick={() => dispatch({ type: "togglePlugins", open: false })}
+            className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+          >
+            <X size={18} />
+          </button>
         </div>
-        <div className="mt-1 text-[13px] text-ink-secondary">
-          {polish ? "Aplikacje dostępne botom przez Composio Connect." : "Apps your bots can use through Composio Connect."}
+
+        {/* Tabs + filter + search — jak na screenie Marketplace */}
+        <div className="mt-3 flex items-center gap-3">
+          <div className="flex rounded-lg bg-raised/60 p-0.5">
+            {([
+              ["marketplace", polish ? "Marketplace" : "Marketplace"],
+              ["yours", polish ? "Twoje" : "Yours"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[13px]",
+                  tab === key ? "bg-card font-medium text-ink shadow" : "text-ink-secondary hover:text-ink",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+            <RefreshCw
+              size={14}
+              className={cn("shrink-0 cursor-pointer text-ink-secondary hover:text-ink", refreshing && "animate-spin")}
+              onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 40))}
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={polish ? "Szukaj wtyczek" : "Search plugins"}
+              className="w-full max-w-[260px] rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
+            />
+          </div>
         </div>
 
         {!configured && (
@@ -657,8 +695,8 @@ export function PluginsPanel() {
             {polish ? "aby połączyć aplikacje." : "to connect apps."}
           </div>
         )}
-        {configured && source === "curated" && (
-          <div className="mt-3 text-[12px] text-ink-secondary">
+        {configured && source === "curated" && tab === "marketplace" && (
+          <div className="mt-2 text-[12px] text-ink-secondary">
             {polish ? "Wyświetlam wybrany zestaw. " : "Showing a curated set. "}
             <button
               className="underline hover:text-ink"
@@ -674,18 +712,40 @@ export function PluginsPanel() {
         )}
         {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
 
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={polish ? "Szukaj aplikacji" : "Search apps"}
-          className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
-        />
-
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-hairline/40">
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
           {cards === null ? (
             <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-secondary">
               <Loader2 size={14} className="animate-spin" /> {polish ? "Ładowanie katalogu…" : "Loading catalog…"}
             </div>
+          ) : tab === "yours" ? (
+            /* ── Yours — połączone aplikacje ── */
+            yourCards.length === 0 ? (
+              <div className="py-8 text-center text-[13px] text-ink-secondary">{polish ? "Nic jeszcze nie połączone." : "Nothing connected yet."}</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {yourCards.map((card) => {
+                  const busy = busySlug === card.slug;
+                  return (
+                    <div key={card.slug} className="flex items-center gap-3 rounded-xl bg-card px-4 py-3">
+                      <ServiceIcon card={card} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14px] font-medium text-ink">{card.label}</div>
+                        <div className="truncate text-[12px] text-ink-secondary">{card.blurb}</div>
+                        {!!status[card.slug]?.accounts?.length && <div className="mt-1 flex flex-wrap gap-1">{status[card.slug]?.accounts?.map((account) => <span key={account.id} className="inline-flex items-center gap-1 rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary">{account.alias || account.id}<button type="button" onClick={() => disconnectAccount(card.slug, account.id)} aria-label={`Remove ${account.alias || account.id}`} className="text-danger">×</button></span>)}</div>}
+                      </div>
+                      <button
+                        disabled={busy}
+                        onClick={() => disconnect(card.slug)}
+                        title={polish ? "Odłącz" : "Disconnect"}
+                        className="shrink-0 rounded-full bg-raised px-3 py-1 text-[12.5px] text-ink-secondary hover:text-danger disabled:opacity-50"
+                      >
+                        {busy ? <Loader2 size={12} className="mx-auto animate-spin" /> : polish ? "Odłącz" : "Disconnect"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : (
             <>
               {/* multibot (scrapery zdjęć): sekcja przypięta na górze. Karty
@@ -779,21 +839,20 @@ export function PluginsPanel() {
             </>
           )}
           {cards !== null && restComposio.length === 0 && scraperCards.length === 0 && (
-            <div className="py-8 text-center text-[13px] text-ink-secondary">{polish ? "Brak pasujących aplikacji." : "No apps match."}</div>
-          )}
+            <div className="py-8 text-center text-[13px] text-ink-secondary">{polish ? "Brak pasujących aplikacji." : "No apps match."}</div>          )}
 
           {/* multibot (Google Workspace): guided preset nad własnymi
               konektorami — zapis spod tad trafia do tego samego rejestru. */}
-          <GoogleWorkspaceSection />
+          {tab === "yours" && <GoogleWorkspaceSection />}
 
           {/* multibot (F7): sekcja własnych serwerów MCP pod katalogiem
               Composio. Trasy /api/connectors/custom/* to harness, nie
               Composio — działają bez klucza, więc nic tu nie jest
               gate'owane przez `configured`. Kropki statusu też nie ma:
               /api/connectors zna tylko slugi Composio. */}
-          {cards !== null && (
-            <div className="border-t border-hairline/40 bg-card">
-              <div className="flex items-center justify-between px-4 pb-1 pt-3">
+          {tab === "yours" && cards !== null && (
+            <div className="border-t border-hairline/40 pt-3">
+              <div className="flex items-center justify-between pb-1">
                 <div>
                   <div className="text-[13px] font-semibold text-ink">{polish ? "Własne konektory" : "Custom connectors"}</div>
                   <div className="text-[12px] text-ink-secondary">
@@ -821,8 +880,7 @@ export function PluginsPanel() {
                   onRemove={() => removeCustom(card.slug)}
                   polish={polish}
                 />
-              ))}
-              {draft && (
+              ))}              {draft && (
                 <ConnectorForm
                   key={draft.locked ? draft.id : "new"}
                   draft={draft}

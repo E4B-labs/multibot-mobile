@@ -1,14 +1,17 @@
 import { track } from "@/lib/analytics";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
-import { normalizeState } from "@/lib/mascot";
+import { normalizeState, stateForBot } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
 import { AttachmentCard } from "./AttachmentCard";
+import { PeerChatIndicator, usePeerChat } from "./PeerChatIndicator";
+
+
 
 /** The active @mention query at the caret: the text between an `@` that
  * starts a word and the caret. null = no mention being typed. */
@@ -130,7 +133,16 @@ function reasoningLevels(model: string) {
   return model.startsWith("gpt-5.6-") ? REASONING_LEVELS : REASONING_LEVELS.filter((level) => level.id !== "max");
 }
 
-export function Composer({ bot }: { bot: Bot }) {
+export function Composer({
+  bot,
+  replyToId,
+  onClearReply,
+}: {
+  bot: Bot;
+  /** multibot: flat reply — id wiadomości z paska cytatu nad inputem */
+  replyToId?: string;
+  onClearReply?: () => void;
+}) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [text, setText] = useState("");
@@ -145,6 +157,9 @@ export function Composer({ bot }: { bot: Bot }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [reasoning, setReasoning] = useState<ReasoningLevel>("low");
   const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc'd this @
+  // multibot: aktywna rozmowa bot-bot dla oglądanego bota (awatar partnera +
+  // dymki ze szlaczkami nad composereem); null gdy bot nikogo nie „gadaje"
+  const peerChat = usePeerChat(bot.id);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -444,8 +459,7 @@ export function Composer({ bot }: { bot: Bot }) {
     if (!mention || !row) return;
     // Bot dopełnia tag (@Imię ), skill wstawia komendę — oba od miejsca,
     // gdzie zaczynało się zapytanie po "@"; reszta treści zostaje.
-    const insert = row.type === "bot" ? `@${row.peer.name} ` : `${row.skill.command} `;
-    const after = text.slice(caret);
+    const insert = row.type === "bot" ? `@${row.peer.name} ` : `${row.skill.command} `;    const after = text.slice(caret);
     const next = `${text.slice(0, mention.start)}${insert}${after}`;
     setText(next);
     const newCaret = mention.start + insert.length;
@@ -491,7 +505,7 @@ export function Composer({ bot }: { bot: Bot }) {
     for (const url of previewUrls.current) URL.revokeObjectURL(url);
   }, []);
 
-  const addFiles = (list: FileList | null) => {
+  const addFiles = useCallback((list: FileList | File[] | null) => {
     if (!list?.length) return;
     setAttachmentError(null);
     const incoming = [...list];
@@ -510,7 +524,18 @@ export function Composer({ bot }: { bot: Bot }) {
       return { id: crypto.randomUUID(), file, preview, status: "ready" as const };
     })]);
     setAttachOpen(false);
-  };
+  }, [attachments.length]);
+
+  // desktop drag&drop: ChatView dispatches File[] when user drops onto chat
+  useEffect(() => {
+    const onDropFiles = (e: Event) => {
+      const files = (e as CustomEvent<File[]>).detail;
+      if (!files?.length) return;
+      addFiles(files);
+    };
+    window.addEventListener("mb:composer:addFiles", onDropFiles as EventListener);
+    return () => window.removeEventListener("mb:composer:addFiles", onDropFiles as EventListener);
+  }, [addFiles]);
 
   const removeAttachment = (id: string) => setAttachments((current) => current.filter((item) => {
     if (item.id === id && item.preview) {
@@ -521,7 +546,9 @@ export function Composer({ bot }: { bot: Bot }) {
   }));
 
   const send = async () => {
-    if ((!text.trim() && !attachments.length) || bot.busy || uploading) return;
+    // multibot 0.1.44: brak blokady `bot.busy` — wiadomości w trakcie tury
+    // kolejkują się po stronie serwera i bot odpowiada raz na wszystkie.
+    if ((!text.trim() && !attachments.length) || uploading) return;
     setUploading(true);
     setAttachmentError(null);
     try {
@@ -543,9 +570,11 @@ export function Composer({ bot }: { bot: Bot }) {
         botId: bot.id,
         text: text.trim(),
         attachmentIds,
+        ...(replyToId ? { replyToId } : {}),
         ...(reasoning !== "default" ? { reasoning } : {}),
       });
       track("message_sent", { driver: bot.modelSelection?.instanceId });
+      onClearReply?.();
 setText("");
       if (inputRef.current) inputRef.current.style.height = "auto";
       for (const item of attachments) if (item.preview) URL.revokeObjectURL(item.preview);
@@ -616,16 +645,15 @@ setText("");
     <div className="sticky bottom-0 z-20 bg-app px-5 pb-5 pt-2">
       {!voiceAvailable && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          Dyktacja głosowa jest niedostępna w aplikacji mobilnej. Działa w przeglądarce (HTTPS/localhost) oraz w wersji desktopowej.
-        </div>
+          Dyktacja głosowa jest niedostępna w aplikacji mobilnej. Działa w przeglądarce (HTTPS/localhost) oraz w wersji desktopowej.        </div>
       )}
       {speechError && (
-        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+        <div className="mb-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           {speechError}
         </div>
       )}
       {attachmentError && (
-        <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+        <div className="mb-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
           {attachmentError}
         </div>
       )}
@@ -635,8 +663,7 @@ setText("");
            Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
            działa i pozwala dołączyć zdjęcie. Prawdziwy aparat w WebView wymaga
            natywnej obsługi showFileChooser — poza zakresem JS. */}
-        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
-        <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />        <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker po "/", ten sam dropdown co @mention; pięć
             kategorii mieści się dzięki przewijaniu i etykiecie typu po prawej */}
@@ -746,7 +773,17 @@ setText("");
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-2 pr-2">
+        {/* multibot: scena „boty rozmawiają między sobą" — w przepływie tuż nad
+            wierszem pisania, więc dymki niczego nie zakrywają; pusty slot 40px
+            po lewej trafia dokładnie tam, gdzie unosi się awatar gospodarza.
+            Gdy scena gra, jej rząd awatara ZASTĘPUJE pas md:mt-[48px] — inaczej
+            margines wsunąłby 48px przerwy i partner nie stałby na równi. */}
+        {peerChat && <PeerChatIndicator bot={bot} view={peerChat} />}
+        <div className={cn("relative flex min-h-12 items-center gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5", !peerChat && "md:mt-[48px]")}>
+        {/* Desktop agent avatar: 40 px (zmniejszone z 60 per 0.1.58), no frame, anchored above Attach. */}
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 hidden size-[40px] items-center justify-center md:flex" title={bot.name}>
+          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={40} motion={bot.busy ? "working" : "none"} motionKey={bot.busy ? 1 : 0} animated />
+        </div>
         <button
           type="button"
           data-attach-toggle
@@ -827,8 +864,7 @@ setText("");
           // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
           // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
           // przez `max-height`.
-          className="max-h-64 w-full resize-none self-center overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"
-        />
+          className="max-h-64 w-full resize-none self-center overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"        />
         <div className="relative shrink-0">
           <button
             onClick={() => setReasoningOpen((open) => !open)}
@@ -887,8 +923,7 @@ setText("");
           >
             <Mic size={18} />
           </button>
-        )}
-        </div>
+        )}        </div>
       </div>
     </div>
   );

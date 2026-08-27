@@ -1,9 +1,16 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, CalendarClock, Crosshair, Loader2, Monitor, MoreVertical, Square, Wand2 } from "lucide-react";
-import { DrawerToggle } from "./DrawerToggle";
-// multibot: wspólna pigułka zdarzenia i wspólna karta pliku
+import { Fragment, useEffect, useCallback, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, CalendarClock, Crosshair, FileIcon, Loader2, Monitor, MoreVertical, ScanSearch, Search, Square, Upload, Wand2 } from "lucide-react";
+import { DrawerToggle } from "./DrawerToggle";// multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
+import { SkillPill } from "./SkillPill";
 import { AttachmentCard } from "./AttachmentCard";
+// multibot: lightbox załączników-obrazków (port z OpenMausBot #436)
+import { AttachmentPreviewDialog } from "./AttachmentPreview";
+// multibot: pasek szukania w transkrypcie (port z OpenMausBot #437)
+import { ChatFindBar } from "./ChatFindBar";
+// multibot: flat replies — cytowanie wiadomości (port z OpenMausBot #437)
+import { ReplyQuote, replyTargetOf } from "./ReplyQuote";
+import { Reply as ReplyIcon } from "lucide-react";
 import { routineStartName, slashCommandLabel } from "@/lib/transcriptChips";
 import { useStore, formatTime, type Bot, type Message } from "@/state/store";
 import { MausAvatar } from "./Avatar";
@@ -11,6 +18,7 @@ import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
 import { ComputerHandoffCard } from "./ComputerHandoffCard";
+import { SecretRequestCard } from "./SecretRequestCard";
 import { Composer } from "./Composer";
 // multibot: TTS głośniczek przy wiadomościach bota (tylko driver slafy)
 import { SpeakButton } from "./SpeakButton";
@@ -26,6 +34,7 @@ const USER_COLLAPSE_LINES = 8;
 
 function MessageAttachment({ botId, file }: { botId: string; file: NonNullable<Message["attachments"]>[number] }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   useEffect(() => {
     let active = true;
     let objectUrl = "";
@@ -45,9 +54,15 @@ function MessageAttachment({ botId, file }: { botId: string; file: NonNullable<M
 
   if (file.mime.startsWith("image/")) {
     return url ? (
-      <a href={url} download={file.name} className="block">
-        <img src={url} alt={file.name} className="max-h-64 w-auto max-w-full rounded-xl object-contain" />
-      </a>
+      <>
+        {/* multibot: klik otwiera lightbox; pobieranie przeniosłem do dialogu */}
+        <button type="button" onClick={() => setPreviewOpen(true)} className="block cursor-zoom-in">
+          <img src={url} alt={file.name} className="max-h-64 w-auto max-w-full rounded-xl object-contain" />
+        </button>
+        {previewOpen && (
+          <AttachmentPreviewDialog url={url} name={file.name} onClose={() => setPreviewOpen(false)} />
+        )}
+      </>
     ) : <div className="h-24 w-40 animate-pulse rounded-xl bg-raised" />;
   }
   return (
@@ -90,7 +105,25 @@ function ModelBadge({ model }: { model: string }) {
   );
 }
 
-function Bubble({ botId, message }: { botId: string; message: Message }) {
+function Bubble({
+  botId,
+  message,
+  highlighted,
+  onReply,
+  replyTarget,
+  replyBotName,
+  onJumpTo,
+}: {
+  botId: string;
+  message: Message;
+  highlighted?: boolean;
+  onReply?: (message: Message) => void;
+  /** multibot: wiadomość cytowana przez tę wiadomość (flat reply) */
+  replyTarget?: Message;
+  /** nazwa bota do etykiety cytatu („Replying to Atlas") */
+  replyBotName?: string;
+  onJumpTo?: (id: string) => void;
+}) {
   const polish = useLanguage() === "pl";
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
@@ -98,8 +131,16 @@ function Bubble({ botId, message }: { botId: string; message: Message }) {
   const collapsible =
     user && !expanded && (text.length > USER_COLLAPSE_CHARS || text.split("\n").length > USER_COLLAPSE_LINES);
   return (
-    // multibot: group/msg reveals the SpeakButton (TTS) on bubble hover
-    <div className={cn("group/msg flex w-full", user ? "justify-end" : "justify-start")}>
+    // multibot: group/msg reveals the SpeakButton (TTS) on bubble hover;
+    // data-mb-msg = kotwica dla find-in-chat
+    <div
+      data-mb-msg={message.id}
+      className={cn(
+        "group/msg flex w-full rounded-2xl transition-shadow",
+        user ? "justify-end" : "justify-start",
+        highlighted ? "ring-2 ring-accent/70" : "",
+      )}
+    >
       <div
         className={cn(
           "max-w-[70%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
@@ -108,9 +149,17 @@ function Bubble({ botId, message }: { botId: string; message: Message }) {
         )}
       >
         {message.model && <ModelBadge model={message.model} />}
-        {!!message.attachments?.length && (
+        {replyTarget && (
+          <ReplyQuote
+            compact
+            message={replyTarget}
+            botName={replyBotName}
+            onJump={() => onJumpTo?.(replyTarget.id)}
+          />
+        )}
+        {!!message.attachments?.length && message.attachments.some((f) => f.name.toLowerCase() !== "skill.md") && (
           <div className={cn("flex flex-col gap-2", text && "mb-2")}>
-            {message.attachments.map((file) => <MessageAttachment key={file.id} botId={botId} file={file} />)}
+            {message.attachments.filter((f) => f.name.toLowerCase() !== "skill.md").map((file) => <MessageAttachment key={file.id} botId={botId} file={file} />)}
           </div>
         )}
         {user ? (
@@ -133,6 +182,23 @@ function Bubble({ botId, message }: { botId: string; message: Message }) {
             <SpeakButton text={text} />
           </>
         )}
+        {/* multibot: flat reply — przycisk na hover, jak SpeakButton */}
+        {onReply && message.kind === "text" && (
+          <div className="mt-1 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100">
+            <button
+              type="button"
+              onClick={() => onReply(message)}
+              aria-label={polish ? "Odpowiedz" : "Reply"}
+              title={polish ? "Odpowiedz" : "Reply"}
+              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+            >
+              <ReplyIcon size={13} />
+            </button>
+          </div>
+        )}
+        <div className={cn("mt-1.5 text-[11px] leading-none", user ? "text-right text-ink/55" : "text-left text-ink-secondary/60")}>
+          {formatTime(message.at)}
+        </div>
       </div>
     </div>
   );
@@ -145,6 +211,14 @@ function EventPill({ message, polish }: { message: Message; polish: boolean }) {
     : { renamed: "Renamed to", "skill-created": "Created skill", "routine-created": "Created routine", "goal-progress": "Goal" };
   // multibot: wspólna pigułka zamiast własnego markupu — patrz EventChip.tsx.
   // Rutyna dostaje ikonę zegara, zmiana nazwy zostaje czystym tekstem.
+  // skill-created → centered SkillPill (czarno-amber, klikalny) jak na screenie 561×110
+  if (message.event.type === "skill-created") {
+    return (
+      <div className="flex w-full justify-center py-1">
+        <SkillPill name={message.event.value} />
+      </div>
+    );
+  }
   return (
     <EventChip
       icon={message.event.type === "routine-created" ? <CalendarClock size={13} /> : message.event.type === "goal-progress" ? <Crosshair size={13} /> : undefined}
@@ -231,24 +305,6 @@ function StreamingBubble({ text }: { text: string }) {
   );
 }
 
-/** "Working for 12s" that ticks by mutating textContent on an interval —
- * no React commit per second while a turn streams (upstream trick). */
-function WorkingTimer({ since }: { since: number }) {
-  const polish = useLanguage() === "pl";
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const tick = () => {
-      if (ref.current) ref.current.textContent = polish
-        ? `Praca trwa ${Math.max(0, Math.round((Date.now() - since) / 1000))} s`
-        : `Working for ${Math.max(0, Math.round((Date.now() - since) / 1000))}s`;
-    };
-    tick();
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, [polish, since]);
-  return <span ref={ref} className="text-[12.5px] text-ink-secondary" />;
-}
-
 /** multibot: niebieski separator "NEW" nad pierwszą nieprzeczytaną wiadomością */
 function NewSeparator() {
   return (
@@ -295,8 +351,61 @@ export function ChatView({ bot }: { bot: Bot }) {
   // (upstream-verified failure). Scrolling back to the end re-arms it.
   const [follow, setFollow] = useState(true);
   const touchY = useRef(0);
+  const [dragOver] = useState(false);
+
+  // multibot: find-in-chat — Ctrl/Cmd+F otwiera pasek, skok podświetla dymek
+  const [findOpen, setFindOpen] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const jumpToHit = useCallback((id: string) => {
+    setFollow(false);
+    setHighlightId(id);
+  }, []);
+  useEffect(() => {
+    if (!highlightId) return;
+    document
+      .querySelector(`[data-mb-msg="${CSS.escape(highlightId)}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlightId]);
+  // multibot: flat reply — stan cytatu nad composerem
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  useEffect(() => setReplyTo(null), [bot.id]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setHighlightId(null);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFollow(false);
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const latestSkillEvent = [...bot.messages].reverse().find((message) => message.event?.type === "skill-created")?.id;
 
   useEffect(() => setFollow(true), [bot.id]);
+  useEffect(() => {
+    // zmiana bota zamyka find — trafienia należą do starego transkryptu
+    setFindOpen(false);
+    setHighlightId(null);
+  }, [bot.id]);
+  useEffect(() => {
+    let active = true;
+    authFetch(`/api/bots/${bot.id}/skills`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((skills: Array<{ name?: unknown }>) => {
+        if (active) dispatch({
+          type: "setSkillNames",
+          names: skills.flatMap((skill) => typeof skill.name === "string" ? [skill.name] : []),
+        });
+      })
+      .catch(() => active && dispatch({ type: "setSkillNames", names: [] }));
+    return () => { active = false; };
+  }, [bot.id, latestSkillEvent, dispatch]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [bot.id, bot.messages.length, streaming, bot.busy, follow]);
@@ -324,8 +433,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             onClick={() => dispatch({ type: "toggleSettings" })}
             className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-raised/50"
             title={polish ? "Ustawienia bota" : "Bot settings"}
-          >
-            <MausAvatar
+          >            <MausAvatar
               color={bot.color}
               shape={bot.mascotShape}
               state={stateForBot(bot)}
@@ -393,24 +501,52 @@ export function ChatView({ bot }: { bot: Bot }) {
                     <Icon size={18} />
                     <span>{label}</span>
                   </button>
-                ))}
-              </div>
-            )}
+                
+                
+))}
+                <button
+                  onClick={() => { setFollow(false); setFindOpen((v) => !v); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    findOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <Search size={18} />
+                  <span>{polish ? "Szukaj w rozmowie" : "Find in chat"}</span>
+                </button>
+                <button
+                  onClick={() => { dispatch({ type: "toggleInspector" }); setActionsOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
+                    state.inspectorOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <ScanSearch size={18} />
+                  <span>{polish ? "Inspector runtime" : "Runtime inspector"}</span>
+                </button>
+              </div>            )}
           </div>
         </div>
       </div>
 
       {/* Error banner */}
       {state.error && (
-        <div className="mx-auto w-full max-w-[900px] px-5">
+        <div className="w-full px-5">
           <div className="mb-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">
             {state.error}
           </div>
         </div>
       )}
 
-      {/* Messages */}
-      <div
+      {/* multibot: nakładka przeciągania siedzi w tej samej ramce co lista
+          wiadomości, nie w całej kolumnie czatu — inaczej jej środek wypadał
+          między nagłówkiem a polem pisania i karta wyglądała na przesuniętą. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {findOpen && (
+          <ChatFindBar messages={bot.messages} onClose={closeFind} onJump={jumpToHit} />
+        )}
+        {/* Messages */}
+        <div
         ref={scrollRef}
         className="chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 [overflow-anchor:none]"
         onWheel={(e) => {
@@ -427,7 +563,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           if (!follow && atEnd()) setFollow(true);
         }}
       >
-        <div className="mx-auto flex max-w-[900px] flex-col gap-3 pb-4">
+        <div className="flex w-full flex-col gap-3 pb-4">
           {first && (
             <div className="py-3 text-center text-[13px] text-ink-secondary">
               {polish ? "Dziś" : "Today"} {formatTime(first.at)}
@@ -436,6 +572,9 @@ export function ChatView({ bot }: { bot: Bot }) {
           {bot.messages.map((m) => {
             let child: ReactNode;
             switch (m.kind) {
+              case "secret":
+                child = <SecretRequestCard key={m.id} botId={bot.id} message={m} />;
+                break;
               case "options":
                 // multibot: karta przekazania komputera ma własny render
                 // (miniatura ekranu + przejmij/gotowe/pomiń), reszta kart bez zmian
@@ -461,11 +600,34 @@ export function ChatView({ bot }: { bot: Bot }) {
               default:
                 // multibot: pigułka zdarzenia wygrywa z dymkiem, gdy treść
                 // wiadomości jest samym zdarzeniem (patrz userEventChip)
-                child = userEventChip(m) ?? <Bubble key={m.id} botId={bot.id} message={m} />;
+                child = userEventChip(m) ?? (
+                  <Bubble
+                    key={m.id}
+                    botId={bot.id}
+                    message={m}
+                    highlighted={highlightId === m.id}
+                    onReply={setReplyTo}
+                    replyTarget={replyTargetOf(bot.messages, m.replyToId)}
+                    replyBotName={bot.name}
+                    onJumpTo={jumpToHit}
+                  />
+                );
             }
             return (
               <Fragment key={m.id}>
                 {bot.firstUnreadId === m.id && <NewSeparator />}
+                {/* SKILL.md stays outside and above its message, on sender side. */}
+                {!!m.attachments?.some((f) => f.name.toLowerCase() === "skill.md") && (
+                  <div className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
+                    <div className="mb-2 flex w-full max-w-[70%] flex-col gap-2">
+                      {m.attachments
+                        .filter((f) => f.name.toLowerCase() === "skill.md")
+                        .map((f) => (
+                          <MessageAttachment key={f.id} botId={bot.id} file={f} />
+                        ))}
+                    </div>
+                  </div>
+                )}
                 {child}
               </Fragment>
             );
@@ -478,23 +640,27 @@ export function ChatView({ bot }: { bot: Bot }) {
               </div>
             </div>
           )}
-          {streaming ? (
-            <StreamingBubble text={streaming} />
-          ) : (
-            bot.busy && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2.5 rounded-2xl bg-raised px-4 py-3">
-                  <span className="flex items-center gap-1.5">
-                    <span className="size-1.5 animate-bounce rounded-full bg-ink-secondary [animation-delay:0ms]" />
-                    <span className="size-1.5 animate-bounce rounded-full bg-ink-secondary [animation-delay:150ms]" />
-                    <span className="size-1.5 animate-bounce rounded-full bg-ink-secondary [animation-delay:300ms]" />
-                  </span>
-                  <WorkingTimer since={[...bot.messages].reverse().find((m) => m.role === "user")?.at ?? Date.now()} />
-                </div>
-              </div>
-            )
-          )}
+          {streaming ? <StreamingBubble text={streaming} /> : null}
         </div>
+        </div>
+        {/* desktop drag&drop overlay — any file dropped onto chat becomes an attachment */}
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-app/70 backdrop-blur-[2px]">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-accent/60 bg-card px-10 py-8 text-center shadow-2xl">
+              <span className="flex size-12 items-center justify-center rounded-full bg-accent/15 text-accent">
+                <Upload size={24} />
+              </span>
+              <div className="flex flex-col gap-1">
+                <span className="text-[15px] font-semibold text-ink">
+                  {polish ? "Upuść pliki tutaj" : "Drop files here"}
+                </span>
+                <span className="flex items-center justify-center gap-1.5 text-[12px] text-ink-secondary">
+                  <FileIcon size={12} /> {polish ? "Zostaną dodane jako załączniki" : "They'll be added as attachments"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Reading scrollback while new content arrives — one tap back to live */}
@@ -507,7 +673,19 @@ export function ChatView({ bot }: { bot: Bot }) {
         </button>
       )}
 
-      <Composer bot={bot} />
+      {/* multibot: flat reply — pasek cytatu nad composerem */}
+      {replyTo && (
+        <div className="px-5">
+          <ReplyQuote
+            message={replyTargetOf(bot.messages, replyTo.id) ?? replyTo}
+            botName={bot.name}
+            onClear={() => setReplyTo(null)}
+          />
+        </div>
+      )}
+
+      <Composer bot={bot} replyToId={replyTo?.id} onClearReply={() => setReplyTo(null)} />
+
     </main>
   );
 }

@@ -2,8 +2,8 @@
 // clicking the "X texted Y" chip in a conversation; the user watches the bots
 // work on the task together but cannot post. Live updates ride the SSE "room"
 // frames into store.roomOpen.
-import { useEffect, useState } from "react";
-import { Eye, Loader2, Users, X } from "lucide-react";
+import { useEffect, useState, Fragment } from "react";
+import { ArrowLeftRight, Eye, Loader2, Users, X } from "lucide-react";
 import { useStore, formatTime, type Room } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { MausAvatar } from "./Avatar";
@@ -43,7 +43,15 @@ export function RoomPanel() {
   const members = room.bot_ids
     .map((id) => state.bots.find((b) => b.id === id))
     .filter((b): b is NonNullable<typeof b> => Boolean(b));
-  const nameOf = (botId: string) => state.bots.find((b) => b.id === botId)?.name ?? botId;
+  const nameOf = (botId: string) =>
+    state.bots.find((b) => b.id === botId)?.name ?? (polish ? "usunięty bot" : "deleted bot");
+  // multibot: klikalna pigułka nazwy — otwiera czat tego bota, jak na screenie
+  // "Klaus Chief" / "Klaus -> Motion". Zamyka pokój i selectuje bota.
+  const openBot = (botId: string) => {
+    if (!state.bots.some((b) => b.id === botId)) return;
+    dispatch({ type: "toggleRoom", room: null });
+    dispatch({ type: "select", id: botId });
+  };
   const statusLabel =
     room.status === "running"
       ? polish ? "pracują…" : "working…"
@@ -56,22 +64,36 @@ export function RoomPanel() {
       <div className="flex items-center px-5 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           {members.length > 0 ? (
-            <div className="flex -space-x-2 shrink-0">
-              {members.slice(0, 3).map((bot) => (
-                <MausAvatar key={bot.id} color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={28} animated={false} />
+            // multibot 0.1.44: nagłówek "[avatar] Klaus ⇄ [avatar] Motion" —
+            // awatar + nazwa każdego bota, strzałka między nimi; pokój z botem,
+            // który zniknął, pokazuje tylko żywych zamiast surowego UUID.
+            <div className="flex min-w-0 items-center gap-2">
+              {members.slice(0, 2).map((bot, i) => (
+                <Fragment key={bot.id}>
+                  {i > 0 && <ArrowLeftRight size={14} className="shrink-0 text-ink-secondary" />}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <MausAvatar color={bot.color} shape={bot.mascotShape} state={stateForBot(bot)} size={24} animated={false} />
+                    <span className="truncate text-[15px] font-semibold text-ink">{bot.name}</span>
+                  </span>
+                </Fragment>
               ))}
+              {members.length > 2 && (
+                <span className="shrink-0 text-[12px] text-ink-secondary">+{members.length - 2}</span>
+              )}
             </div>
           ) : (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
-              <Users size={16} />
-            </span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-ink-secondary">
+                <Users size={16} />
+              </span>
+              <div className="truncate text-[15px] font-semibold text-ink">
+                {room.name || (polish ? "Pokój współpracy" : "Collaboration")}
+              </div>
+            </div>
           )}
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold text-ink">
-              {room.name || (polish ? "Pokój współpracy" : "Collaboration")}
-            </div>
             <div className="truncate text-[11px] text-ink-secondary">
-              {room.bot_ids.map(nameOf).join(" · ")} · {statusLabel}
+              {members.length > 0 && `${room.bot_ids.map(nameOf).join(" · ")} · `}{statusLabel}
             </div>
           </div>
         </div>
@@ -85,11 +107,6 @@ export function RoomPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-3">
-        <div className="mb-3 flex items-start gap-2 rounded-xl border border-hairline/40 bg-panel p-3 text-[13px]">
-          <span className="mt-0.5 shrink-0 text-ink-secondary">{polish ? "Zadanie:" : "Task:"}</span>
-          <span className="text-ink">{room.task}</span>
-        </div>
-
         {gone ? (
           <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
             <Users size={22} />
@@ -110,15 +127,21 @@ export function RoomPanel() {
               const entryBot = members.find((b) => b.id === entry.from);
               return (
                 <div key={entry.id} className="flex justify-start gap-2.5">
-                  {entryBot && (
-                    <MausAvatar color={entryBot.color} shape={entryBot.mascotShape} state={stateForBot(entryBot)} size={28} animated={false} />
-                  )}
                   <div className="min-w-0 max-w-[85%]">
-                    <div className="mb-1 flex flex-wrap items-baseline gap-2">
-                      <span className="text-[13px] font-semibold text-ink">{nameOf(entry.from)}</span>
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => openBot(entry.from)}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full bg-raised/60 py-0.5 pl-0.5 pr-2 hover:bg-raised"
+                        title={polish ? `Otwórz czat ${nameOf(entry.from)}` : `Open ${nameOf(entry.from)}'s chat`}
+                      >
+                        {entryBot && (
+                          <MausAvatar color={entryBot.color} shape={entryBot.mascotShape} state={stateForBot(entryBot)} size={28} animated={false} />
+                        )}
+                        <span className="text-[12.5px] font-semibold text-accent">{nameOf(entry.from)}</span>
+                      </button>
                       <span className="text-[11px] text-ink-secondary">{formatTime(entry.at)}</span>
                     </div>
-                    <div className="rounded-2xl bg-card px-3.5 py-2 text-[14px] leading-relaxed text-ink">
+                    <div className="rounded-2xl rounded-tl-md bg-card px-3.5 py-2 text-[14px] leading-relaxed text-ink">
                       <ChatMarkdown text={entry.text} />
                     </div>
                   </div>

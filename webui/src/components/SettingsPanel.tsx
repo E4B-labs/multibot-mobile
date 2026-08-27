@@ -1,5 +1,5 @@
-import { ChevronLeft, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronLeft, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
@@ -103,6 +103,31 @@ function EngineUsage({ bot }: { bot: Bot }) {
   );
 }
 
+function ComposioAccountSelector({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const [accounts, setAccounts] = useState<Array<{ id: string; alias?: string; status: string }>>([]);
+  useEffect(() => {
+    authFetch("/api/connectors?services=gmail")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((body) => setAccounts(body.services?.gmail?.accounts ?? []))
+      .catch(() => setAccounts([]));
+  }, [bot.id]);
+  if (!accounts.length) return null;
+  const current = bot.composioAccounts?.gmail ?? "";
+  const set = (value: string) => dispatch({ type: "updateBot", botId: bot.id, patch: { composioAccounts: { ...(bot.composioAccounts ?? {}), ...(value ? { gmail: value } : {}) } } });
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Konto Gmail" : "Gmail account"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Wybór dotyczy tego bota." : "Selection applies to this bot."}</div>
+      <select value={current} onChange={(event) => set(event.target.value)} className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink" aria-label={polish ? "Konto Gmail" : "Gmail account"}>
+        <option value="">{polish ? "Automatyczny wybór" : "Automatic selection"}</option>
+        {accounts.map((account) => <option key={account.id} value={account.id}>{account.alias || account.id} · {account.status}</option>)}
+      </select>
+    </div>
+  );
+}
+
 interface ApprovalRuleOut {
   id: string;
   label: string;
@@ -147,6 +172,19 @@ function ApprovalRules({ bot }: { bot: Bot }) {
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
+  // multibot: szukajka po kartach ustawień (port z OpenMausBot #418) —
+  // filtruje istniejące karty po ich tekście; zero nowej struktury sekcji.
+  const [query, setQuery] = useState("");
+  const cardsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = cardsRef.current;
+    if (!container) return;
+    const needle = query.trim().toLocaleLowerCase();
+    for (const card of Array.from(container.children)) {
+      const match = !needle || (card.textContent ?? "").toLocaleLowerCase().includes(needle);
+      (card as HTMLElement).style.display = match ? "" : "none";
+    }
+  }, [query]);
   const patch = (
     p: Partial<
       Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape">
@@ -186,6 +224,35 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
         </button>
       </div>
 
+      {/* multibot: szukajka ustawień — Escape czyści, dopiero potem zamyka panel */}
+      <div className="px-5 pb-1">
+        <div className="flex items-center gap-2 rounded-xl border border-hairline/40 bg-card px-3 py-2">
+          <Search size={14} className="shrink-0 text-ink-secondary" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                if (query) setQuery("");
+              }
+            }}
+            placeholder={polish ? "Szukaj w ustawieniach…" : "Search settings…"}
+            className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-secondary/60"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label={polish ? "Wyczyść" : "Clear"}
+              className="shrink-0 rounded-md p-0.5 text-ink-secondary hover:text-ink"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         <div className="flex justify-center py-5">
           <MausAvatar
@@ -198,7 +265,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           />
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div ref={cardsRef} className="flex flex-col gap-4">
+          <ComposioAccountSelector bot={bot} />
           <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
             <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
               <span className="rounded-lg bg-raised px-3 py-1.5 text-[14px] font-medium text-ink">

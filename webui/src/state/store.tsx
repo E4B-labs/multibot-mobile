@@ -13,14 +13,18 @@ import {
 } from "react";
 import type { MascotShape } from "@/lib/mascotShapes";
 import type { MausColor, MausMotion } from "@/lib/mascot";
+import { MAUS_COLORS } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 import { getLanguage } from "@/lib/language";
-import { notifyBrowser } from "@/lib/notifications";
+import { botNotificationIcon, notificationTag, notifyBrowser } from "@/lib/notifications";
 import { stripPeerEnvelope } from "@/lib/peerMessage";
 
 export type { MausColor } from "@/lib/mascot";
 
 const SELECTED_BOT_KEY = "multibot.selectedBot";
+// multibot: ile pokoi współpracy trzymamy w stanie. Serwer sam wyrzuca pokoje
+// 30 minut po ostatniej wiadomości; ten sufit to tylko bezpiecznik pamięci.
+const MAX_KNOWN_ROOMS = 40;
 
 export interface OptionCardData {
   title: string;
@@ -38,9 +42,10 @@ export interface OptionCardData {
 export interface Message {
   id: string;
   role: "bot" | "user";
-  kind: "text" | "options" | "activity" | "event" | "screen" | "room";
+  kind: "text" | "options" | "activity" | "event" | "screen" | "room" | "secret";
   text?: string;
   card?: OptionCardData;
+  secret?: { target: string; label: string; description: string; placeholder?: string; helpUrl?: string; requestKey: string; provided?: boolean; dismissed?: boolean };
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
   event?: { type: "renamed" | "skill-created" | "routine-created" | "goal-progress"; value: string };
@@ -52,6 +57,8 @@ export interface Message {
   attachments?: Array<{ id: string; name: string; mime: string; size: number }>;
   /** multibot (F12): model, który obsłużył tę wiadomość — badge w UI */
   model?: string;
+  /** multibot: flat reply — id wiadomości, na którą odpowiada ta wiadomość. */
+  replyToId?: string;
   /** optimistic echo — user message waiting for the server's confirmation */
   pending?: boolean;
   at: number;
@@ -76,6 +83,10 @@ export interface Bot {
   /** multibot: id pierwszej nieprzeczytanej wiadomości — nad nią rysujemy
    *  separator "NEW" (wyczyszczany przy otwarciu czatu / select). */
   firstUnreadId?: string | null;
+  /** multibot: sekcja sidebaru (port z OpenMausBot #296) — brak = lista główna. */
+  section?: string;
+  chiefOfStaff?: boolean;
+  composioAccounts?: Record<string, string>;
   busy?: boolean;
   // multibot: why the bot is waiting on a human (login/captcha/question); null/absent = not waiting.
   // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
@@ -143,10 +154,18 @@ interface AppState {
   // multibot: F8 — panele pamięci i skilli silnika slafy, ten sam prawy slot
   memoryOpen: boolean;
   skillsOpen: boolean;
+  // multibot: live team map (port z OpenMausBot)
+  teamMapOpen: boolean;
+  inspectorOpen: boolean;
+  /** multibot: nazwy skilli do podświetlania w treści wiadomości (skillRefs) */
+  skillNames: string[];
   // multibot: F9-FE — otwarty pokój grupowy (prawy slot); null = zamknięty
   groupOpen: EngineGroup | null;
   // multibot: otwarty read-only pokój współpracy botów (zastępuje widok czatu)
   roomOpen: Room | null;
+  /** multibot: znane pokoje współpracy (ostatnie N) — z nich wskaźnik
+   *  „boty rozmawiają między sobą" wybiera aktywnego partnera dla czatu. */
+  rooms: Room[];
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
   /** latest live frame of a bot's computer, per botId */
@@ -169,7 +188,7 @@ type Action =
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
   | { type: "selectComputer"; id: string }
-  | { type: "send"; botId: string; text: string; reasoning?: string; attachmentIds?: string[] }
+  | { type: "send"; botId: string; text: string; reasoning?: string; attachmentIds?: string[]; replyToId?: string }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
   | { type: "newBot" }
@@ -198,19 +217,30 @@ type Action =
   // multibot: F8 — otwarcie/zamknięcie paneli pamięci i skilli
   | { type: "toggleMemory"; open?: boolean }
   | { type: "toggleSkills"; open?: boolean }
+  // multibot: team map (port z OpenMausBot)
+  | { type: "toggleTeamMap"; open?: boolean }
+  | { type: "toggleInspector"; open?: boolean }
+  /** multibot: nazwy skilli do podświetlania w treści wiadomości */
+  | { type: "setSkillNames"; names: string[] }
   // multibot: F9-FE — otwarcie pokoju grupowego (group) / zamknięcie (null)
   | { type: "toggleGroup"; group: EngineGroup | null }
   // multibot: otwarcie read-only pokoju współpracy / zamknięcie (null)
   | { type: "toggleRoom"; room: Room | null }
+  /** multibot: pełna lista pokoi z GET /api/rooms (hydratacja po starcie) */
+  | { type: "roomsSet"; rooms: Room[] }
+  /** multibot: jeden pokój z kanału {kind:"room"} — wstaw lub odśwież */
+  | { type: "roomUpsert"; room: Room }
   | {
       type: "updateBot";
       botId: string;
       patch: Partial<
         Pick<
           Bot,
-          "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "pinned" | "hidden"
+          "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "pinned" | "hidden" | "chiefOfStaff" | "composioAccounts"
         >
-      >;
+        // multibot: sekcja dopuszcza null — JSON.stringify wycina undefined,
+        // a null musi dolecieć do serwera, żeby wyczyścić pole.
+      > & { section?: string | null };
     };
 
 function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppState {
@@ -526,6 +556,24 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         groupOpen: open ? null : state.groupOpen,
       };
     }
+    // multibot: team map — globalny overlay niezależny od prawego slotu
+    case "toggleTeamMap":
+      return { ...state, teamMapOpen: action.open ?? !state.teamMapOpen };
+    case "toggleInspector": {
+      const open = action.open ?? !state.inspectorOpen;
+      return {
+        ...state,
+        inspectorOpen: open,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+        memoryOpen: open ? false : state.memoryOpen,
+        skillsOpen: open ? false : state.skillsOpen,
+      };
+    }
+    case "setSkillNames":
+      return { ...state, skillNames: action.names };
     // multibot: F9-FE — pokój grupowy w prawym slocie, ta sama zasada wykluczania
     case "toggleGroup": {
       const open = action.group !== null;
@@ -554,6 +602,17 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         skillsOpen: open ? false : state.skillsOpen,
       };
     }
+    // multibot: hydratacja listy pokoi — nadmiar obcinamy, bo wskaźnik rozmów
+    // czyta tylko "running", a done/failed potrzebne są chwilę (animacja wyjścia).
+    case "roomsSet":
+      return { ...state, rooms: action.rooms.slice(-MAX_KNOWN_ROOMS) };
+    case "roomUpsert": {
+      const others = state.rooms.filter((room) => room.id !== action.room.id);
+      return {
+        ...state,
+        rooms: [...others, action.room].slice(-MAX_KNOWN_ROOMS),
+      };
+    }
     case "updateBot": {
       const mascotChanged =
         Object.prototype.hasOwnProperty.call(action.patch, "color") ||
@@ -562,7 +621,13 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       const next = mascotChanged
         ? withMascotMotion(state, action.botId, "customize")
         : state;
-      return updateBot(next, action.botId, (b) => ({ ...b, ...action.patch }));
+      return updateBot(next, action.botId, (b) => {
+        // multibot: section null = wyczyszczona (zgodnie z PATCH-em serwera)
+        const { section, ...rest } = action.patch;
+        const merged = { ...b, ...rest };
+        if (section !== undefined) merged.section = section ?? undefined;
+        return merged;
+      });
     }
     // handled entirely by the async wrapper — but the user's message must
     // appear instantly, not after the server round-trip (SSE messageAdded)
@@ -573,6 +638,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         role: "user",
         kind: "text",
         text: action.text,
+        ...(action.replyToId ? { replyToId: action.replyToId } : {}),
         at: Date.now(),
         pending: true,
       };
@@ -602,8 +668,12 @@ const initialState: AppState = {
   routinesOpen: false,
   memoryOpen: false,
   skillsOpen: false,
+  teamMapOpen: false,
+  inspectorOpen: false,
+  skillNames: [],
   groupOpen: null,
   roomOpen: null,
+  rooms: [],
   streaming: {},
   screens: {},
   provisioning: {},
@@ -645,10 +715,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const before = seen.get(bot.id);
       const attention = bot.needsAttention ?? null;
       if (bot.notifications && before && attention && attention !== before.attention) {
-        notifyBrowser(`${bot.name} needs your input`, attention);
+        notifyBrowser(`${bot.name} needs your input`, attention, {
+          tag: notificationTag(bot.id),
+          icon: botNotificationIcon(MAUS_COLORS[bot.color]),
+        });
       } else if (bot.notifications && before && bot.unread && !before.unread) {
         const last = [...bot.messages].reverse().find((message) => message.role === "bot" && message.text);
-        notifyBrowser(`${bot.name} finished`, last?.text?.slice(0, 180) ?? "New bot message");
+        notifyBrowser(`${bot.name} finished`, last?.text?.slice(0, 180) ?? "New bot message", {
+          tag: notificationTag(bot.id),
+          icon: botNotificationIcon(MAUS_COLORS[bot.color]),
+        });
       }
       seen.set(bot.id, { unread: bot.unread, attention });
     }
@@ -681,6 +757,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               text: action.text,
               ...(action.reasoning ? { reasoning: action.reasoning } : {}),
               ...(action.attachmentIds?.length ? { attachmentIds: action.attachmentIds } : {}),
+              ...(action.replyToId ? { replyToId: action.replyToId } : {}),
             }),
           }).catch(showError);
           break;
@@ -812,6 +889,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       api("/api/config")
         .then((config) => alive && rawDispatch({ type: "configStatus", config }))
         .catch(() => {});
+      // multibot: znane pokoje współpracy — bez tego wskaźnik rozmów botów
+      // zobaczyłby aktywność dopiero po pierwszej ramce SSE, nie po odświeżeniu.
+      api("/api/rooms")
+        .then(({ rooms }) => alive && rawDispatch({ type: "roomsSet", rooms: Array.isArray(rooms) ? rooms : [] }))
+        .catch(() => {});
     };
     loadAll();
 
@@ -841,8 +923,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "room": {
           // live transcript of the open collaboration room
           const room = frame.room as Room | undefined;
+          if (!room) break;
+          // multibot: każdy pokój ląduje w stanie (nie tylko otwarty) — z tej
+          // listy wskaźnik „boty rozmawiają między sobą" wybiera partnera.
+          rawDispatch({ type: "roomUpsert", room });
           const open = stateRef.current.roomOpen;
-          if (room && open?.id === room.id) rawDispatch({ type: "toggleRoom", room });
+          if (open?.id === room.id) rawDispatch({ type: "toggleRoom", room });
           break;
         }
         case "message.patch":
