@@ -12,6 +12,7 @@ import { normalizeState } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
+import { botDisplayName } from "@/lib/botNames";
 import { autocompleteBots } from "@/lib/botAutocomplete";
 
 /** Subsequence match: every query char appears, in order, in the target. */
@@ -183,7 +184,7 @@ export function CmdK() {
       .filter((b) => Boolean(b.hidden) === hiddenMode)
       .map((b) => ({
         id: `bot:${b.id}`,
-        label: b.name,
+        label: botDisplayName(b, polish ? "pl" : "en"),
         hint: hiddenMode
           ? (polish ? "Odkryj i otwórz" : "Unhide and open")
           : b.id === state.selectedId
@@ -210,14 +211,14 @@ export function CmdK() {
     if (current) {
       cmds.push({
         id: "settings",
-        label: `${polish ? "Ustawienia bota" : "Bot settings"} — ${current.name}`,
+        label: `${polish ? "Ustawienia bota" : "Bot settings"} — ${botDisplayName(current, polish ? "pl" : "en")}`,
         hint: polish ? "Panel" : "Panel",
         icon: <Settings size={16} />,
         run: close(() => dispatch({ type: "toggleSettings", open: true })),
       });
       cmds.push({
         id: "computer",
-        label: `${polish ? "Komputer bota" : "Bot's computer"} — ${current.name}`,
+        label: `${polish ? "Komputer bota" : "Bot's computer"} — ${botDisplayName(current, polish ? "pl" : "en")}`,
         hint: "Panel",
         icon: <Monitor size={16} />,
         run: close(() => dispatch({ type: "toggleComputer", open: true })),

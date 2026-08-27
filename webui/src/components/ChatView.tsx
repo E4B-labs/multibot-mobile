@@ -25,6 +25,7 @@ import { SpeakButton } from "./SpeakButton";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
+import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
@@ -255,13 +256,13 @@ function RoomChip({ message }: { message: Message }) {
           {owner && (
             <MausAvatar color={owner.color} shape={owner.mascotShape} state={stateForBot(owner)} size={18} animated={false} />
           )}
-          {owner?.name ?? room.ownerBotId}
+          {owner ? botDisplayName(owner, polish ? "pl" : "en") : room.ownerBotId}
         </span>
         <span>{polish ? "napisał(a) do" : "texted"}</span>
         {peers.map((peer) => (
           <span key={peer.id} className="flex items-center gap-1 font-medium text-ink">
             <MausAvatar color={peer.color} shape={peer.mascotShape} state={stateForBot(peer)} size={18} animated={false} />
-            {peer.name}
+            {botDisplayName(peer, polish ? "pl" : "en")}
           </span>
         ))}
       </button>
@@ -445,7 +446,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                 ekranie nachodziły na pigułkę modelu po prawej. */}
             <div className="flex min-w-0 flex-col">
               <div className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate text-[16px] font-semibold text-ink">{bot.name}</span>
+                <span className="min-w-0 truncate text-[16px] font-semibold text-ink">{botDisplayName(bot, polish ? "pl" : "en")}</span>
                 {bot.busy && <Loader2 size={16} className="animate-spin text-ink-secondary" />}
               </div>
             </div>
@@ -608,7 +609,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                     highlighted={highlightId === m.id}
                     onReply={setReplyTo}
                     replyTarget={replyTargetOf(bot.messages, m.replyToId)}
-                    replyBotName={bot.name}
+                    replyBotName={botDisplayName(bot, polish ? "pl" : "en")}
                     onJumpTo={jumpToHit}
                   />
                 );
@@ -678,7 +679,7 @@ export function ChatView({ bot }: { bot: Bot }) {
         <div className="px-5">
           <ReplyQuote
             message={replyTargetOf(bot.messages, replyTo.id) ?? replyTo}
-            botName={bot.name}
+            botName={botDisplayName(bot, polish ? "pl" : "en")}
             onClear={() => setReplyTo(null)}
           />
         </div>

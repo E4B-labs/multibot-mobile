@@ -7,6 +7,7 @@ import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
 import { normalizeState, stateForBot } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
+import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
 import { AttachmentCard } from "./AttachmentCard";
 import { PeerChatIndicator, usePeerChat } from "./PeerChatIndicator";
@@ -383,7 +384,7 @@ export function Composer({
       })),
       ...state.bots.filter((peer) => !peer.hidden).map((peer) => ({
         id: `b-${peer.id}`,
-        label: peer.name,
+        label: botDisplayName(peer, polish ? "pl" : "en"),
         hint: peer.id === bot.id ? (polish ? "Bieżący" : "Current") : (polish ? "Przełącz" : "Switch to bot"),
         kind: "agent" as const,
         icon: <MausAvatar color={peer.color} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} />,
@@ -717,7 +718,7 @@ setText("");
                 {row.type === "bot" ? (
                   <>
                     <MausAvatar color={row.peer.color} shape={row.peer.mascotShape} state={normalizeState(row.peer.mascotExpression) ?? "happy"} size={24} />
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{row.peer.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{botDisplayName(row.peer, polish ? "pl" : "en")}</span>
                     <span className="shrink-0 text-xs text-ink-secondary">{polish ? "Bot" : "Agent"}</span>
                   </>
                 ) : (
@@ -859,7 +860,7 @@ setText("");
             if (e.key === "Escape" && recording) setRecording(false);
           }}
           placeholder={
-            recording ? polish ? "Słucham…" : "Listening…" : bot.busy ? polish ? `${bot.name} pracuje…` : `${bot.name} is working…` : polish ? `Wiadomość do ${bot.name}` : `Message ${bot.name}`
+            recording ? polish ? "Słucham…" : "Listening…" : bot.busy ? polish ? `${botDisplayName(bot, polish ? "pl" : "en")} pracuje…` : `${botDisplayName(bot, polish ? "pl" : "en")} is working…` : polish ? `Wiadomość do ${botDisplayName(bot, polish ? "pl" : "en")}` : `Message ${botDisplayName(bot, polish ? "pl" : "en")}`
           }
           // multibot: pole rosło bez sufitu — wysokość leci na `scrollHeight`,
           // a `overflow-hidden` nie dawał czego przewijać, więc długa

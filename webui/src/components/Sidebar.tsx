@@ -30,6 +30,7 @@ import { SearchPalette, type SearchTab } from "./SearchPalette";
 // multibot: F11 — status silnika dla warunkowej kropki w stopce
 import { engineOnline } from "@/lib/engineStatus";
 import { useLanguage } from "@/lib/language";
+import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
 
@@ -178,6 +179,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
   const { state, dispatch } = useStore();
   const selected = state.selectedId === bot.id;
   const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  const lang = useLanguage();
   const last = bot.messages[bot.messages.length - 1];
   return (
     <button
@@ -211,7 +213,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[15px] font-semibold text-ink">{bot.name}</span>
+            <span className="truncate text-[15px] font-semibold text-ink">{botDisplayName(bot, lang)}</span>
           </div>
           {last && (
             <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(last.at)}</span>
@@ -401,7 +403,7 @@ function GroupRow({
               trzymać bota, którego ta aplikacja nie zna, a wtedy „0 botów"
               byłoby zwyczajnie nieprawdą. */}
           {group.bot_ids.length} {polish ? "botów" : "bots"}
-          {members.length > 0 && ` · ${members.map((b) => b.name).join(", ")}`}
+          {members.length > 0 && ` · ${members.map((b) => botDisplayName(b, polish ? "pl" : "en")).join(", ")}`}
         </span>
       </div>
     </button>
@@ -523,7 +525,7 @@ function GroupCreateSheet({
                   state={stateForBot(b)}
                   size={32}
                 />
-                <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                <span className="min-w-0 flex-1 truncate">{botDisplayName(b, polish ? "pl" : "en")}</span>
               </button>
             );
           })}
@@ -829,14 +831,15 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Pinned — poziomo obok siebie, zawijanie dopiero gdy brak miejsca */}
+        {/* Pinned — 3 w rzędzie, zawijanie co 3, hover z opisem jak reszta botów */}
         {filteredPinned.length > 0 && (
-          <div className="flex flex-row flex-wrap justify-center gap-2 px-3 pb-3">
+          <div className="grid grid-cols-3 gap-2 px-3 pb-3">
             {filteredPinned.map((b) => {
               const isSelected = state.selectedId === b.id;
               return (
                 <button
                   key={b.id}
+                  title={b.description?.trim() || preview(b)}
                   onClick={() => {
                     dispatch({ type: "select", id: b.id });
                     document.body.classList.remove("mb-drawer-open");
@@ -846,7 +849,7 @@ export function Sidebar() {
                     openBotMenu({ botId: b.id, x: e.clientX, y: e.clientY });
                   }}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl px-4 py-2",
+                    "flex flex-col items-center gap-1.5 rounded-2xl px-2 py-2",
                     isSelected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
                   )}
                 >
@@ -854,10 +857,10 @@ export function Sidebar() {
                     color={b.color}
                     shape={b.mascotShape}
                     state={stateForBot(b)}
-                    size={72}
+                    size={56}
                   />
-                  <span className="max-w-[200px] truncate text-center text-[13px] font-medium text-ink">
-                    {b.name}
+                  <span className="w-full truncate text-center text-[12px] font-medium leading-tight text-ink">
+                    {botDisplayName(b, polish ? "pl" : "en")}
                   </span>
                 </button>
               );
