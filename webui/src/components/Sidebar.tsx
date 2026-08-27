@@ -631,15 +631,26 @@ export function Sidebar() {
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
 
+  // multibot: przypięty bot — duży awatar 1:1 pod wyszukiwarką, bez szpilki (wzór z foty)
+  const pinnedBots = visibleBots.filter((b) => b.pinned);
+  const baseBots = visibleBots.filter((b) => !b.pinned);
+
   // multibot: B4 — filtrowanie listy po zapytaniu z palety wyszukiwania
   const q = query.trim().toLowerCase();
   const filteredBots = q
-    ? visibleBots.filter(
+    ? baseBots.filter(
         (b) =>
           b.name.toLowerCase().includes(q) ||
           b.description.toLowerCase().includes(q),
       )
-    : visibleBots;
+    : baseBots;
+  const filteredPinned = q
+    ? pinnedBots.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.description.toLowerCase().includes(q),
+      )
+    : pinnedBots;
 
   // Grupy filtrujemy tym samym zapytaniem co boty — paleta wyszukiwania stoi
   // nad całą listą, więc zostawienie grup poza filtrem wyglądałoby na błąd.
@@ -815,6 +826,42 @@ export function Sidebar() {
             >
               <X size={18} />
             </button>
+          </div>
+        )}
+
+        {/* Pinned — duży awatar 1:1 bez szpilki (wzór z foty: szary blob + nazwa pod spodem) */}
+        {filteredPinned.length > 0 && (
+          <div className="flex flex-col items-center gap-2 px-3 pb-3">
+            {filteredPinned.map((b) => {
+              const isSelected = state.selectedId === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    dispatch({ type: "select", id: b.id });
+                    document.body.classList.remove("mb-drawer-open");
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openBotMenu({ botId: b.id, x: e.clientX, y: e.clientY });
+                  }}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-2xl px-4 py-2",
+                    isSelected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
+                  )}
+                >
+                  <MausAvatar
+                    color={b.color}
+                    shape={b.mascotShape}
+                    state={stateForBot(b)}
+                    size={72}
+                  />
+                  <span className="max-w-[200px] truncate text-center text-[13px] font-medium text-ink">
+                    {b.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
