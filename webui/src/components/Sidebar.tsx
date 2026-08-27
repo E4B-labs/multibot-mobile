@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
+import { ScoutTeamModal } from "./ScoutTeamModal";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
@@ -553,6 +554,7 @@ export function Sidebar() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  const [scoutOpen, setScoutOpen] = useState(false);
   // `null` = jeszcze nie wiadomo (silnik offline albo pierwszy GET w locie).
   // Pusta tablica = wiadomo, że grup nie ma — to dwa różne stany i sekcja
   // rysuje się dopiero przy drugim.
@@ -770,6 +772,16 @@ export function Sidebar() {
                   <Users size={15} className="text-ink-secondary" />
                   {polish ? "Nowa grupa" : "New group"}
                 </button>
+                <button
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    setScoutOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <FolderPlus size={15} className="text-ink-secondary" />
+                  {polish ? "Zespół z folderu" : "Scout from folder"}
+                </button>
               </div>
             )}
           </div>
@@ -857,6 +869,7 @@ export function Sidebar() {
             onCreated={(group) => setGroups((gs) => [...(gs ?? []), group])}
           />
         )}
+        {scoutOpen && <ScoutTeamModal onClose={() => setScoutOpen(false)} />}
       </div>
 
       {/* Menu profilu — portal do <body> i `z-[90]`, ta sama warstwa co
