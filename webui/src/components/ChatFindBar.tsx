@@ -78,7 +78,7 @@ export function ChatFindBar({
         onClick={() => move(-1)}
         disabled={!hits.length}
         aria-label={polish ? "Poprzednie trafienie" : "Previous match"}
-        className="rounded-md p-1 text-ink-secondary hover:bg-panel hover:text-ink disabled:opacity-40"
+        className="flex size-7 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40"
       >
         <ArrowUp size={14} />
       </button>
@@ -87,7 +87,7 @@ export function ChatFindBar({
         onClick={() => move(1)}
         disabled={!hits.length}
         aria-label={polish ? "Następne trafienie" : "Next match"}
-        className="rounded-md p-1 text-ink-secondary hover:bg-panel hover:text-ink disabled:opacity-40"
+        className="flex size-7 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40"
       >
         <ArrowDown size={14} />
       </button>
