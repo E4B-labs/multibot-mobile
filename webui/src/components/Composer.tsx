@@ -659,6 +659,12 @@ setText("");
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
+        {/* Agent avatar: czarny poziomy pasek w lewym dolnym rogu, osadzony w
+            pasku composera (bg-app) — nie nachodzi na dymki czatu. Napędzany
+            mascotMotion (one-shot), rozmiar 44 px (proporcje mobile). */}
+        <div className="flex h-12 items-center bg-app pl-3 pr-2">
+          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
+        </div>
         {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
            ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
            Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
@@ -781,13 +787,6 @@ setText("");
             margines wsunąłby 48px przerwy i partner nie stałby na równi. */}
         {peerChat && <PeerChatIndicator bot={bot} view={peerChat} />}
         <div className={cn("relative flex min-h-12 items-center gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5", !peerChat && "md:mt-[48px]")}>
-        {/* Agent avatar: 40 px (zmniejszone z 60 per 0.1.58), no frame, anchored
-            above Attach. Widoczny na desktopie i telefonie — na telefonie (flex)
-            siedzi w lewym dolnym rogu nad polem, a przy peer-chatu wpada w pusty
-            slot obok awatara partnera. Napędzany mascotMotion (one-shot). */}
-        <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 flex size-[44px] items-center justify-center" title={bot.name}>
-          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
-        </div>
         <button
           type="button"
           data-attach-toggle
