@@ -2,6 +2,9 @@
 // shared by all bots. Per-bot settings (name, persona, model, computer)
 // live in SettingsPanel; contextual Box-token entry stays in ComputerPanel.
 import { FileDown, Loader2, Plus, QrCode, Trash2, X } from "lucide-react";
+// multibot: ikony szyny sekcji przerysowane z lucide, żeby dało się animować
+// ich części na kliknięcie (suwaki jeżdżą, strzałki się kręcą, klucz dokręca).
+import { RefreshTabIcon, SlidersTabIcon, WrenchTabIcon } from "./SettingsTabIcons";
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
@@ -817,12 +820,16 @@ export function AppSettingsPanel() {
   const language = useLanguage();
   const polish = language === "pl";
   const [tab, setTab] = useState<"general" | "update" | "other">("general");
-
-  const tabClass = (value: typeof tab) =>
-    cn(
-      "rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors",
-      tab === value ? "bg-white/[0.07] text-ink" : "text-ink-secondary hover:bg-white/[0.04]"
-    );
+  // multibot: licznik kliknięć w szynę sekcji. Sam `tab` nie wystarczy —
+  // ponowne kliknięcie w już wybraną ikonę nie zmienia stanu, więc animacja
+  // nie miałaby czego odtworzyć. Numer idzie do `key`, co przemontowuje
+  // ikonę i puszcza animację od nowa.
+  const [press, setPress] = useState<{ tab: "general" | "update" | "other"; nth: number }>({ tab: "general", nth: 0 });
+  const settingsTabs = [
+    { id: "general" as const, Icon: SlidersTabIcon, label: polish ? "Ogólne" : "General" },
+    { id: "update" as const, Icon: RefreshTabIcon, label: polish ? "Aktualizacje" : "Updates" },
+    { id: "other" as const, Icon: WrenchTabIcon, label: polish ? "Narzędzia" : "Tools" },
+  ];
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -838,16 +845,40 @@ export function AppSettingsPanel() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-40 shrink-0 flex-col gap-1 border-r border-hairline/40 px-2 py-2">
-          <button type="button" onClick={() => setTab("general")} className={tabClass("general")}>
-            {polish ? "Ogólne" : "General"}
-          </button>
-          <button type="button" onClick={() => setTab("update")} className={tabClass("update")}>
-            {polish ? "Update" : "Update"}
-          </button>
-          <button type="button" onClick={() => setTab("other")} className={tabClass("other")}>
-            {polish ? "Inne" : "Other"}
-          </button>
+        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-hairline/40 px-2 py-2">
+          {settingsTabs.map(({ id, Icon, label }) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                data-settings-tab
+                onClick={() => {
+                  setTab(id);
+                  setPress((p) => ({ tab: id, nth: p.tab === id ? p.nth + 1 : 0 }));
+                }}
+                title={label}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  // multibot: wciśnięcie zjeżdża do 92% — w dół, nigdy w górę,
+                  // więc przycisk nie wychodzi poza swoje miejsce w szynie.
+                  // Żadnej kolorowej nakładki na kafelku: na kliknięcie rusza
+                  // się wnętrze ikony, a nie tło pod nią.
+                  "relative flex size-11 items-center justify-center rounded-xl",
+                  "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.92]",
+                  "before:absolute before:left-0 before:h-5 before:w-0.5 before:rounded-full",
+                  active
+                    ? "bg-white/[0.07] text-ink before:bg-accent"
+                    : "text-ink-secondary hover:bg-white/[0.04] hover:text-ink before:bg-transparent",
+                )}
+              >
+                {/* key = numer kliknięcia: przemontowanie puszcza animację od
+                    nowa, także gdy klikniesz w już wybraną sekcję */}
+                <Icon key={press.nth} size={19} playing={press.tab === id} />
+              </button>
+            );
+          })}
         </nav>
 
         <div className="flex-1 overflow-y-auto px-5 pb-5">

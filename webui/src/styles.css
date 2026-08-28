@@ -225,6 +225,65 @@ body {
   to { transform: scale(1) translateY(0); opacity: 1; }
 }
 
+/* ── multibot: ikony szyny sekcji w ustawieniach ożywają na kliknięcie ─────
+   Każda animacja trwa 3 s, gra raz i wraca do pozycji wyjściowej. Rusza się
+   wnętrze ikony, nie przycisk — kafelek stoi w miejscu, więc nic nie wchodzi
+   na sąsiadów. Włącza je atrybut data-playing na <svg>
+   (src/components/SettingsTabIcons.tsx). */
+.settings-slider-knob,
+.settings-refresh-spin,
+.settings-wrench-turn {
+  transform-box: view-box;
+}
+
+/* Gałki suwaków jeżdżą po szynie 3..21. Skrajne pozycje wypadają na 4.5 i
+   19.5, czyli z zapasem WEWNĄTRZ toru — gałka nigdy nie wyjeżdża poza szynę.
+   Wartości to przesunięcia względem pozycji wyjściowej każdej gałki
+   (14, 8, 16). */
+.settings-slider-knob--1 { --knob-a: 5.5px; --knob-b: -9.5px; }
+.settings-slider-knob--2 { --knob-a: -3.5px; --knob-b: 11.5px; }
+.settings-slider-knob--3 { --knob-a: 3.5px; --knob-b: -11.5px; }
+
+.settings-refresh-spin { transform-origin: 12px 12px; }
+/* Oś obrotu w główce klucza: rączka chodzi góra-dół, główka stoi. */
+.settings-wrench-turn { transform-origin: 17.5px 6.5px; }
+
+[data-settings-tab-icon][data-playing] .settings-slider-knob {
+  animation: settings-slider-knob 3s cubic-bezier(0.37, 0, 0.63, 1) both;
+}
+[data-settings-tab-icon][data-playing] .settings-refresh-spin {
+  animation: settings-refresh-spin 3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[data-settings-tab-icon][data-playing] .settings-wrench-turn {
+  animation: settings-wrench-turn 3s ease-in-out both;
+}
+
+@keyframes settings-slider-knob {
+  0% { transform: translateX(0); }
+  32% { transform: translateX(var(--knob-a)); }
+  68% { transform: translateX(var(--knob-b)); }
+  100% { transform: translateX(0); }
+}
+
+/* Dwa pełne obroty, wyhamowujące na końcu — kończy tam, gdzie zaczął. */
+@keyframes settings-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(720deg); }
+}
+
+/* Sześć krótkich szarpnięć w obie strony: dokręcanie, nie kołysanie.
+   6 stopni to maksimum, przy którym koniec rączki mieści się w polu ikony
+   i nie zostaje ucięty jej krawędzią. */
+@keyframes settings-wrench-turn {
+  0%, 90%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(-6deg); }
+  23% { transform: rotate(6deg); }
+  36% { transform: rotate(-6deg); }
+  49% { transform: rotate(6deg); }
+  62% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+
 /* SupaMaus vector motion. The fast horizontal compression is the edge-on
    moment of a turn; face parallax, surface lighting, and orbiting vector marks
    sell the 3D rotation without duplicate silhouettes, raster frames, or WebGL. */
@@ -688,6 +747,11 @@ body {
   }
 
   .maus-eyes { transform: none; }
+
+  /* Kto prosi system o mniej ruchu, dostaje sam kolor — ikony sekcji stoją,
+     przycisk nie zjeżdża. */
+  [data-settings-tab-icon] * { animation: none !important; }
+  [data-settings-tab] { transition: none; }
 }
 
 
