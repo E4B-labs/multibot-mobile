@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useCallback, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, CalendarClock, Crosshair, FileIcon, Loader2, Monitor, MoreVertical, ScanSearch, Search, Square, Upload, Wand2 } from "lucide-react";
+import { ArrowDown, CalendarClock, Crosshair, FileIcon, Loader2, Square, Upload, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";// multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
 import { SkillPill } from "./SkillPill";
@@ -8,6 +8,8 @@ import { AttachmentCard } from "./AttachmentCard";
 import { AttachmentPreviewDialog } from "./AttachmentPreview";
 // multibot: pasek szukania w transkrypcie (port z OpenMausBot #437)
 import { ChatFindBar } from "./ChatFindBar";
+// multibot: menu „⋮" z animowaną sekwencją otwierania (port PC 91b8892d)
+import { ChatHeaderMenu } from "./ChatHeaderMenu";
 // multibot: flat replies — cytowanie wiadomości (port z OpenMausBot #437)
 import { ReplyQuote, replyTargetOf } from "./ReplyQuote";
 import { Reply as ReplyIcon } from "lucide-react";
@@ -341,23 +343,6 @@ export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const scrollRef = useRef<HTMLDivElement>(null);
-  const actionsRef = useRef<HTMLDivElement>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setActionsOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setActionsOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [actionsOpen]);
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
@@ -487,64 +472,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           <ModelPicker bot={bot} />
           {/* Cztery ikony akcji nie mieszczą się obok nazwy i pigułki modelu na
               ekranie telefonu — chowają się pod jednym przyciskiem. */}
-          <div ref={actionsRef} className="relative">
-            <button
-              onClick={() => setActionsOpen((o) => !o)}
-              className={cn(
-                "rounded-lg px-1 py-3 hover:bg-raised",
-                actionsOpen ? "text-accent" : "text-ink-secondary hover:text-ink",
-              )}
-              title={polish ? "Więcej" : "More"}
-              aria-label={polish ? "Więcej" : "More"}
-              aria-expanded={actionsOpen}
-            >
-              <MoreVertical size={22} />
-            </button>
-            {actionsOpen && (
-              <div className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-hairline/40 bg-app p-1 shadow-xl">
-                {(
-                  [
-                    ["toggleComputer", state.computerOpen, Monitor, polish ? "Komputer bota" : "Bot's computer"],
-                    ["toggleRoutines", state.routinesOpen, CalendarClock, polish ? "Rutyny bota" : "Bot routines"],
-                    ["toggleSkills", state.skillsOpen, Wand2, polish ? "Umiejętności bota" : "Bot skills"],
-                  ] as const
-                ).map(([action, open, Icon, label]) => (
-                  <button
-                    key={action}
-                    onClick={() => { dispatch({ type: action }); setActionsOpen(false); }}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
-                      open ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
-                    )}
-                  >
-                    <Icon size={18} />
-                    <span>{label}</span>
-                  </button>
-                
-                
-))}
-                <button
-                  onClick={() => { setFollow(false); setFindOpen((v) => !v); setActionsOpen(false); }}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
-                    findOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
-                  )}
-                >
-                  <Search size={18} />
-                  <span>{polish ? "Szukaj w rozmowie" : "Find in chat"}</span>
-                </button>
-                <button
-                  onClick={() => { dispatch({ type: "toggleInspector" }); setActionsOpen(false); }}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px]",
-                    state.inspectorOpen ? "bg-raised/70 text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
-                  )}
-                >
-                  <ScanSearch size={18} />
-                  <span>{polish ? "Inspector runtime" : "Runtime inspector"}</span>
-                </button>
-              </div>            )}
-          </div>
+          <ChatHeaderMenu onToggleFind={() => { setFollow(false); setFindOpen((v) => !v); }} />
         </div>
       </div>
 

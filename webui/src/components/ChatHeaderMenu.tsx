@@ -1,0 +1,230 @@
+// multibot: akcje bota pod jednym przyciskiem „⋮" na końcu nagłówka czatu.
+// Odwzorowanie desktopowego ChatHeaderMenu (repo multibot, src/components)
+// dostosowane do aplikacji mobilnej: bez pozycji „mail" — MailPanel to osobny
+// port (0f6a2aef), a mobile nie ma jeszcze toggleMail w store.
+//
+// Otwarcie gra sekwencję na 2 s (Kacper 28.08):
+//   1. panel rozwija się jak zwój, od góry do dołu, jeszcze pusty — 0,5 s,
+//   2. z przycisku „⋮" wylatuje kropki i siadają na miejscach ikon — 0,5 s,
+//   3. z każdej kropki wychodzi w prawo etykieta, litera po literze — 1 s.
+// Po sekwencji panel renderuje się dokładnie tak jak przedtem — bez opakowań
+// na litery i bez klas animacji, żeby stan końcowy był identyczny.
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CalendarClock, MoreVertical, Monitor, ScanSearch, Search, Users, Wand2 } from "lucide-react";
+import { useStore } from "@/state/store";
+import { useLanguage } from "@/lib/language";
+import { cn } from "@/lib/cn";
+import { motionIsReduced } from "@/lib/motion";
+
+/** Kolejność pozycji. Lista jest jawna, żeby po schowaniu ikon żadna funkcja
+ * nie wyparowała. */
+export const CHAT_HEADER_ACTIONS = ["computer", "routines", "skills", "find", "inspector", "team"] as const;
+export type ChatHeaderAction = (typeof CHAT_HEADER_ACTIONS)[number];
+
+/** Czasy faz. Te same liczby stoją w klatkach CSS (webui/src/styles.css:
+ * menu-unroll, menu-dot-fly, menu-letter-in) i muszą się zgadzać —
+ * rozjazd widać jako przeskok w połowie ruchu. */
+export const UNROLL_MS = 500;
+export const FLY_MS = 500;
+export const TYPE_MS = 1000;
+/** Ile trwa pojawienie się jednej litery. Reszta okna to rozjazd opóźnień. */
+export const LETTER_MS = 180;
+
+export type MenuPhase = "unroll" | "fly" | "type" | "done";
+
+/** Opóźnienie litery `index` z `count`, w sekundach. Pierwsza rusza od razu,
+ * ostatnia startuje tak, żeby skończyć równo z końcem fazy — niezależnie od
+ * długości etykiety, więc wszystkie pozycje kończą pisanie w tej samej chwili. */
+export function letterDelay(index: number, count: number): number {
+  if (count <= 1) return 0;
+  const span = TYPE_MS - LETTER_MS;
+  const step = Math.min(Math.max(index, 0), count - 1) / (count - 1);
+  return (step * span) / 1000;
+}
+
+export function ChatHeaderMenu({ onToggleFind }: { onToggleFind: () => void }) {
+  const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const slotRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<MenuPhase>("done");
+  const [offsets, setOffsets] = useState<Array<{ dx: number; dy: number }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Sekwencja faz. Kto prosi system o mniej ruchu, dostaje panel od razu gotowy.
+  useEffect(() => {
+    if (!open) return;
+    if (motionIsReduced()) {
+      setPhase("done");
+      return;
+    }
+    setPhase("unroll");
+    const toFly = setTimeout(() => setPhase("fly"), UNROLL_MS);
+    const toType = setTimeout(() => setPhase("type"), UNROLL_MS + FLY_MS);
+    const toDone = setTimeout(() => setPhase("done"), UNROLL_MS + FLY_MS + TYPE_MS);
+    return () => {
+      clearTimeout(toFly);
+      clearTimeout(toType);
+      clearTimeout(toDone);
+    };
+  }, [open]);
+
+  // Skąd dokąd lecą kropki. Mierzone z układu, nie wpisane na sztywno — inna
+  // czcionka albo inny odstęp w wierszu i tak trafią w środek ikony.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const from = triggerRef.current?.getBoundingClientRect();
+    if (!from) return;
+    const cx = from.left + from.width / 2;
+    const cy = from.top + from.height / 2;
+    setOffsets(
+      CHAT_HEADER_ACTIONS.map((_, i) => {
+        const slot = slotRefs.current[i]?.getBoundingClientRect();
+        if (!slot) return { dx: 0, dy: 0 };
+        return { dx: cx - (slot.left + slot.width / 2), dy: cy - (slot.top + slot.height / 2) };
+      }),
+    );
+  }, [open]);
+
+  const entries: Record<ChatHeaderAction, { icon: typeof Monitor; label: string; run: () => void }> = {
+    computer: {
+      icon: Monitor,
+      label: polish ? "Komputer bota" : "Bot's computer",
+      run: () => dispatch({ type: "toggleComputer" }),
+    },
+    routines: {
+      icon: CalendarClock,
+      label: polish ? "Rutyny bota" : "Bot routines",
+      run: () => dispatch({ type: "toggleRoutines" }),
+    },
+    skills: {
+      icon: Wand2,
+      label: polish ? "Umiejętności bota" : "Bot skills",
+      run: () => dispatch({ type: "toggleSkills" }),
+    },
+    find: {
+      icon: Search,
+      label: polish ? "Szukaj w rozmowie" : "Find in chat",
+      run: onToggleFind,
+    },
+    inspector: {
+      icon: ScanSearch,
+      label: polish ? "Inspector runtime" : "Runtime inspector",
+      run: () => dispatch({ type: "toggleInspector" }),
+    },
+    team: {
+      icon: Users,
+      label: polish ? "Mapa zespołu" : "Team map",
+      run: () => dispatch({ type: "toggleTeamMap", open: true }),
+    },
+  };
+
+  const done = phase === "done";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        ref={triggerRef}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "rounded-md p-2 hover:bg-raised",
+          open ? "text-accent" : "text-ink-secondary hover:text-ink",
+        )}
+        title={polish ? "Więcej" : "More"}
+        aria-label={polish ? "Więcej" : "More"}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <MoreVertical size={22} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          data-menu-phase={phase}
+          className={cn(
+            "absolute right-0 top-full z-30 mt-1.5 w-56 rounded-xl border border-hairline/40 bg-card p-1.5 shadow-xl",
+            phase === "unroll" && "menu-unroll",
+          )}
+        >
+          {CHAT_HEADER_ACTIONS.map((key, row) => {
+            const { icon: Icon, label, run } = entries[key];
+            const offset = offsets[row] ?? { dx: 0, dy: 0 };
+            return (
+              <button
+                key={key}
+                role="menuitem"
+                onClick={() => {
+                  run();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] text-ink hover:bg-raised"
+              >
+                <span
+                  ref={(el) => {
+                    slotRefs.current[row] = el;
+                  }}
+                  className="relative flex size-4 shrink-0 items-center justify-center"
+                >
+                  {phase === "fly" && (
+                    <span
+                      aria-hidden
+                      className="menu-dot absolute size-1.5 rounded-full bg-accent"
+                      style={
+                        {
+                          "--dot-dx": `${offset.dx}px`,
+                          "--dot-dy": `${offset.dy}px`,
+                        } as React.CSSProperties
+                      }
+                    />
+                  )}
+                  <Icon
+                    size={16}
+                    className={cn(
+                      "text-ink-secondary",
+                      (phase === "unroll" || phase === "fly") && "opacity-0",
+                      phase === "type" && "menu-icon-in",
+                    )}
+                  />
+                </span>
+                {done ? (
+                  <span>{label}</span>
+                ) : (
+                  <span className={cn(phase !== "type" && "opacity-0")}>
+                    {[...label].map((char, i) => (
+                      <span
+                        key={i}
+                        className={cn("whitespace-pre", phase === "type" && "menu-letter")}
+                        style={
+                          phase === "type"
+                            ? ({ animationDelay: `${letterDelay(i, label.length)}s` } as React.CSSProperties)
+                            : undefined
+                        }
+                      >
+                        {char}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
