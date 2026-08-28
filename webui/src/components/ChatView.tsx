@@ -13,6 +13,7 @@ import { ReplyQuote, replyTargetOf } from "./ReplyQuote";
 import { Reply as ReplyIcon } from "lucide-react";
 import { routineStartName, slashCommandLabel } from "@/lib/transcriptChips";
 import { useStore, formatTime, type Bot, type Message } from "@/state/store";
+import { formatPeerEnvelope } from "@/lib/peerEnvelope";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -128,7 +129,10 @@ function Bubble({
   const polish = useLanguage() === "pl";
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
-  const text = message.text ?? "";
+  // multibot: koperta rozmowy bot↔bot rozwijana do „@Nazwa: treść" — patrz
+  // lib/peerEnvelope.ts. Robimy to przy wyświetlaniu, bo silnik musi dostać
+  // kopertę w całości.
+  const text = formatPeerEnvelope(message.text ?? "");
   const collapsible =
     user && !expanded && (text.length > USER_COLLAPSE_CHARS || text.split("\n").length > USER_COLLAPSE_LINES);
   return (
