@@ -860,6 +860,11 @@ export function AppSettingsPanel() {
   const language = useLanguage();
   const polish = language === "pl";
   const [tab, setTab] = useState<"general" | "update" | "other">("general");
+  // multibot: czerwony znacznik na ikonie Ustawienia, gdy aktualizacja czeka
+  // (port 5a407d6: banner -> badge). Na mobile bridge updatera jest null, więc
+  // znacznik jest nieaktywny, dopóki native nie zacznie zgłaszać stanu.
+  const updaterState = useUpdaterState();
+  const updateReady = updaterState?.status === "available" || updaterState?.status === "downloaded";
   // multibot: licznik kliknięć w szynę sekcji. Sam `tab` nie wystarczy —
   // ponowne kliknięcie w już wybraną ikonę nie zmienia stanu, więc animacja
   // nie miałaby czego odtworzyć. Numer idzie do `key`, co przemontowuje
@@ -916,6 +921,9 @@ export function AppSettingsPanel() {
                 {/* key = numer kliknięcia: przemontowanie puszcza animację od
                     nowa, także gdy klikniesz w już wybraną sekcję */}
                 <Icon key={press.nth} size={19} playing={press.tab === id} />
+                {id === "update" && updateReady && (
+                  <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger" aria-hidden />
+                )}
               </button>
             );
           })}
