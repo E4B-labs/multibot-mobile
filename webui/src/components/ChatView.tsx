@@ -12,8 +12,9 @@ import { ChatFindBar } from "./ChatFindBar";
 import { ReplyQuote, replyTargetOf } from "./ReplyQuote";
 import { Reply as ReplyIcon } from "lucide-react";
 import { routineStartName, slashCommandLabel } from "@/lib/transcriptChips";
-import { useStore, formatTime, type Bot, type Message } from "@/state/store";
+import { useStore, type Bot, type Message } from "@/state/store";
 import { formatPeerEnvelope } from "@/lib/peerEnvelope";
+import { formatChatSessionTime, shouldStartChatSession } from "@/lib/chatSessions";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -189,10 +190,10 @@ function Bubble({
             treścią a godziną robiła się pusta linijka (na telefonie nawet dwie,
             bo hover tam nie działa i przyciski nigdy się nie pokazują).
             Widoczność samych przycisków zostaje bez zmian. */}
+        {/* multibot: sterilowana stopka dymka — sterowania (TTS, Odpowiedz)
+            w JEDNYM rzędzie; czas sesji renderuje się osobno między
+            wiadomościami (patrz SessionSeparator). */}
         <div className={cn("mt-1.5 flex items-center gap-1.5", user ? "justify-end" : "justify-start")}>
-          <span className={cn("text-[11px] leading-none", user ? "text-right text-ink/55" : "text-left text-ink-secondary/60")}>
-            {formatTime(message.at)}
-          </span>
           {/* multibot: TTS — see SpeakButton.tsx; renders null off-slafy */}
           {!user && <SpeakButton text={text} />}
           {/* multibot: flat reply — przycisk na hover, jak SpeakButton */}
@@ -209,6 +210,15 @@ function Bubble({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SessionSeparator({ at, polish }: { at: number; polish: boolean }) {
+  const label = formatChatSessionTime(at, polish);
+  return (
+    <div className="flex w-full justify-center py-4 text-[11px] font-medium text-ink-secondary/75" role="separator" aria-label={label}>
+      {label}
     </div>
   );
 }
@@ -428,7 +438,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   };
 
-  const first = bot.messages[0];
+  let previousVisibleAt: number | undefined;
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
@@ -573,11 +583,6 @@ export function ChatView({ bot }: { bot: Bot }) {
         }}
       >
         <div className="flex w-full flex-col gap-3 pb-4">
-          {first && (
-            <div className="py-3 text-center text-[13px] text-ink-secondary">
-              {polish ? "Dziś" : "Today"} {formatTime(first.at)}
-            </div>
-          )}
           {bot.messages.map((m) => {
             let child: ReactNode;
             switch (m.kind) {
@@ -622,8 +627,12 @@ export function ChatView({ bot }: { bot: Bot }) {
                   />
                 );
             }
+            const visible = child != null;
+            const sessionStart = visible && shouldStartChatSession(previousVisibleAt, m.at);
+            if (visible) previousVisibleAt = m.at;
             return (
               <Fragment key={m.id}>
+                {sessionStart && <SessionSeparator at={m.at} polish={polish} />}
                 {bot.firstUnreadId === m.id && <NewSeparator />}
                 {/* SKILL.md stays outside and above its message, on sender side. */}
                 {!!m.attachments?.some((f) => f.name.toLowerCase() === "skill.md") && (
