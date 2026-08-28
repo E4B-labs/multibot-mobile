@@ -177,28 +177,32 @@ function Bubble({
             )}
           </>
         ) : (
-          <>
-            <ChatMarkdown text={text} />
-            {/* multibot: TTS — see SpeakButton.tsx; renders null off-slafy */}
-            <SpeakButton text={text} />
-          </>
+          <ChatMarkdown text={text} />
         )}
-        {/* multibot: flat reply — przycisk na hover, jak SpeakButton */}
-        {onReply && message.kind === "text" && (
-          <div className="mt-1 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100">
+        {/* multibot: stopka dymka — godzina i sterowania (TTS, Odpowiedz) stoją
+            w JEDNYM rzędzie. Wcześniej `SpeakButton` i rząd „Odpowiedz" miały
+            tylko `opacity-0`, więc dalej zajmowały miejsce w układzie i między
+            treścią a godziną robiła się pusta linijka (na telefonie nawet dwie,
+            bo hover tam nie działa i przyciski nigdy się nie pokazują).
+            Widoczność samych przycisków zostaje bez zmian. */}
+        <div className={cn("mt-1.5 flex items-center gap-1.5", user ? "justify-end" : "justify-start")}>
+          <span className={cn("text-[11px] leading-none", user ? "text-right text-ink/55" : "text-left text-ink-secondary/60")}>
+            {formatTime(message.at)}
+          </span>
+          {/* multibot: TTS — see SpeakButton.tsx; renders null off-slafy */}
+          {!user && <SpeakButton text={text} />}
+          {/* multibot: flat reply — przycisk na hover, jak SpeakButton */}
+          {onReply && message.kind === "text" && (
             <button
               type="button"
               onClick={() => onReply(message)}
               aria-label={polish ? "Odpowiedz" : "Reply"}
               title={polish ? "Odpowiedz" : "Reply"}
-              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+              className="rounded-md p-1 text-ink-secondary opacity-0 transition-opacity hover:bg-raised hover:text-ink focus-visible:opacity-100 group-hover/msg:opacity-100"
             >
               <ReplyIcon size={13} />
             </button>
-          </div>
-        )}
-        <div className={cn("mt-1.5 text-[11px] leading-none", user ? "text-right text-ink/55" : "text-left text-ink-secondary/60")}>
-          {formatTime(message.at)}
+          )}
         </div>
       </div>
     </div>
