@@ -274,7 +274,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 Bot
               </span>
               <button
-                onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "cursor" })}
+                onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })}
                 className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
               >
                 {polish ? "Resetuj" : "Reset"}
@@ -292,7 +292,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     onClick={() => patch({ mascotShape: shape })}
                     className={cn(
                       "flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-raised",
-                      (bot.mascotShape ?? "cursor") === shape && "ring-2 ring-accent-border",
+                      (bot.mascotShape ?? "blob") === shape && "ring-2 ring-accent-border",
                     )}
                     title={shape}
                     aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}
