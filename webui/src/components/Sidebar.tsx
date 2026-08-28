@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import {
   BellDot,
   Bot as BotIcon,
+  ChevronDown,
+  ChevronRight,
   ClipboardCopy,
   Copy,
   EyeOff,
@@ -565,6 +567,10 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
+  // multibot: zwijana sekcja grup (port PC 23cc789) — tapnięcie nagłówka
+  // „Grupy" chowa/rozwija listę grup; stan lokalny, jak u PC.
+  const [groupsCollapsed, setGroupsCollapsed] = useState(false);
+  const toggleGroups = () => setGroupsCollapsed((c) => !c);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Dymek profilu i jego menu: menu idzie portalem do <body>, więc nie ma
   // rodzica, względem którego mogłoby się ustawić — kotwiczymy je na pozycji
@@ -890,15 +896,30 @@ export function Sidebar() {
 
           {/* Grupy pod botami: to lista wtórna wobec rozmów 1:1 i nie ma jej,
               dopóki użytkownik sam grupy nie założy — nad listą botów
-              odsuwałaby w dół to, po co drawer się otwiera. */}
+              odsuwałaby w dół to, po co drawer się otwiera. Nagłówek jest
+              przyciskiem (port PC 23cc789): tapnięcie zwija/rozwija listę. */}
           {filteredGroups.length > 0 && (
             <div className="mt-3 flex flex-col gap-0.5">
-              <div className="px-3 pb-1 text-[12px] font-medium uppercase tracking-wide text-ink-secondary">
-                {polish ? "Grupy" : "Groups"}
-              </div>
-              {filteredGroups.map((g) => (
-                <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
-              ))}
+              <button
+                type="button"
+                onClick={toggleGroups}
+                aria-expanded={!groupsCollapsed}
+                aria-label={groupsCollapsed ? polish ? "Rozwiń sekcję Grupy" : "Expand section Groups" : polish ? "Zwiń sekcję Grupy" : "Collapse section Groups"}
+                title={groupsCollapsed ? polish ? "Rozwiń sekcję" : "Expand section" : polish ? "Zwiń sekcję" : "Collapse section"}
+                className="flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 pt-1 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                {groupsCollapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+                <span className="text-[12px] font-medium uppercase tracking-wide">
+                  {polish ? "Grupy" : "Groups"}
+                </span>
+              </button>
+              {!groupsCollapsed && (
+                <div className="flex flex-col gap-0.5">
+                  {filteredGroups.map((g) => (
+                    <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
