@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { WebView, type WebViewNavigation } from "react-native-webview";
+import * as Constants from "expo-constants";
 
 import type { Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
@@ -67,9 +68,18 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // hosta. To ten sam mechanizm sprawia, że `fetch("/api/...")` w środku
       // interfejsu trafia do serwera MultiBota, a nie w próżnię.
       const deep = botId ? `location.hash = ${JSON.stringify(`#bot=${botId}`)};` : "";
+      // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
+      // updatera.currentVersion() na desktopie) — webui pokazuje ją w
+      // panelu Aktualizacje (port 95b003f).
+      const appVersion =
+        ((Constants as unknown as { expoConfig?: { version?: string }; manifest2?: { version?: string }; manifest?: { version?: string } }).expoConfig?.version ??
+          (Constants as unknown as { manifest2?: { version?: string } }).manifest2?.version ??
+          (Constants as unknown as { manifest?: { version?: string } }).manifest?.version) ??
+        "";
       setBootstrap(
         `try { document.documentElement.style.setProperty('--android-status-bar', '${STATUS_BAR_HEIGHT}px'); } catch (e) {}
          try { localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); ${deep} } catch (e) {}
+         try { window.__APP_VERSION__ = ${JSON.stringify(appVersion)}; } catch (e) {}
          true;`,
       );
     }, (e: unknown) => {

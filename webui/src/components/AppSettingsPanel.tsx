@@ -769,8 +769,9 @@ function CommandLineTools() {
 function UpdatesRow() {
   const s = useUpdaterState();
   const polish = useLanguage() === "pl";
-  if (!window.ogb?.updater) return null;
-  const updater = window.ogb.updater;
+  const updater = window.ogb?.updater;
+  const currentVersion = (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__;
+  if (!updater && !currentVersion) return null;
   const label =
     s?.status === "checking"
       ? polish ? "Sprawdzanie…" : "Checking…"
@@ -786,8 +787,13 @@ function UpdatesRow() {
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">{polish ? "Aktualizacje aplikacji" : "App updates"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">{label}</div>
-      <div className="mt-3 flex gap-2">
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Bieżąca wersja" : "Current version"}: <span className="font-medium text-ink">{currentVersion ?? "…"}</span>
+      </div>
+      {updater && (
+        <>
+          <div className="mt-0.5 text-[13px] text-ink-secondary">{label}</div>
+          <div className="mt-3 flex gap-2">
         {s?.status === "available" ? (
           <button
             onClick={() => void updater.download()}
@@ -811,7 +817,9 @@ function UpdatesRow() {
             Check for updates
           </button>
         )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
