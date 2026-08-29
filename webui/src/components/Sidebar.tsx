@@ -736,10 +736,10 @@ export function Sidebar() {
   }, [searchOpen]);
 
   return (
-    <aside className="fixed inset-0 z-[60] bg-black md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
+    <aside className="fixed inset-0 z-[60] bg-app md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu.
           Bez marginesu poziomego — lista botów ma dochodzić do lewej krawędzi. */}
-      <div className="relative my-2 flex h-[calc(100%-1rem)] w-full flex-col overflow-hidden rounded-[28px] bg-black shadow-2xl shadow-black/60 md:my-0 md:h-full md:rounded-none">
+      <div className="relative my-2 flex h-[calc(100%-1rem)] w-full flex-col overflow-hidden rounded-[28px] bg-app shadow-2xl shadow-black/60 md:my-0 md:h-full md:rounded-none">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
           {/* Dymek profilu stoi w lewym górnym rogu — w miejscu po przycisku X,
