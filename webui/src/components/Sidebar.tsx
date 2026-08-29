@@ -11,7 +11,6 @@ import {
   EyeOff,
   FolderPlus,
   Loader2,
-  Mail,
   Pencil,
   Pin,
   PinOff,
@@ -935,18 +934,6 @@ export function Sidebar() {
               )}
             </div>
           )}
-        </div>
-
-        {/* Stopka — przycisk Mail agentów + wskaźnik offline. */}
-        <div className="flex flex-col gap-1 px-2 pb-2 pt-2">
-          <button
-            onClick={() => dispatch({ type: "toggleMail", open: true })}
-            title={polish ? "Mail agentów" : "Agent mail"}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[14px] text-ink hover:bg-white/10"
-          >
-            <Mail size={18} className="text-ink-secondary" />
-            <span>{polish ? "Mail agentów" : "Agent mail"}</span>
-          </button>
         </div>
 
         {engineOffline && (
