@@ -771,7 +771,6 @@ function UpdatesRow() {
   const polish = useLanguage() === "pl";
   const updater = window.ogb?.updater;
   const currentVersion = (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__;
-  if (!updater && !currentVersion) return null;
   const label =
     s?.status === "checking"
       ? polish ? "Sprawdzanie…" : "Checking…"
