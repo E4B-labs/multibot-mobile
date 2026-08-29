@@ -840,20 +840,26 @@ function MotionSettings({ polish }: { polish: boolean }) {
           {polish ? "Ruch maskotek, ikon ustawień i menu." : "Mascot, settings icon, and menu motion."}
         </div>
       </div>
-      <button
-        type="button"
+      <div
         role="switch"
+        tabIndex={0}
         aria-checked={enabled}
         aria-label={polish ? "Animacje interfejsu" : "Interface animations"}
         onClick={toggle}
-        className={cn("relative shrink-0 border border-hairline/40 transition-colors", enabled ? "bg-accent" : "bg-raised-hover")}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggle();
+          }
+        }}
+        className={cn("relative shrink-0 cursor-pointer border border-hairline/40 transition-colors", enabled ? "bg-accent" : "bg-raised-hover")}
         style={{ width: 44, height: 26, borderRadius: 13, display: "inline-block" }}
       >
         <span
           className="absolute rounded-full bg-white"
           style={{ width: 20, height: 20, top: 3, left: enabled ? 21 : 3, transition: "left 150ms ease" }}
         />
-      </button>
+      </div>
     </div>
   );
 }
