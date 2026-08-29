@@ -26,7 +26,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { stateForBot } from "@/lib/mascot";
+import { busyMascotMotion, stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -182,6 +182,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
   const { state, dispatch } = useStore();
   const selected = state.selectedId === bot.id;
   const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  const busyMotion = bot.busy ? busyMascotMotion(bot.id) : null;
   const lang = useLanguage();
   const last = bot.messages[bot.messages.length - 1];
   return (
@@ -208,10 +209,10 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       <MausAvatar
         color={bot.color}
         shape={bot.mascotShape}
-        state={stateForBot(bot)}
+        state={busyMotion?.state ?? stateForBot(bot)}
         size={56}
-        motion={mascotMotion?.kind ?? "none"}
-        motionKey={mascotMotion?.nonce ?? 0}
+        motion={busyMotion?.motion ?? mascotMotion?.kind ?? "none"}
+        motionKey={busyMotion ? 1 : mascotMotion?.nonce ?? 0}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -388,7 +389,14 @@ function GroupRow({
         <span className="flex shrink-0 items-center">
           {members.slice(0, 3).map((b, i) => (
             <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-2.5")}>
-              <MausAvatar color={b.color} shape={b.mascotShape} size={32} />
+              <MausAvatar
+                color={b.color}
+                shape={b.mascotShape}
+                size={32}
+                state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
+                motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
+                motionKey={b.busy ? 1 : 0}
+              />
             </span>
           ))}
         </span>
@@ -525,8 +533,10 @@ function GroupCreateSheet({
                 <MausAvatar
                   color={b.color}
                   shape={b.mascotShape}
-                  state={stateForBot(b)}
+                  state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                   size={32}
+                  motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
+                  motionKey={b.busy ? 1 : 0}
                 />
                 <span className="min-w-0 flex-1 truncate">{botDisplayName(b, polish ? "pl" : "en")}</span>
               </button>
@@ -874,8 +884,10 @@ export function Sidebar() {
                   <MausAvatar
                     color={b.color}
                     shape={b.mascotShape}
-                    state={stateForBot(b)}
+                    state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                     size={avatarSize}
+                    motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
+                    motionKey={b.busy ? 1 : 0}
                   />
                   <span className="w-full truncate text-center text-[12px] font-medium leading-tight text-ink">
                     {botDisplayName(b, polish ? "pl" : "en")}
