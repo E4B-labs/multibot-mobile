@@ -49,6 +49,8 @@ const MOTION_SCENARIOS: Record<Exclude<MausMotion, "none">, string> = {
   blink: "New reply",
   surprise: "Unread update",
   failure: "Action failed",
+  sending: "Sending request",
+  "thinking-dots": "Thinking (dots)",
 };
 
 const MOTION_COLORS: MausColor[] = [

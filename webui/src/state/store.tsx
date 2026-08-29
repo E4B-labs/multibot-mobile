@@ -60,6 +60,9 @@ export interface Message {
   model?: string;
   /** multibot: flat reply — id wiadomości, na którą odpowiada ta wiadomość. */
   replyToId?: string;
+  /** multibot: kto wysłał wiadomość — uid + nazwa z profilu (workspace, #51). */
+  userId?: string;
+  userName?: string;
   /** optimistic echo — user message waiting for the server's confirmation */
   pending?: boolean;
   at: number;
@@ -89,6 +92,10 @@ export interface Bot {
   chiefOfStaff?: boolean;
   composioAccounts?: Record<string, string>;
   busy?: boolean;
+  /** multibot: widoczność bota w workspace (#51): public/team/private. */
+  visibility?: "public" | "team" | "private";
+  ownerId?: string;
+  allowedUserIds?: string[];
   // multibot: why the bot is waiting on a human (login/captcha/question); null/absent = not waiting.
   // Arrives via the same `{kind:"bot"}` SSE frame as every other bot patch.
   needsAttention?: string | null;

@@ -21,6 +21,10 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
   const [code, setCode] = useState("");
   const [token, setToken] = useState("");
   const [name, setName] = useState("My phone");
+  // multibot: profil użytkownika (workspace #62) — podpisuje wiadomości i
+  // pokazuje, kto pracuje w workspace. Zapisywany best-effort po połączeniu.
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +46,19 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
         lastUsedAt: Date.now(),
       };
       await saveHost(host, trimmedToken);
+      // multibot: workspace #62 — zapisz profil użytkownika, jeśli podano.
+      // Best-effort: nie blokujemy połączenia, gdyby endpoint nie odpowiedział.
+      if (profileName.trim() || profileEmail.trim()) {
+        try {
+          await fetch(normalized + "/api/config", {
+            method: "PUT",
+            headers: { "content-type": "application/json", Authorization: "Bearer " + trimmedToken },
+            body: JSON.stringify({ profile: { name: profileName.trim(), email: profileEmail.trim().toLowerCase() } }),
+          });
+        } catch {
+          // profil zostanie dopełniony w webui, gdy host odpowie
+        }
+      }
       onDone(host);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add host");
@@ -183,6 +200,29 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
 
       <Text style={styles.label}>Device name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor="#fcfcfc55" />
+
+      {/* multibot: workspace #62 — profil użytkownika */}
+      <Text style={styles.label}>Your name (shared workspace)</Text>
+      <TextInput
+        style={styles.input}
+        value={profileName}
+        onChangeText={setProfileName}
+        placeholder="Jane Doe"
+        placeholderTextColor="#fcfcfc55"
+        autoCapitalize="words"
+        autoCorrect={false}
+      />
+      <Text style={styles.label}>Your email (shared workspace)</Text>
+      <TextInput
+        style={styles.input}
+        value={profileEmail}
+        onChangeText={setProfileEmail}
+        placeholder="jane@example.com"
+        placeholderTextColor="#fcfcfc55"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="email-address"
+      />
 
       {error && <Text style={styles.error}>{error}</Text>}
 

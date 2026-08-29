@@ -854,6 +854,92 @@ function MotionSettings({ polish }: { polish: boolean }) {
   );
 }
 
+function WorkspaceAccessSettings() {
+  const polish = useLanguage() === "pl";
+  const [workspace, setWorkspace] = useState<{
+    name?: string;
+    currentUser?: { uid: string; name?: string | null; email?: string | null; role: "owner" | "member" } | null;
+    members?: Array<{ uid: string; name?: string; email?: string; role: "owner" | "member" }>;
+  } | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void authFetch("/api/workspace")
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((value) => alive && setWorkspace(value))
+      .catch((reason) => alive && setError(reason instanceof Error ? reason.message : String(reason)));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const createInvite = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authFetch("/api/workspace/invites", { method: "POST" });
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(value.error ?? String(response.status));
+      setInvite(typeof value.code === "string" ? value.code : null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite);
+    } catch {
+      setError(polish ? "Nie można skopiować kodu." : "Could not copy invite code.");
+    }
+  };
+
+  const members = workspace?.members ?? [];
+  return (
+    <div className="mt-4 rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Wspólny serwer" : "Shared server"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Każda osoba ma własne konto. Boty i sekcje są wspólne, prywatne boty mają osobne ACL." : "Each person has an account. Bots and sections are shared; private bots use their own ACL."}
+      </div>
+      {workspace?.currentUser && (
+        <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
+          {workspace.currentUser.name || workspace.currentUser.email || workspace.currentUser.uid}
+          <span className="ml-2 text-ink">· {workspace.currentUser.role}</span>
+        </div>
+      )}
+      {members.length > 0 && (
+        <div className="mt-3 space-y-1 text-[12px] text-ink-secondary">
+          {members.map((member) => (
+            <div key={member.uid} className="flex items-center justify-between gap-2">
+              <span className="truncate">{member.name || member.email || member.uid}</span>
+              <span className="shrink-0">{member.role}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {workspace?.currentUser?.role === "owner" && (
+        <div className="mt-3">
+          <button type="button" onClick={() => void createInvite()} disabled={busy} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">
+            {busy ? polish ? "Tworzenie…" : "Creating…" : polish ? "Utwórz zaproszenie" : "Create invite"}
+          </button>
+          {invite && (
+            <button type="button" onClick={() => void copyInvite()} className="ml-2 rounded-lg border border-hairline/40 bg-inset px-3 py-2 font-mono text-[12px] text-ink hover:bg-raised">
+              {invite}
+            </button>
+          )}
+        </div>
+      )}
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
 export function AppSettingsPanel() {
   const { dispatch } = useStore();
   const language = useLanguage();
@@ -990,6 +1076,7 @@ export function AppSettingsPanel() {
             <>
               {/* multibot: G2 — server token, masked until explicitly shown. */}
               <AccessTokenSettings />
+              <WorkspaceAccessSettings />
               <PairDeviceSettings />
               <InstallAppSettings />
 

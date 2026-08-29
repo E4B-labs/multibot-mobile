@@ -18,7 +18,7 @@ import { useStore, type Bot, type Message } from "@/state/store";
 import { formatPeerEnvelope } from "@/lib/peerEnvelope";
 import { formatChatSessionTime, shouldStartChatSession } from "@/lib/chatSessions";
 import { MausAvatar } from "./Avatar";
-import { stateForBot } from "@/lib/mascot";
+import { busyMascotMotion, stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
 import { ComputerHandoffCard } from "./ComputerHandoffCard";
@@ -347,6 +347,7 @@ export function ChatView({ bot }: { bot: Bot }) {
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  const busyMotion = bot.busy ? busyMascotMotion(bot.id) : null;
 
   // Scroll pinning: follow the bottom while the user hasn't scrolled away.
   // Follow breaks ONLY on an upward user gesture (wheel/touch), never on
@@ -440,10 +441,10 @@ export function ChatView({ bot }: { bot: Bot }) {
           >            <MausAvatar
               color={bot.color}
               shape={bot.mascotShape}
-              state={stateForBot(bot)}
+              state={busyMotion?.state ?? stateForBot(bot)}
               size={44}
-              motion={mascotMotion?.kind ?? "none"}
-              motionKey={mascotMotion?.nonce ?? 0}
+              motion={busyMotion?.motion ?? mascotMotion?.kind ?? "none"}
+              motionKey={busyMotion ? 1 : mascotMotion?.nonce ?? 0}
             />
             {/* Nazwa i model w kolumnie, obie ucinane wielokropkiem: na wąskim
                 ekranie nachodziły na pigułkę modelu po prawej. */}
