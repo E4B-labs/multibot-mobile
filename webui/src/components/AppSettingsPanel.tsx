@@ -846,9 +846,13 @@ function MotionSettings({ polish }: { polish: boolean }) {
         aria-checked={enabled}
         aria-label={polish ? "Animacje interfejsu" : "Interface animations"}
         onClick={toggle}
-        className={cn("relative h-6 w-11 shrink-0 rounded-full border border-hairline/40 transition-colors", enabled ? "bg-accent" : "bg-raised-hover")}
+        className={cn("relative shrink-0 rounded-full border border-hairline/40 transition-colors", enabled ? "bg-accent" : "bg-raised-hover")}
+        style={{ width: 44, height: 26 }}
       >
-        <span className={cn("absolute top-0.5 size-5 rounded-full bg-white transition-transform", enabled ? "translate-x-5" : "translate-x-0.5")} />
+        <span
+          className="absolute rounded-full bg-white"
+          style={{ width: 20, height: 20, top: 3, left: enabled ? 21 : 3, transition: "left 150ms ease" }}
+        />
       </button>
     </div>
   );
