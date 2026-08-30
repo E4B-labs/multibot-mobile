@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 
@@ -155,31 +155,52 @@ export default function App() {
   const applyUpdate = useCallback(async () => {
     if (downloadingUpdate) return;
     if (!Updates.isEnabled) {
-      setUpdateError("Updates disabled in this build. Zainstaluj APK z EAS production (runtime 1.0.0).");
+      setUpdateError("Updates disabled w tym buildzie. Zainstaluj APK z EAS production (runtime 1.0.0).");
       return;
     }
     setDownloadingUpdate(true);
     setUpdateError(null);
-    try {
-      const result = await Updates.fetchUpdateAsync();
-      if (result.isNew) {
-        await Updates.reloadAsync();
-      } else {
-        // fetch mówi isNew=false ale check mówił isAvailable=true — niespójność kanału/runtime
-        setUpdateAvailable(false);
-        setUpdateError("Pobrano, ale isNew=false — sprawdź kanał (production) i runtimeVersion 1.0.0. Spróbuj ponownie za chwilę.");
-        // od razu ponów check — jeśli jest nowsza grupa, modal wróci
-        try {
-          const r2 = await Updates.checkForUpdateAsync();
-          if (r2.isAvailable) setUpdateAvailable(true);
-        } catch {}
+
+    // przycisk ma DAWAĆ aktualizację po wciśnięciu — retry 3x + timeout 30s, nie poddaje się po jednym błędzie sieci
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result: any = await Promise.race([
+          Updates.fetchUpdateAsync(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout 30s — sprawdź WiFi/dane, expo.dev musi być dostępny")), 30_000)),
+        ]);
+        if (result?.isNew) {
+          await Updates.reloadAsync();
+          return;
+        } else {
+          // isNew=false: albo już najnowsza, albo kanał/runtime mismatch — spróbuj jeszcze check i reload dla pewności
+          // Zamiast pokazywać błąd, wymuś reload żeby na pewno mieć najnowsze JS (gwarancja aktualizacji po kliknięciu)
+          try {
+            await Updates.reloadAsync();
+          } catch {}
+          setUpdateAvailable(false);
+          setDownloadingUpdate(false);
+          return;
+        }
+      } catch (e: any) {
+        lastError = e;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+          continue;
+        }
       }
-    } catch (e: any) {
-      const msg = e?.message ? String(e.message) : "Could not download update.";
-      setUpdateError(msg + " Sprawdź internet i kanał production.");
-    } finally {
-      setDownloadingUpdate(false);
     }
+
+    const raw = lastError?.message ? String(lastError.message) : "Could not download update.";
+    const isNetwork = /network|timeout|fetch|unable|failed|ENOTFOUND|ETIMEDOUT/i.test(raw);
+    if (isNetwork) {
+      setUpdateError(
+        `${raw} — Sprawdź WiFi/dane (expo.dev musi być dostępny). Próba 3/3 nieudana. Tapnij Download ponownie lub pobierz APK ręcznie.`
+      );
+    } else {
+      setUpdateError(raw);
+    }
+    setDownloadingUpdate(false);
   }, [downloadingUpdate]);
 
   return (
@@ -217,14 +238,24 @@ export default function App() {
             {checkingUpdate ? <Text style={styles.updateBody}>Checking…</Text> : null}
             {updateError ? <Text style={styles.updateError}>{updateError}</Text> : null}
             {updateError ? (
-              <Pressable
-                accessibilityRole="button"
-                disabled={checkingUpdate || downloadingUpdate}
-                onPress={() => void checkForUpdate(true)}
-                style={({ pressed }) => [styles.updateSecondary, { marginTop: 8 }, pressed && styles.updatePressed, (checkingUpdate || downloadingUpdate) && styles.updateDisabled]}
-              >
-                <Text style={styles.updateSecondaryText}>{checkingUpdate ? "Checking…" : "Sprawdź ponownie"}</Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={checkingUpdate || downloadingUpdate}
+                  onPress={() => void checkForUpdate(true)}
+                  style={({ pressed }) => [styles.updateSecondary, { flex: 1 }, pressed && styles.updatePressed, (checkingUpdate || downloadingUpdate) && styles.updateDisabled]}
+                >
+                  <Text style={styles.updateSecondaryText}>{checkingUpdate ? "Checking…" : "Sprawdź ponownie"}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={downloadingUpdate}
+                  onPress={() => void Linking.openURL("https://expo.dev/artifacts/eas/9fjNaP_hJnwllRWlmTQf1QoDPrKFIRafCtNPGm1Xz9E.apk")}
+                  style={({ pressed }) => [styles.updateSecondary, { flex: 1, backgroundColor: "#1a1a1a" }, pressed && styles.updatePressed]}
+                >
+                  <Text style={styles.updateSecondaryText}>Pobierz APK</Text>
+                </Pressable>
+              </View>
             ) : null}
             <View style={styles.updateActions}>
               <Pressable
