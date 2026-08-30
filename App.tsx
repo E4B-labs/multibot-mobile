@@ -113,56 +113,70 @@ export default function App() {
     return () => sub.remove();
   }, [hosts]);
 
-  useEffect(() => {
+  const checkForUpdate = useCallback(async (showError = false) => {
     if (__DEV__ || !Updates.isEnabled) {
+      if (showError) setUpdateError("Updates disabled in this build (isEnabled=false). Reinstall APK from EAS production.");
       return;
     }
+    if (checkingUpdate || downloadingUpdate) return;
+    setCheckingUpdate(true);
+    if (showError) setUpdateError(null);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      setUpdateAvailable(result.isAvailable);
+      if (result.isAvailable) setUpdateError(null);
+      else if (showError) setUpdateError("No update available — you are on latest version.");
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : "Could not check for update.";
+      if (showError || updateAvailable) setUpdateError(msg);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, [checkingUpdate, downloadingUpdate, updateAvailable]);
 
+  useEffect(() => {
+    if (__DEV__ || !Updates.isEnabled) return;
     let cancelled = false;
-
-    const checkUpdate = async () => {
-      setCheckingUpdate(true);
-      try {
-        const result = await Updates.checkForUpdateAsync();
-        if (!cancelled) {
-          setUpdateAvailable(result.isAvailable);
-          setUpdateError(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setUpdateError("Could not check for update.");
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingUpdate(false);
-        }
-      }
-    };
-
-    void checkUpdate();
-
+    void checkForUpdate(false);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && !cancelled) void checkForUpdate(false);
+    });
+    // ponawiaj check co 60s gdy modal ukryty — naprawia „kliknął Later i już nie widzi aktualizacji"
+    const interval = setInterval(() => {
+      if (!cancelled && !updateAvailable && !checkingUpdate && !downloadingUpdate) void checkForUpdate(false);
+    }, 60_000);
     return () => {
       cancelled = true;
+      sub.remove();
+      clearInterval(interval);
     };
-  }, []);
+  }, [checkForUpdate, updateAvailable, checkingUpdate, downloadingUpdate]);
 
   const applyUpdate = useCallback(async () => {
-    if (downloadingUpdate || !Updates.isEnabled) {
+    if (downloadingUpdate) return;
+    if (!Updates.isEnabled) {
+      setUpdateError("Updates disabled in this build. Zainstaluj APK z EAS production (runtime 1.0.0).");
       return;
     }
-
     setDownloadingUpdate(true);
     setUpdateError(null);
-
     try {
       const result = await Updates.fetchUpdateAsync();
       if (result.isNew) {
         await Updates.reloadAsync();
       } else {
+        // fetch mówi isNew=false ale check mówił isAvailable=true — niespójność kanału/runtime
         setUpdateAvailable(false);
+        setUpdateError("Pobrano, ale isNew=false — sprawdź kanał (production) i runtimeVersion 1.0.0. Spróbuj ponownie za chwilę.");
+        // od razu ponów check — jeśli jest nowsza grupa, modal wróci
+        try {
+          const r2 = await Updates.checkForUpdateAsync();
+          if (r2.isAvailable) setUpdateAvailable(true);
+        } catch {}
       }
-    } catch {
-      setUpdateError("Could not download update.");
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : "Could not download update.";
+      setUpdateError(msg + " Sprawdź internet i kanał production.");
     } finally {
       setDownloadingUpdate(false);
     }
@@ -202,20 +216,30 @@ export default function App() {
             <Text style={styles.updateBody}>A newer version of the app is ready. Download it now without a new build.</Text>
             {checkingUpdate ? <Text style={styles.updateBody}>Checking…</Text> : null}
             {updateError ? <Text style={styles.updateError}>{updateError}</Text> : null}
-            <View style={styles.updateActions}>
+            {updateError ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={checkingUpdate || downloadingUpdate}
+                onPress={() => void checkForUpdate(true)}
+                style={({ pressed }) => [styles.updateSecondary, { marginTop: 8 }, pressed && styles.updatePressed, (checkingUpdate || downloadingUpdate) && styles.updateDisabled]}
+              >
+                <Text style={styles.updateSecondaryText}>{checkingUpdate ? "Checking…" : "Sprawdź ponownie"}</Text>
+              </Pressable>
+            ) : null}
+            <View style={styles.updateActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={downloadingUpdate}
                 onPress={() => setUpdateAvailable(false)}
-                style={({ pressed }) => [styles.updateSecondary, pressed && styles.updatePressed, (checkingUpdate || downloadingUpdate) && styles.updateDisabled]}
+                style={({ pressed }) => [styles.updateSecondary, pressed && styles.updatePressed, downloadingUpdate && styles.updateDisabled]}
               >
                 <Text style={styles.updateSecondaryText}>Later</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                disabled={checkingUpdate || downloadingUpdate}
+                disabled={downloadingUpdate}
                 onPress={() => void applyUpdate()}
-                style={({ pressed }) => [styles.updatePrimary, pressed && styles.updatePressed, (checkingUpdate || downloadingUpdate) && styles.updateDisabled]}
+                style={({ pressed }) => [styles.updatePrimary, pressed && styles.updatePressed, downloadingUpdate && styles.updateDisabled]}
               >
                 {downloadingUpdate ? (
                   <ActivityIndicator color="#070707" />
