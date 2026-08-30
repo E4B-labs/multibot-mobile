@@ -356,7 +356,8 @@ export function ChatView({ bot }: { bot: Bot }) {
   // (upstream-verified failure). Scrolling back to the end re-arms it.
   const [follow, setFollow] = useState(true);
   const touchY = useRef(0);
-  const [dragOver] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
 
   // multibot: find-in-chat — Ctrl/Cmd+F otwiera pasek, skok podświetla dymek
   const [findOpen, setFindOpen] = useState(false);
@@ -427,7 +428,34 @@ export function ChatView({ bot }: { bot: Bot }) {
   let previousVisibleAt: number | undefined;
 
   return (
-    <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
+    <main
+      className="relative flex h-full min-w-0 flex-1 flex-col bg-app"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes("Files")) {
+          dragCounter.current++;
+          setDragOver(true);
+        }
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes("Files")) e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        dragCounter.current = Math.max(0, dragCounter.current - 1);
+        if (dragCounter.current === 0) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setDragOver(false);
+        const files = [...e.dataTransfer.files];
+        if (files.length) {
+          window.dispatchEvent(new CustomEvent("mb:composer:addFiles", { detail: files }));
+        }
+      }}
+    >
       {/* Header — `sticky top-0` trzyma pasek w widoku, gdy rozmowa się
           przewija. Hamburger (`DrawerToggle`, tylko na telefonie) stoi jako
           pierwszy element i dzieli z paskiem wysokość. */}
