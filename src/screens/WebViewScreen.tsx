@@ -29,6 +29,30 @@ const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?
 // slow one — without this the spinner spun forever and you couldn't tell
 // whether it was the network, the token, or the WebView.
 const LOAD_TIMEOUT_MS = 15_000;
+const PROBE_TIMEOUT_MS = 8_000;
+
+async function probeHost(url: string, token: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${url}/api/bots`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (response.status === 401) return "Serwer odpowiada, ale token jest nieprawidłowy.";
+    if (!response.ok) return `Serwer odpowiedział HTTP ${response.status}.`;
+    const body = (await response.json()) as { bots?: unknown };
+    if (!Array.isArray(body.bots)) return "Serwer odpowiedział w nieprawidłowym formacie.";
+    return null;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return `Nie można połączyć z ${url} w ${PROBE_TIMEOUT_MS / 1000}s.`;
+    }
+    return `Nie można połączyć z ${url}. Włącz Tailscale na telefonie i serwerze.`;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
   const webRef = useRef<WebView>(null);
@@ -51,7 +75,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
 
   useEffect(() => {
     let cancelled = false;
-    void getHostToken(host.id).then((token) => {
+    void getHostToken(host.id).then(async (token) => {
       if (cancelled) return;
       if (!token) {
         // Wpis hosta bez tokenu: interfejs pokazałby ekran logowania albo nic.
@@ -68,6 +92,12 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // `localStorage` działa, bo `baseUrl` niżej nadaje dokumentowi origin
       // hosta. To ten sam mechanizm sprawia, że `fetch("/api/...")` w środku
       // interfejsu trafia do serwera MultiBota, a nie w próżnię.
+      const problem = await probeHost(host.url, token);
+      if (cancelled) return;
+      if (problem) {
+        setFailed(problem);
+        return;
+      }
       const deep = botId ? `location.hash = ${JSON.stringify(`#bot=${botId}`)};` : "";
       // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
       // updatera.currentVersion() na desktopie) — webui pokazuje ją w
@@ -138,14 +168,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     setAttempt((n) => n + 1);
   }
 
-  if (!bootstrap) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#fcfcfc" />
-      </View>
-    );
-  }
-
   if (failed) {
     return (
       <View style={styles.center}>
@@ -163,8 +185,16 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           <Text style={styles.backButtonText}>Try again</Text>
         </Pressable>
         <Pressable style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backButtonText}>Back to hosts</Text>
+          <Text style={styles.backButtonText}>Change server</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  if (!bootstrap) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#fcfcfc" />
       </View>
     );
   }
