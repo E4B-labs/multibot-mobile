@@ -19,6 +19,7 @@ import { getLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { botNotificationIcon, notificationTag, notifyBrowser } from "@/lib/notifications";
 import { stripPeerEnvelope } from "@/lib/peerMessage";
+import { sortMessages } from "@/lib/messageOrder";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -324,13 +325,13 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       // właśnie otwarty → zapamiętaj pierwszą nieprzeczytaną wiadomość (ost. wpis)
       const bots = action.bots.map((b) => {
         // multibot: koperta bot→bot rozpoznawana też w historii przy hydratacji.
-        const messages = b.messages?.map(withPeerEnvelope);
+        const messages = b.messages ? sortMessages(b.messages.map(withPeerEnvelope)) : b.messages;
         return {
           ...b,
           ...(messages && { messages }),
           firstUnreadId:
             b.unread && b.id !== selectedId
-              ? (b.messages?.[b.messages.length - 1]?.id ?? null)
+              ? (messages?.at(-1)?.id ?? null)
               : b.firstUnreadId,
         };
       });
@@ -424,9 +425,9 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       const viewing = bot.id === state.selectedId;
       const next = updateBot(state, bot.id, (b) => {
         const msgs = withoutPending(b.messages);
-        const messages = msgs.some((m) => m.id === message.id)
-          ? msgs
-          : [...msgs, message];
+        const messages = sortMessages(
+          msgs.some((m) => m.id === message.id) ? msgs : [...msgs, message],
+        );
         const firstUnreadId = viewing
           ? null
           : (b.unread && !b.firstUnreadId ? message.id : b.firstUnreadId);
@@ -468,7 +469,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       const next = motion ? withMascotMotion(state, bot.id, motion) : state;
       return updateBot(next, bot.id, (b) => ({
         ...b,
-        messages: b.messages.map((m) => (m.id === message.id ? message : m)),
+        messages: sortMessages(b.messages.map((m) => (m.id === message.id ? message : m))),
       }));
     }
     case "streamDelta":
