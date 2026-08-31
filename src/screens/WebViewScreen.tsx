@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import * as Clipboard from "expo-clipboard";
 import { WebView, type WebViewNavigation } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
@@ -68,6 +70,10 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
   // WebView history depth, so the back control (and the hardware button on
   // Android) steps out of the in-page chat before bailing to the host list.
   const [canGoBack, setCanGoBack] = useState(false);
+  const [cameraRequest, setCameraRequest] = useState<{ requestId: string; purpose: "attachment" | "avatar" } | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
   // natywnego paska) to domyślny ekran czatu. Przycisk „‹ Hosts" (collapse)
   // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
@@ -168,6 +174,62 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     setAttempt((n) => n + 1);
   }
 
+  const sendNativePhoto = (photo: {
+    requestId: string;
+    purpose: "attachment" | "avatar";
+    dataUrl: string;
+    fileName: string;
+  }) => {
+    webRef.current?.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent("mb:native-photo", { detail: ${JSON.stringify(photo)} })); true;`,
+    );
+  };
+
+  const sendNativeError = (requestId: string, purpose: "attachment" | "avatar", message: string) => {
+    webRef.current?.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent("mb:native-photo-error", { detail: ${JSON.stringify({ requestId, purpose, message })} })); true;`,
+    );
+  };
+
+  async function takeNativePhoto() {
+    if (!cameraRequest || !cameraPermission?.granted || !cameraReady) return;
+    const request = cameraRequest;
+    try {
+      const picture = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.86 });
+      if (!picture?.base64) throw new Error("The camera did not return an image.");
+      sendNativePhoto({
+        requestId: request.requestId,
+        purpose: request.purpose,
+        dataUrl: `data:image/jpeg;base64,${picture.base64}`,
+        fileName: `camera-${Date.now()}.jpg`,
+      });
+      setCameraRequest(null);
+    } catch (error) {
+      sendNativeError(request.requestId, request.purpose, error instanceof Error ? error.message : "Could not take a photo.");
+    }
+  }
+
+  async function readClipboardImage(requestId: string) {
+    try {
+      const image = await Clipboard.getImageAsync({ format: "png" });
+      if (!image?.data) return;
+      sendNativePhoto({
+        requestId,
+        purpose: "attachment",
+        dataUrl: image.data,
+        fileName: `clipboard-${Date.now()}.png`,
+      });
+    } catch {
+      // Some platform clipboard providers expose only text. The web input
+      // remains available and keeps its normal text-paste behavior.
+    }
+  }
+
+  useEffect(() => {
+    if (!cameraRequest || cameraPermission?.granted !== false) return;
+    void requestCameraPermission();
+  }, [cameraRequest, cameraPermission?.granted, requestCameraPermission]);
+
   if (failed) {
     return (
       <View style={styles.center}>
@@ -225,6 +287,11 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           try {
             const msg = JSON.parse(nativeEvent.data);
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
+              setCameraReady(false);
+              setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
+            }
+            if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
           } catch {
             /* interfejs wysyła też inne wiadomości — nie nasza sprawa */
           }
@@ -264,6 +331,36 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           if (e.nativeEvent.statusCode >= 500) setFailed(`Host answered HTTP ${e.nativeEvent.statusCode}.`);
         }}
       />
+      {cameraRequest && (
+        <View style={styles.cameraOverlay}>
+          {cameraPermission?.granted ? (
+            <CameraView
+              ref={cameraRef}
+              style={styles.cameraPreview}
+              facing="back"
+              onCameraReady={() => setCameraReady(true)}
+            />
+          ) : (
+            <View style={styles.cameraPermission}>
+              <Text style={styles.cameraTitle}>Camera access is required</Text>
+              <Text style={styles.cameraBody}>Allow camera access to take a photo for this message.</Text>
+              <Pressable style={styles.cameraButton} onPress={() => void requestCameraPermission()}>
+                <Text style={styles.cameraButtonText}>Allow camera</Text>
+              </Pressable>
+            </View>
+          )}
+          <View style={styles.cameraControls}>
+            <Pressable style={styles.cameraCancel} onPress={() => setCameraRequest(null)}>
+              <Text style={styles.cameraCancelText}>Cancel</Text>
+            </Pressable>
+            {cameraPermission?.granted && (
+              <Pressable style={[styles.cameraButton, !cameraReady && styles.cameraButtonDisabled]} disabled={!cameraReady} onPress={() => void takeNativePhoto()}>
+                <Text style={styles.cameraButtonText}>Take photo</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -301,4 +398,15 @@ const styles = StyleSheet.create({
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
   backButton: { marginTop: 12, backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   backButtonText: { color: "#070707", fontWeight: "700" },
+  cameraOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10, backgroundColor: "#070707", padding: 16 },
+  cameraPreview: { flex: 1, borderRadius: 18, overflow: "hidden" },
+  cameraPermission: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
+  cameraTitle: { color: "#fcfcfc", fontSize: 18, fontWeight: "700", textAlign: "center" },
+  cameraBody: { color: "#fcfcfc99", fontSize: 14, textAlign: "center" },
+  cameraControls: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, paddingTop: 14, paddingBottom: 8 },
+  cameraButton: { backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
+  cameraButtonDisabled: { opacity: 0.45 },
+  cameraButtonText: { color: "#070707", fontWeight: "700" },
+  cameraCancel: { borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: "#2f2f2f" },
+  cameraCancelText: { color: "#fcfcfc", fontWeight: "600" },
 });

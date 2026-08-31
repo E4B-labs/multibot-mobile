@@ -3,18 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
-import {
-  stateForBot,
-  MAUS_COLORS,
-  MAUS_COLOR_NAMES,
-} from "@/lib/mascot";
+import { stateForBot } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { requestBrowserNotifications } from "@/lib/notifications";
 import { useLanguage } from "@/lib/language";
-import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { botDisplayName, botDisplayTitle } from "@/lib/botNames";
 import { AvatarCropper } from "./AvatarCropper";
 
@@ -264,7 +259,7 @@ function BotSharing({ bot }: { bot: Bot }) {
   );
 }
 
-type AppearanceMode = "closed" | "shapes" | "photo";
+type AppearanceMode = "closed" | "photo";
 
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
@@ -358,9 +353,9 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
         <div className="flex flex-col items-center py-5 gap-2">
           <button
             type="button"
-            onClick={() => setAppearanceMode((m) => (m === "closed" ? "shapes" : m === "shapes" ? "photo" : "closed"))}
-            aria-expanded={appearanceMode !== "closed"}
-            title={polish ? "Zmień wygląd — kliknij ponownie by dodać zdjęcie" : "Change appearance — click again for photo"}
+            onClick={() => setAppearanceMode((m) => (m === "photo" ? "closed" : "photo"))}
+            aria-expanded={appearanceMode === "photo"}
+            title={polish ? "Dodaj lub zmień zdjęcie profilowe" : "Add or change profile photo"}
             className="rounded-full focus:outline-none"
           >
             <MausAvatar
@@ -373,30 +368,21 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               motionKey={mascotMotion?.nonce ?? 0}
             />
           </button>
-          {appearanceMode !== "closed" && (
+          {appearanceMode === "photo" && (
             <div className="text-[11px] text-ink-secondary/70">
-              {appearanceMode === "shapes" ? (polish ? "Kliknij awatar ponownie by dodać zdjęcie" : "Click avatar again for photo") : (polish ? "Zdjęcie profilowe — okrągły kadr" : "Profile photo — circular crop")}
+              {polish ? "Zdjęcie profilowe — okrągły kadr" : "Profile photo — circular crop"}
             </div>
           )}
         </div>
 
         <div ref={cardsRef} className="flex flex-col gap-4">
-          {appearanceMode !== "closed" && (
+          {appearanceMode === "photo" && (
             <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
               <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
-                <div className="flex gap-1">
-                  <button onClick={() => setAppearanceMode("shapes")} className={`rounded-lg px-3 py-1.5 text-[13px] font-medium ${appearanceMode === "shapes" ? "bg-accent text-white" : "bg-raised text-ink-secondary"}`}>
-                    {polish ? "Wygląd" : "Appearance"}
-                  </button>
-                  <button onClick={() => setAppearanceMode("photo")} className={`rounded-lg px-3 py-1.5 text-[13px] font-medium flex items-center gap-1 ${appearanceMode === "photo" ? "bg-accent text-white" : "bg-raised text-ink-secondary"}`}>
-                    <ImagePlus size={14} /> {polish ? "Zdjęcie" : "Photo"}
-                  </button>
+                <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                  <ImagePlus size={14} /> {polish ? "Prześlij zdjęcie" : "Upload photo"}
                 </div>
-                {appearanceMode === "shapes" ? (
-                  <button onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })} className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised">
-                    {polish ? "Resetuj" : "Reset"}
-                  </button>
-                ) : bot.avatarUrl ? (
+                {bot.avatarUrl ? (
                   <button
                     onClick={async () => {
                       setAvatarBusy(true);
@@ -413,25 +399,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                   </button>
                 ) : null}
               </div>
-              {appearanceMode === "shapes" ? (
-                <div className="p-3">
-                  <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kształt ikony" : "Icon shape"}</div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {MASCOT_SHAPES.map((shape) => (
-                      <button key={shape} onClick={() => patch({ mascotShape: shape })} className={`flex h-[58px] items-center justify-center rounded-xl bg-inset ${(bot.mascotShape ?? "blob") === shape ? "ring-2 ring-accent-border" : ""}`}>
-                        <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={36} animated={false} />
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
-                  <div className="flex flex-wrap gap-2.5">
-                    {MAUS_COLOR_NAMES.map((color) => (
-                      <button key={color} onClick={() => patch({ color })} className={`size-8 rounded-full border-2 border-transparent ${bot.color === color ? "ring-2 ring-accent-border ring-offset-2 ring-offset-card" : ""}`} style={{ backgroundColor: MAUS_COLORS[color] }} />
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3">
+              <div className="p-3">
                   {!pendingFile ? (
                     <div className="flex flex-col items-center gap-3">
                       {bot.avatarUrl ? <img src={bot.avatarUrl} alt="avatar" className="size-[96px] rounded-full object-cover border border-hairline/30" /> : <div className="flex size-[96px] items-center justify-center rounded-full bg-inset border border-dashed border-hairline"><ImagePlus size={24} className="text-ink-secondary" /></div>}
@@ -456,8 +424,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                       onCancel={() => setPendingFile(null)}
                     />
                   )}
-                </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -504,12 +471,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               delegation is automatic; no per-bot switch exists. */}
           <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
           <ApprovalRules key={`approval-rules-${bot.id}-${state.workspaceVersion}`} bot={bot} />
-          <div className="rounded-xl bg-card p-4 text-[13px] text-ink-secondary">
-            <div className="text-[15px] font-medium text-ink">{polish ? "Delegowanie między botami" : "Bot-to-bot delegation"}</div>
-            <div className="mt-1 leading-relaxed">
-              {polish ? <>Zawsze włączone. Oznacz bota przez <code className="rounded bg-inset px-1">@nazwa</code>. Dostępne narzędzia peer są używane, gdy provider je obsługuje; w innym razie harness przekazuje żądanie i odpowiedź.</> : <>Always on. Mention another bot with <code className="rounded bg-inset px-1">@name</code> to delegate. Native peer tools are used when provider supports them; otherwise harness routes request and reply.</>}
-            </div>
-          </div>
           <EngineUsage key={`usage-${bot.id}`} bot={bot} />
 
           <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">

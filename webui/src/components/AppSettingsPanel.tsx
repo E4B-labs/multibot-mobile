@@ -17,10 +17,6 @@ import { languageLabel, setLanguage, useLanguage, type Language } from "@/lib/la
 import { SkinPicker } from "./SkinPicker";
 import { applyMotionMode, readMotionMode, type MotionMode } from "@/lib/motion";
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-}
-
 const slug = (value: string) =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
 
@@ -262,63 +258,6 @@ function PairDeviceSettings() {
         <div className="size-32 shrink-0 overflow-hidden rounded-lg bg-white p-2" dangerouslySetInnerHTML={{ __html: pairing.qrSvg }} />
         <div className="min-w-0"><div className="text-[11px] text-ink-secondary">{polish ? "Kod jednorazowy · 5 minut" : "One-time code · 5 minutes"}</div><div className="mt-1 text-2xl font-semibold tracking-[0.2em] text-ink">{pairing.code}</div><div className="mt-1 break-all text-[11px] text-ink-secondary">{pairing.pairUrl}</div></div>
       </div> : <button onClick={start} disabled={busy} className="mt-3 flex items-center gap-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}{polish ? "Pokaż kod QR" : "Show QR code"}</button>}
-    </div>
-  );
-}
-
-function InstallAppSettings() {
-  const polish = useLanguage() === "pl";
-  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(false);
-  useEffect(() => {
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallEvent(event as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => {
-      setInstalled(true);
-      setInstallEvent(null);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
-  const install = async () => {
-    if (!installEvent) return;
-    await installEvent.prompt();
-    setInstallEvent(null);
-  };
-  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
-  const isAppleMobile = /iPhone|iPad|iPod/.test(userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const installHint = isAppleMobile
-    ? polish ? "Safari na iPhonie/iPadzie: Udostępnij → Dodaj do ekranu początkowego." : "iPhone/iPad Safari: Share → Add to Home Screen."
-    : /Android/.test(userAgent)
-      ? polish ? "Chrome na Androidzie: ⋮ → Zainstaluj aplikację lub Dodaj do ekranu głównego." : "Android Chrome: ⋮ → Install app or Add to Home screen."
-      : /Firefox/.test(userAgent)
-        ? polish ? "Firefox: otwórz tę stronę w Chrome lub Edge, aby zainstalować aplikację." : "Firefox: open this page in Chrome or Edge to install it as an app."
-        : polish ? "Chrome/Edge: użyj ikony instalacji przy pasku adresu lub w menu przeglądarki." : "Chrome/Edge: use the install icon in the address bar or browser menu.";
-  return (
-    <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">{polish ? "Zainstaluj aplikację" : "Install app"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">
-        {installed
-          ? polish ? "MultiBot jest zainstalowany na tym urządzeniu." : "Multibot is installed on this device."
-          : polish ? "Używaj MultiBota jako aplikacji pełnoekranowej na telefonie lub komputerze." : "Use Multibot as a full-screen app on phone or computer."}
-      </div>
-      {installEvent ? (
-        <button onClick={() => void install()} className="mt-3 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
-          {polish ? "Zainstaluj MultiBota" : "Install Multibot"}
-        </button>
-      ) : isAppleMobile && !installed ? (
-        <div className="mt-3 text-[12px] text-ink-secondary">
-          {installHint}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1093,7 +1032,6 @@ export function AppSettingsPanel() {
               <AccessTokenSettings />
               <WorkspaceAccessSettings />
               <PairDeviceSettings />
-              <InstallAppSettings />
 
               {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
               <CustomModels />

@@ -195,22 +195,12 @@ function Bubble({
         {/* multibot: sterilowana stopka dymka — sterowania (TTS, Odpowiedz)
             w JEDNYM rzędzie; czas sesji renderuje się osobno między
             wiadomościami (patrz SessionSeparator). */}
-        <div className={cn("mt-1.5 flex items-center gap-1.5", user ? "justify-end" : "justify-start")}>
-          {/* multibot: TTS — see SpeakButton.tsx; renders null off-slafy */}
-          {!user && <SpeakButton text={text} />}
-          {/* multibot: flat reply — przycisk na hover, jak SpeakButton */}
-          {onReply && message.kind === "text" && (
-            <button
-              type="button"
-              onClick={() => onReply(message)}
-              aria-label={polish ? "Odpowiedz" : "Reply"}
-              title={polish ? "Odpowiedz" : "Reply"}
-              className="rounded-md p-1 text-ink-secondary opacity-0 transition-opacity hover:bg-raised hover:text-ink focus-visible:opacity-100 group-hover/msg:opacity-100"
-            >
-              <ReplyIcon size={13} />
-            </button>
-          )}
-        </div>
+        {!user && (
+          <div className="mt-1.5 flex items-center justify-start gap-1.5">
+            {/* TTS renders null when the provider does not support it. */}
+            <SpeakButton text={text} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -539,7 +529,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           if (!follow && atEnd()) setFollow(true);
         }}
       >
-        <div className="flex w-full flex-col gap-3 pb-4">
+        <div className="flex w-full flex-col gap-3 pb-10">
           {bot.messages.map((m) => {
             let child: ReactNode;
             switch (m.kind) {

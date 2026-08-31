@@ -11,6 +11,13 @@ import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
 import { AttachmentCard } from "./AttachmentCard";
 import { PeerChatIndicator, usePeerChat } from "./PeerChatIndicator";
+import {
+  hasNativeWebView,
+  nativeDataUrlToFile,
+  onNativePhoto,
+  requestNativeCamera,
+  requestNativeClipboardImage,
+} from "@/lib/nativeBridge";
 
 
 
@@ -528,6 +535,12 @@ export function Composer({
     setAttachOpen(false);
   }, [attachments.length]);
 
+  useEffect(() => onNativePhoto((photo) => {
+    if (photo.purpose !== "attachment") return;
+    const file = nativeDataUrlToFile(photo.dataUrl, photo.fileName || `photo-${Date.now()}.jpg`);
+    if (file) addFiles([file]);
+  }), [addFiles]);
+
   // multibot Zad.3: Ctrl+V / paste obrazów z schowka — również w WebView
   // jeśli system udostępnia schowek (nie każdy Android WebView wspiera
   // onPaste dla obrazów, ale gdy wspiera — addFiles je przyjmie).
@@ -551,6 +564,20 @@ export function Composer({
       addFiles(files);
     }
   }, [addFiles]);
+
+  useEffect(() => {
+    if (!hasNativeWebView()) return;
+    const onBeforeInput = (event: Event) => {
+      const input = event as InputEvent;
+      // Android WebView often reports image paste without exposing a
+      // ClipboardEvent/dataTransfer. Ask the native clipboard only for this
+      // image-shaped paste; normal text paste remains browser-owned.
+      if (input.inputType !== "insertFromPaste" || input.data) return;
+      requestNativeClipboardImage(crypto.randomUUID());
+    };
+    document.addEventListener("beforeinput", onBeforeInput);
+    return () => document.removeEventListener("beforeinput", onBeforeInput);
+  }, []);
 
   // desktop drag&drop: ChatView dispatches File[] when user drops onto chat
   useEffect(() => {
@@ -684,18 +711,13 @@ setText("");
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        {/* Agent avatar: czarny poziomy pasek w lewym dolnym rogu, osadzony w
-            pasku composera (bg-app) — nie nachodzi na dymki czatu. Napędzany
-            mascotMotion (one-shot), rozmiar 44 px (proporcje mobile). */}
-        <div className="flex h-12 items-center bg-app pl-3 pr-2">
+        {/* Awatar pozostaje nad composerem, ale nie dostaje osobnego paska tła;
+            dzięki temu nie zasłania ostatniej wiadomości na telefonie. */}
+        <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
           <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
         </div>
-        {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
-           ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
-           Camera nic nie robi). Ten sam selektor co Photos (ACTION_GET_CONTENT)
-           działa i pozwala dołączyć zdjęcie. Prawdziwy aparat w WebView wymaga
-           natywnej obsługi showFileChooser — poza zakresem JS. */}
-        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />        <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         {/* multibot: F8 — picker po "/", ten sam dropdown co @mention; pięć
             kategorii mieści się dzięki przewijaniu i etykiecie typu po prawej */}
@@ -795,7 +817,10 @@ setText("");
               // multibot: click() na inputcie musi iść w tym samym gesture co tap
               // (inaczej WebView potrafi zignorować otwarcie wyboru pliku),
               // dopiero po nim chowamy menu.
-              { label: polish ? "Aparat" : "Camera", icon: Camera, action: () => { cameraRef.current?.click(); setAttachOpen(false); } },
+              { label: polish ? "Aparat" : "Camera", icon: Camera, action: () => {
+                setAttachOpen(false);
+                if (!requestNativeCamera(crypto.randomUUID(), "attachment")) cameraRef.current?.click();
+              } },
               { label: polish ? "Zdjęcia" : "Photos", icon: Images, action: () => { photosRef.current?.click(); setAttachOpen(false); } },
               { label: polish ? "Pliki" : "Files", icon: FileIcon, action: () => { filesRef.current?.click(); setAttachOpen(false); } },
             ].map(({ label, icon: Icon, action }) => (

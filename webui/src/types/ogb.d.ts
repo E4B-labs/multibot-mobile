@@ -7,6 +7,7 @@ declare global {
      * `index.html`. Nieobecne wszędzie indziej: w przeglądarce i pod
      * Electronem z lokalnym serwerem. */
     __MULTIBOT_REMOTE__?: true;
+    ReactNativeWebView?: { postMessage(message: string): void };
     ogb?: {
       screenFrame(): Promise<string | null>;
       speechStart(): Promise<void>;
