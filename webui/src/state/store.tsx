@@ -110,6 +110,7 @@ export interface Bot {
 /** GET /api/config — configured flags only; secrets are never echoed. */
 export interface ConfigStatus {
   xai?: { configured: boolean };
+  opencode?: { configured: boolean };
   composio: { configured: boolean; apiKeyConfigured?: boolean };
   box: { configured: boolean };
   /** who's using the app — collected in onboarding, shown in the sidebar */
@@ -127,7 +128,7 @@ export interface InstanceInfo {
     authenticated?: boolean;
     version?: string | null;
   };
-  models: { default: string; options: Array<{ id: string; label: string }> };
+  models: { default: string; options: Array<{ id: string; label: string }>; updatedAt?: string };
 }
 
 // multibot: F9-FE — grupa silnika (engine `groups.py`): {id, name, bot_ids}.
@@ -1076,7 +1077,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "config":
           rawDispatch({
             type: "configStatus",
-            config: { xai: frame.xai, composio: frame.composio, box: frame.box, profile: frame.profile },
+            config: { xai: frame.xai, opencode: frame.opencode, composio: frame.composio, box: frame.box, profile: frame.profile },
           });
           api("/api/instances")
             .then(({ instances }) => rawDispatch({ type: "instances", instances }))

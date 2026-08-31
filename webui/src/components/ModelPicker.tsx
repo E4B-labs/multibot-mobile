@@ -2,11 +2,13 @@
 // Routing is by exact instanceId only — an entry is never inferred from a
 // driver kind, and unavailable instances render disabled with the reason.
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useStore, type Bot, type InstanceInfo } from "@/state/store";
 import { ProviderMark } from "./ProviderIcons";
+import { ApiKeyRow } from "./ApiKeys";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
+import { groupOpenCodeModels } from "@/lib/opencodeModels";
 
 function modelLabel(instance: InstanceInfo | undefined, model: string): string {
   return instance?.models.options.find((o) => o.id === model)?.label ?? model;
@@ -22,6 +24,8 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
   const polish = useLanguage() === "pl";
   const [open, setOpen] = useState(false);
   const [railId, setRailId] = useState<string | null>(null);
+  const [pendingGoModel, setPendingGoModel] = useState<string | null>(null);
+  const [expandedOpenCodeGroups, setExpandedOpenCodeGroups] = useState({ go: true, zen: true });
   const rootRef = useRef<HTMLDivElement>(null);
 
   const selection = bot.modelSelection;
@@ -50,7 +54,13 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
   }, [open]);
 
   const pick = (instance: InstanceInfo, model: string) => {
+    if (instance.instanceId === "opencode" && model.startsWith("opencode-go/") && state.config?.opencode?.configured !== true) {
+      setPendingGoModel(model);
+      setExpandedOpenCodeGroups((current) => ({ ...current, go: true }));
+      return;
+    }
     dispatch({ type: "setModel", botId: bot.id, selection: { instanceId: instance.instanceId, model } });
+    setPendingGoModel(null);
     setOpen(false);
   };
 
@@ -113,11 +123,74 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                   <div className="text-[13px] font-semibold text-ink">{railInstance.displayName}</div>
                   <div className="truncate text-[11px] text-ink-secondary">
                     {railInstance.snapshot.state === "available"
-                      ? (railInstance.snapshot.version ?? "ready")
+                      ? railInstance.models.updatedAt
+                        ? `${polish ? "modele zaktualizowane" : "models updated"} · ${new Date(railInstance.models.updatedAt).toLocaleString()}`
+                        : (railInstance.snapshot.version ?? "ready")
                       : (railInstance.snapshot.reason ?? "unavailable")}
                   </div>
                 </div>
-                {railInstance.models.options.map((option) => {
+                {railInstance.instanceId === "opencode" ? (
+                  <>
+                    {groupOpenCodeModels(railInstance.models.options).map((group) => (
+                      <div key={group.id} className="mt-1">
+                        <button
+                          type="button"
+                          aria-expanded={expandedOpenCodeGroups[group.id]}
+                          onClick={() => setExpandedOpenCodeGroups((current) => ({ ...current, [group.id]: !current[group.id] }))}
+                          className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-medium text-ink-secondary hover:bg-raised/60"
+                        >
+                          <ChevronRight size={13} className={cn("transition-transform", expandedOpenCodeGroups[group.id] && "rotate-90")} />
+                          <span>{group.label}</span>
+                          <span className="ml-auto text-[10px]">{group.options.length}</span>
+                        </button>
+                        {expandedOpenCodeGroups[group.id] && group.options.map((option) => {
+                          const current = selection.instanceId === railInstance.instanceId && selection.model === option.id;
+                          const disabled = railInstance.snapshot.state !== "available";
+                          return (
+                            <button
+                              key={option.id}
+                              disabled={disabled}
+                              onClick={() => pick(railInstance, option.id)}
+                              className={cn(
+                                "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 pl-6 text-left text-[13px]",
+                                disabled ? "cursor-not-allowed text-ink-secondary/50" : "text-ink hover:bg-raised/60",
+                                current && "bg-raised",
+                              )}
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="truncate">{option.label}</span>
+                                {option.id === railInstance.models.default && (
+                                  <span className="shrink-0 rounded bg-inset px-1 py-px text-[10px] text-ink-secondary">
+                                    {polish ? "domyślny" : "default"}
+                                  </span>
+                                )}
+                              </span>
+                              {current && <Check size={14} className="shrink-0 text-accent" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    {pendingGoModel && (
+                      <div className="mx-2 mt-2 rounded-lg border border-hairline/40 bg-inset p-3">
+                        <div className="mb-2 text-[12px] text-ink-secondary">
+                          {polish ? "Ten model wymaga wspólnego klucza OpenCode Go." : "This model needs the shared OpenCode Go key."}
+                        </div>
+                        <ApiKeyRow
+                          section="opencode"
+                          label="OpenCode Go API key"
+                          placeholder="Wklej klucz OpenCode Go"
+                          onSaved={(configured) => {
+                            if (!configured || !pendingGoModel) return;
+                            dispatch({ type: "setModel", botId: bot.id, selection: { instanceId: "opencode", model: pendingGoModel } });
+                            setPendingGoModel(null);
+                            setOpen(false);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : railInstance.models.options.map((option) => {
                   const current =
                     selection.instanceId === railInstance.instanceId && selection.model === option.id;
                   const disabled = railInstance.snapshot.state !== "available";
