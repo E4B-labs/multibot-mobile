@@ -98,6 +98,7 @@ const gradientFor = (color: MausColor): [string, string, string] => {
 export type MausAvatarHandle = CursorAvatarHandle;
 
 export type MausAvatarProps = {
+  avatarUrl?: string | null;
   color: MausColor;
   shape?: MascotShape;
   /** Named behaviour — drives the expression pool, its cadence and blinking. */
@@ -134,6 +135,7 @@ export type MausAvatarProps = {
 function MausAvatarComponent(
   {
     color,
+    avatarUrl,
     shape = "blob",
     state = "idle",
     expression,
@@ -186,6 +188,36 @@ function MausAvatarComponent(
     });
   };
   const onPointerLeave = () => setPointer({ x: 0, y: 0 });
+
+  if (avatarUrl) {
+    return (
+      <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
+        <img
+          src={avatarUrl}
+          alt={label ?? "Avatar"}
+          width={size}
+          height={size}
+          className="size-full rounded-full object-cover border border-hairline/30"
+          style={{ width: size, height: size }}
+          draggable={false}
+        />
+        {motion === "thinking-dots" && animated && (
+          <span
+            aria-label="Thinking"
+            className="pointer-events-none absolute -bottom-0.5 -right-1 flex items-center gap-0.5 rounded-full border border-white/20 bg-black/70 px-1.5 py-1"
+          >
+            {[0, 1, 2].map((dot) => (
+              <span
+                key={dot}
+                className="size-1.5 rounded-full bg-white/90 animate-bounce"
+                style={{ animationDelay: `${dot * 120}ms` }}
+              />
+            ))}
+          </span>
+        )}
+      </span>
+    );
+  }
 
   return (
     <span

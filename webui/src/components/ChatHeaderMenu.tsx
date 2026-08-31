@@ -1,8 +1,8 @@
 // multibot: akcje bota pod jednym przyciskiem „⋮" na końcu nagłówka czatu.
 // Odwzorowanie desktopowego ChatHeaderMenu (repo multibot, src/components).
-// Otwarcie gra sekwencję na 2 s (Kacper 28.08):
+// Otwarcie gra sekwencję na 1,7 s (Kacper 28.08, lot kropek skrócony do 0,2 s):
 //   1. panel rozwija się jak zwój, od góry do dołu, jeszcze pusty — 0,5 s,
-//   2. z przycisku „⋮" wylatuje kropki i siadają na miejscach ikon — 0,5 s,
+//   2. z przycisku „⋮" wylatuje kropki i siadają na miejscach ikon — 0,2 s,
 //   3. z każdej kropki wychodzi w prawo etykieta, litera po literze — 1 s.
 // Po sekwencji panel renderuje się dokładnie tak jak przedtem — bez opakowań
 // na litery i bez klas animacji, żeby stan końcowy był identyczny.
@@ -22,7 +22,7 @@ export type ChatHeaderAction = (typeof CHAT_HEADER_ACTIONS)[number];
  * menu-unroll, menu-dot-fly, menu-letter-in) i muszą się zgadzać —
  * rozjazd widać jako przeskok w połowie ruchu. */
 export const UNROLL_MS = 500;
-export const FLY_MS = 500;
+export const FLY_MS = 200;
 export const TYPE_MS = 1000;
 /** Ile trwa pojawienie się jednej litery. Reszta okna to rozjazd opóźnień. */
 export const LETTER_MS = 180;

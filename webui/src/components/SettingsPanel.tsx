@@ -1,4 +1,4 @@
-import { ChevronLeft, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, ImagePlus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
@@ -16,6 +16,7 @@ import { requestBrowserNotifications } from "@/lib/notifications";
 import { useLanguage } from "@/lib/language";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { botDisplayName, botDisplayTitle } from "@/lib/botNames";
+import { AvatarCropper } from "./AvatarCropper";
 
 function Field({
   label,
@@ -263,12 +264,18 @@ function BotSharing({ bot }: { bot: Bot }) {
   );
 }
 
+type AppearanceMode = "closed" | "shapes" | "photo";
+
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   // multibot: szukajka po kartach ustawień (port z OpenMausBot #418) —
   // filtruje istniejące karty po ich tekście; zero nowej struktury sekcji.
   const [query, setQuery] = useState("");
+  const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("closed");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const container = cardsRef.current;
@@ -278,10 +285,10 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       const match = !needle || (card.textContent ?? "").toLocaleLowerCase().includes(needle);
       (card as HTMLElement).style.display = match ? "" : "none";
     }
-  }, [query]);
+  }, [query, appearanceMode]);
   const patch = (
     p: Partial<
-      Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape">
+      Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "avatarUrl">
     >,
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const activeState = stateForBot(bot);
@@ -348,73 +355,114 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-5">
-        <div className="flex justify-center py-5">
-          <MausAvatar
-            color={bot.color}
-            shape={bot.mascotShape}
-            state={activeState}
-            size={112}
-            motion={mascotMotion?.kind ?? "none"}
-            motionKey={mascotMotion?.nonce ?? 0}
-          />
+        <div className="flex flex-col items-center py-5 gap-2">
+          <button
+            type="button"
+            onClick={() => setAppearanceMode((m) => (m === "closed" ? "shapes" : m === "shapes" ? "photo" : "closed"))}
+            aria-expanded={appearanceMode !== "closed"}
+            title={polish ? "Zmień wygląd — kliknij ponownie by dodać zdjęcie" : "Change appearance — click again for photo"}
+            className="rounded-full focus:outline-none"
+          >
+            <MausAvatar
+              color={bot.color}
+              shape={bot.mascotShape}
+              avatarUrl={bot.avatarUrl}
+              state={activeState}
+              size={112}
+              motion={mascotMotion?.kind ?? "none"}
+              motionKey={mascotMotion?.nonce ?? 0}
+            />
+          </button>
+          {appearanceMode !== "closed" && (
+            <div className="text-[11px] text-ink-secondary/70">
+              {appearanceMode === "shapes" ? (polish ? "Kliknij awatar ponownie by dodać zdjęcie" : "Click avatar again for photo") : (polish ? "Zdjęcie profilowe — okrągły kadr" : "Profile photo — circular crop")}
+            </div>
+          )}
         </div>
 
         <div ref={cardsRef} className="flex flex-col gap-4">
-          <ComposioAccountSelector bot={bot} />
-          <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
-            <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
-              <span className="rounded-lg bg-raised px-3 py-1.5 text-[14px] font-medium text-ink">
-                Bot
-              </span>
-              <button
-                onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })}
-                className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
-              >
-                {polish ? "Resetuj" : "Reset"}
-              </button>
-            </div>
-
-            <div className="p-3">
-              <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                {polish ? "Kształt ikony" : "Icon shape"}
-              </div>
-              <div className="grid grid-cols-5 gap-2">
-                {MASCOT_SHAPES.map((shape) => (
-                  <button
-                    key={shape}
-                    onClick={() => patch({ mascotShape: shape })}
-                    className={cn(
-                      "flex h-[58px] items-center justify-center rounded-xl bg-inset transition-colors hover:bg-raised",
-                      (bot.mascotShape ?? "blob") === shape && "ring-2 ring-accent-border",
-                    )}
-                    title={shape}
-                    aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}
-                  >
-                    <MausAvatar color={bot.color} shape={shape} state={activeState} size={42} animated={false} />
+          {appearanceMode !== "closed" && (
+            <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
+              <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
+                <div className="flex gap-1">
+                  <button onClick={() => setAppearanceMode("shapes")} className={`rounded-lg px-3 py-1.5 text-[13px] font-medium ${appearanceMode === "shapes" ? "bg-accent text-white" : "bg-raised text-ink-secondary"}`}>
+                    {polish ? "Wygląd" : "Appearance"}
                   </button>
-                ))}
-              </div>
-
-              <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
-                {polish ? "Kolor" : "Color"}
-              </div>
-              <div className="flex flex-wrap gap-2.5">
-                {MAUS_COLOR_NAMES.map((color) => (
+                  <button onClick={() => setAppearanceMode("photo")} className={`rounded-lg px-3 py-1.5 text-[13px] font-medium flex items-center gap-1 ${appearanceMode === "photo" ? "bg-accent text-white" : "bg-raised text-ink-secondary"}`}>
+                    <ImagePlus size={14} /> {polish ? "Zdjęcie" : "Photo"}
+                  </button>
+                </div>
+                {appearanceMode === "shapes" ? (
+                  <button onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })} className="rounded-md px-2 py-1.5 text-[13px] text-ink-secondary hover:bg-raised">
+                    {polish ? "Resetuj" : "Reset"}
+                  </button>
+                ) : bot.avatarUrl ? (
                   <button
-                    key={color}
-                    onClick={() => patch({ color })}
-                    className={cn(
-                      "size-8 rounded-full border-2 border-transparent transition-transform hover:scale-110",
-                      bot.color === color && "ring-2 ring-accent-border ring-offset-2 ring-offset-card",
-                    )}
-                    style={{ backgroundColor: MAUS_COLORS[color] }}
-                    title={color}
-                    aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`}
-                  />
-                ))}
+                    onClick={async () => {
+                      setAvatarBusy(true);
+                      try {
+                        const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "DELETE" });
+                        if (!r.ok) throw new Error("delete failed");
+                        dispatch({ type: "botPatched", bot: { id: bot.id, avatarUrl: null } });
+                      } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
+                    }}
+                    disabled={avatarBusy}
+                    className="rounded-md px-2 py-1.5 text-[13px] text-danger"
+                  >
+                    {polish ? "Usuń" : "Remove"}
+                  </button>
+                ) : null}
               </div>
+              {appearanceMode === "shapes" ? (
+                <div className="p-3">
+                  <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kształt ikony" : "Icon shape"}</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {MASCOT_SHAPES.map((shape) => (
+                      <button key={shape} onClick={() => patch({ mascotShape: shape })} className={`flex h-[58px] items-center justify-center rounded-xl bg-inset ${(bot.mascotShape ?? "blob") === shape ? "ring-2 ring-accent-border" : ""}`}>
+                        <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={36} animated={false} />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
+                  <div className="flex flex-wrap gap-2.5">
+                    {MAUS_COLOR_NAMES.map((color) => (
+                      <button key={color} onClick={() => patch({ color })} className={`size-8 rounded-full border-2 border-transparent ${bot.color === color ? "ring-2 ring-accent-border ring-offset-2 ring-offset-card" : ""}`} style={{ backgroundColor: MAUS_COLORS[color] }} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3">
+                  {!pendingFile ? (
+                    <div className="flex flex-col items-center gap-3">
+                      {bot.avatarUrl ? <img src={bot.avatarUrl} alt="avatar" className="size-[96px] rounded-full object-cover border border-hairline/30" /> : <div className="flex size-[96px] items-center justify-center rounded-full bg-inset border border-dashed border-hairline"><ImagePlus size={24} className="text-ink-secondary" /></div>}
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setPendingFile(f); e.target.value = ""; }} />
+                      <button onClick={() => fileInputRef.current?.click()} disabled={avatarBusy} className="rounded-lg bg-accent px-4 py-2.5 text-[14px] font-medium text-white">{bot.avatarUrl ? (polish ? "Zmień zdjęcie" : "Change photo") : (polish ? "Wybierz zdjęcie" : "Choose photo")}</button>
+                      <div className="text-center text-[11px] text-ink-secondary max-w-[240px]">{polish ? "Zdjęcie przycięte do koła — przeciągnij i powiększ by ustawić kadr (jak Facebook)." : "Circular crop — drag and zoom to frame (like Facebook)."}</div>
+                    </div>
+                  ) : (
+                    <AvatarCropper
+                      file={pendingFile}
+                      onSave={async (dataUrl) => {
+                        setAvatarBusy(true);
+                        try {
+                          const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: dataUrl }) });
+                          const body = await r.json().catch(() => ({}));
+                          if (!r.ok) throw new Error(body.error ?? "upload failed");
+                          dispatch({ type: "botPatched", bot: body.bot });
+                          setPendingFile(null);
+                          setAppearanceMode("closed");
+                        } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
+                      }}
+                      onCancel={() => setPendingFile(null)}
+                    />
+                  )}
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          <ComposioAccountSelector bot={bot} />
+
 
           <Field label={polish ? "Nazwa" : "Name"}>
             <input

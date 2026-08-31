@@ -206,7 +206,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       )}
     >
       <MausAvatar
-        color={bot.color}
+        color={bot.color} avatarUrl={bot.avatarUrl}
         shape={bot.mascotShape}
         state={busyMotion?.state ?? stateForBot(bot)}
         size={56}
@@ -389,7 +389,7 @@ function GroupRow({
           {members.slice(0, 3).map((b, i) => (
             <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-2.5")}>
               <MausAvatar
-                color={b.color}
+                color={b.color} avatarUrl={b.avatarUrl}
                 shape={b.mascotShape}
                 size={32}
                 state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
@@ -530,7 +530,7 @@ function GroupCreateSheet({
                 )}
               >
                 <MausAvatar
-                  color={b.color}
+                  color={b.color} avatarUrl={b.avatarUrl}
                   shape={b.mascotShape}
                   state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                   size={32}
@@ -881,7 +881,7 @@ export function Sidebar() {
                   )}
                 >
                   <MausAvatar
-                    color={b.color}
+                    color={b.color} avatarUrl={b.avatarUrl}
                     shape={b.mascotShape}
                     state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                     size={avatarSize}

@@ -299,8 +299,8 @@ body {
   75% { transform: rotate(6deg); }
 }
 
-/* ── multibot: menu „⋮" (ChatHeaderMenu) — dwufazowa sekwencja na 2 s ──────
-   Zwój 0,5 s, lot kropek 0,5 s, pisanie liter 1 s. Czas żyje też w stałych
+/* ── multibot: menu „⋮" (ChatHeaderMenu) — trzyfazowa sekwencja na 1,7 s ─────
+   Zwój 0,5 s, lot kropek 0,2 s, pisanie liter 1 s. Czas żyje też w stałych
    komponentu (UNROLL_MS/FLY_MS/TYPE_MS) — rozjazd widać jako przeskok w
    połowie ruchu, pilnuje go ChatHeaderMenu.test.ts. Klasy żyją tylko w
    odpowiednich fazach: zwój znika, żeby kropki mogły lecieć spoza obrysu. */
@@ -315,7 +315,7 @@ body {
 /* Kropka leci z przycisku na miejsce ikony. Wektor liczy komponent z układu
    strony i podaje w --dot-dx/--dot-dy, więc trafia niezależnie od czcionki. */
 .menu-dot {
-  animation: menu-dot-fly 0.5s cubic-bezier(0.34, 0.9, 0.3, 1) both;
+  animation: menu-dot-fly 0.2s cubic-bezier(0.34, 0.9, 0.3, 1) both;
 }
 @keyframes menu-dot-fly {
   from { opacity: 0; transform: translate(var(--dot-dx), var(--dot-dy)) scale(0.5); }

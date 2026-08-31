@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
+import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -387,7 +387,7 @@ export function Composer({
         label: botDisplayName(peer, polish ? "pl" : "en"),
         hint: peer.id === bot.id ? (polish ? "Bieżący" : "Current") : (polish ? "Przełącz" : "Switch to bot"),
         kind: "agent" as const,
-        icon: <MausAvatar color={peer.color} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} />,
+        icon: <MausAvatar color={peer.color} avatarUrl={peer.avatarUrl} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} />,
         run: () => dispatch({ type: "select", id: peer.id }),
       })),
       ...(slashRoutines?.rows ?? []).map((routine) => ({
@@ -688,7 +688,7 @@ setText("");
             pasku composera (bg-app) — nie nachodzi na dymki czatu. Napędzany
             mascotMotion (one-shot), rozmiar 44 px (proporcje mobile). */}
         <div className="flex h-12 items-center bg-app pl-3 pr-2">
-          <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
+          <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
         </div>
         {/* Bez `capture`: w Android WebView atrybut ten wywołuje intencję
            ACTION_IMAGE_CAPTURE, której tamtejszy WebView nie obsługuje (kliknięcie
@@ -952,7 +952,19 @@ setText("");
           >
             <Mic size={18} />
           </button>
-        )}        </div>
+        )}
+        {/* multibot Zad2: przycisk Send taki sam jak na PC (niebieskie koło z białą strzałką) - po prawej od mikrofonu, prawy dolny róg paska */}
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={uploading || (!text.trim() && !attachments.length)}
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-opacity hover:opacity-90 active:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 !min-h-0"
+          title={polish ? "Wyślij" : "Send"}
+          aria-label={polish ? "Wyślij" : "Send"}
+        >
+          {uploading ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={18} />}
+        </button>
+        </div>
       </div>
     </div>
   );
