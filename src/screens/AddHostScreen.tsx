@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 
 import { newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
@@ -21,19 +21,11 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
   const [code, setCode] = useState("");
   const [token, setToken] = useState("");
   const [name, setName] = useState("My phone");
-  // multibot: profil użytkownika (workspace #62) — podpisuje wiadomości i
-  // pokazuje, kto pracuje w workspace. Zapisywany best-effort po połączeniu.
-  const [profileName, setProfileName] = useState("");
-  const [profileEmail, setProfileEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function finish(rawUrl: string, tokenValue: string) {
     const trimmedToken = tokenValue.trim();
-    if (!trimmedToken) {
-      setError("An access token is required.");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -45,20 +37,7 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
       };
-      await saveHost(host, trimmedToken);
-      // multibot: workspace #62 — zapisz profil użytkownika, jeśli podano.
-      // Best-effort: nie blokujemy połączenia, gdyby endpoint nie odpowiedział.
-      if (profileName.trim() || profileEmail.trim()) {
-        try {
-          await fetch(normalized + "/api/config", {
-            method: "PUT",
-            headers: { "content-type": "application/json", Authorization: "Bearer " + trimmedToken },
-            body: JSON.stringify({ profile: { name: profileName.trim(), email: profileEmail.trim().toLowerCase() } }),
-          });
-        } catch {
-          // profil zostanie dopełniony w webui, gdy host odpowie
-        }
-      }
+      await saveHost(host, trimmedToken || null);
       onDone(host);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add host");
@@ -120,8 +99,11 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Add a host</Text>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <Text style={styles.eyebrow}>MULTIBOT / CONNECT</Text>
+      <Text style={styles.title}>Connect to a host</Text>
+      <Text style={styles.intro}>Your bots stay on the host. This phone keeps the connection and opens the same workspace as desktop.</Text>
 
       <View style={styles.segment}>
         <Pressable
@@ -184,7 +166,7 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
             placeholderTextColor="#fcfcfc55"
             keyboardType="number-pad"
           />
-          <Text style={styles.label}>Access token (Settings → Token on that host) — used if no code above</Text>
+          <Text style={styles.label}>Access token (optional)</Text>
           <TextInput
             style={styles.input}
             value={token}
@@ -195,40 +177,18 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
             autoCorrect={false}
             secureTextEntry
           />
+          <Text style={styles.hint}>Leave the token empty to sign in inside the shared MultiBot screen.</Text>
         </View>
       )}
 
       <Text style={styles.label}>Device name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor="#fcfcfc55" />
 
-      {/* multibot: workspace #62 — profil użytkownika */}
-      <Text style={styles.label}>Your name (shared workspace)</Text>
-      <TextInput
-        style={styles.input}
-        value={profileName}
-        onChangeText={setProfileName}
-        placeholder="Jane Doe"
-        placeholderTextColor="#fcfcfc55"
-        autoCapitalize="words"
-        autoCorrect={false}
-      />
-      <Text style={styles.label}>Your email (shared workspace)</Text>
-      <TextInput
-        style={styles.input}
-        value={profileEmail}
-        onChangeText={setProfileEmail}
-        placeholder="jane@example.com"
-        placeholderTextColor="#fcfcfc55"
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-      />
-
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable
         style={[styles.primaryButton, busy && styles.primaryDisabled]}
-        disabled={busy || !url.trim() || (segment === "manual" && !code.trim() && !token.trim())}
+        disabled={busy || !url.trim()}
         onPress={() => void handleConnect()}
       >
         {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Connect</Text>}
@@ -236,13 +196,17 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
       <Pressable style={styles.cancelButton} onPress={onCancel}>
         <Text style={styles.cancelButtonText}>Cancel</Text>
       </Pressable>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, gap: 10 },
-  title: { color: "#fcfcfc", fontSize: 24, fontWeight: "700", marginBottom: 8 },
+  flex: { flex: 1 },
+  container: { flexGrow: 1, padding: 20, paddingBottom: 34, gap: 10 },
+  eyebrow: { color: "#38d591", fontSize: 11, fontWeight: "800", letterSpacing: 1.8, marginTop: 4 },
+  title: { color: "#fcfcfc", fontSize: 28, fontWeight: "800", letterSpacing: -0.4, marginBottom: 2, marginTop: 2 },
+  intro: { color: "#fcfcfc99", fontSize: 14, lineHeight: 20, marginBottom: 6 },
   segment: { flexDirection: "row", backgroundColor: "#151515", borderRadius: 10, padding: 4 },
   segmentButton: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 8 },
   segmentActive: { backgroundColor: "#fcfcfc" },
@@ -257,6 +221,7 @@ const styles = StyleSheet.create({
   manualWrap: { gap: 4 },
   dim: { color: "#fcfcfc99", fontSize: 15 },
   label: { color: "#fcfcfc99", fontSize: 13, marginTop: 8 },
+  hint: { color: "#fcfcfc55", fontSize: 12, lineHeight: 17, marginTop: 1 },
   input: { color: "#fcfcfc", backgroundColor: "#151515", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   error: { color: "#ff8080", fontSize: 13, marginTop: 8 },
   primaryButton: { marginTop: 16, backgroundColor: "#fcfcfc", borderRadius: 10, paddingVertical: 14, alignItems: "center" },

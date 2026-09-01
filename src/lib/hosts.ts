@@ -4,7 +4,7 @@
 // value risks the ~2KB ceiling some iOS Keychain releases enforce.
 import * as SecureStore from "expo-secure-store";
 
-import { type Host, removeHostById, renameHost as renameHostInList, upsertHost } from "./host-logic";
+import { type Host, removeHostById, renameHost as renameHostInList, touchHost, upsertHost } from "./host-logic";
 
 export type { Host } from "./host-logic";
 
@@ -27,10 +27,11 @@ async function saveIndex(hosts: Host[]): Promise<void> {
 
 /** Persists the host record and its token (SecureStore = Keychain/Keystore,
  * encrypted at rest — the working credential path today, see pair.ts). */
-export async function saveHost(host: Host, token: string): Promise<void> {
+export async function saveHost(host: Host, token?: string | null): Promise<void> {
   const hosts = upsertHost(await listHosts(), host);
   await saveIndex(hosts);
-  await SecureStore.setItemAsync(tokenKey(host.id), token);
+  if (token?.trim()) await SecureStore.setItemAsync(tokenKey(host.id), token.trim());
+  else await SecureStore.deleteItemAsync(tokenKey(host.id));
 }
 
 export async function getHostToken(id: string): Promise<string | null> {
@@ -47,5 +48,10 @@ export async function deleteHost(id: string): Promise<void> {
  * the token lives under its own key and is never touched. */
 export async function renameHost(id: string, name: string): Promise<void> {
   const hosts = renameHostInList(await listHosts(), id, name);
+  await saveIndex(hosts);
+}
+
+export async function markHostUsed(id: string, now = Date.now()): Promise<void> {
+  const hosts = touchHost(await listHosts(), id, now);
   await saveIndex(hosts);
 }

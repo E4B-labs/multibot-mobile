@@ -7,7 +7,8 @@ import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
 import type { Host } from "../lib/host-logic";
-import { getHostToken } from "../lib/hosts";
+import { saveHost, getHostToken } from "../lib/hosts";
+import { ensurePushRegistered } from "../lib/push";
 import { WEBUI_HTML } from "../webui-html";
 
 interface Props {
@@ -83,11 +84,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     let cancelled = false;
     void getHostToken(host.id).then(async (token) => {
       if (cancelled) return;
-      if (!token) {
-        // Wpis hosta bez tokenu: interfejs pokazałby ekran logowania albo nic.
-        setFailed("Dla tego hosta nie ma zapisanego tokenu — usuń go i dodaj ponownie.");
-        return;
-      }
       // Interfejs czyta token z `localStorage` pod kluczem `multibot.auth.token`
       // (webui/src/lib/auth.ts) i stamtąd bierze go każde wywołanie API oraz
       // każde połączenie WebSocket. Wcześniej trafiał tam z fragmentu adresu,
@@ -98,11 +94,13 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // `localStorage` działa, bo `baseUrl` niżej nadaje dokumentowi origin
       // hosta. To ten sam mechanizm sprawia, że `fetch("/api/...")` w środku
       // interfejsu trafia do serwera MultiBota, a nie w próżnię.
-      const problem = await probeHost(host.url, token);
-      if (cancelled) return;
-      if (problem) {
-        setFailed(problem);
-        return;
+      if (token) {
+        const problem = await probeHost(host.url, token);
+        if (cancelled) return;
+        if (problem) {
+          setFailed(problem);
+          return;
+        }
       }
       const deep = botId ? `location.hash = ${JSON.stringify(`#bot=${botId}`)};` : "";
       // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
@@ -112,7 +110,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
       setBootstrap(
         `try { document.documentElement.style.setProperty('--android-status-bar', '${STATUS_BAR_HEIGHT}px'); } catch (e) {}
-         try { localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); ${deep} } catch (e) {}
+         try { ${token ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); localStorage.setItem("multibot.auth.mode", "legacy");` : `localStorage.removeItem("multibot.auth.token"); localStorage.removeItem("multibot.auth.mode");`} ${deep} } catch (e) {}
          try { window.__APP_VERSION__ = ${JSON.stringify(appVersion)}; } catch (e) {}
          true;`,
       );
@@ -285,6 +283,11 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           try {
             const msg = JSON.parse(nativeEvent.data);
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            if (msg?.type === "auth.changed") {
+              const nextToken = typeof msg.token === "string" ? msg.token : null;
+              void saveHost({ ...host, lastUsedAt: Date.now() }, nextToken);
+            }
+            if (msg?.type === "push.request") void ensurePushRegistered(host);
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
               setCameraReady(false);
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
@@ -359,6 +362,11 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           </View>
         </View>
       )}
+      {expanded && (
+        <Pressable accessibilityRole="button" style={styles.hostSwitcher} onPress={onBack}>
+          <Text style={styles.hostSwitcherText}>Hosts</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -407,4 +415,6 @@ const styles = StyleSheet.create({
   cameraButtonText: { color: "#070707", fontWeight: "700" },
   cameraCancel: { borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: "#2f2f2f" },
   cameraCancelText: { color: "#fcfcfc", fontWeight: "600" },
+  hostSwitcher: { position: "absolute", top: Platform.OS === "android" ? (StatusBar.currentHeight ?? 8) + 8 : 12, left: 10, backgroundColor: "#070707cc", borderColor: "#ffffff22", borderRadius: 9, borderWidth: 1, minHeight: 44, justifyContent: "center", paddingHorizontal: 13 },
+  hostSwitcherText: { color: "#fcfcfc", fontSize: 13, fontWeight: "700" },
 });

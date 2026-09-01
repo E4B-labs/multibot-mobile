@@ -11,19 +11,49 @@ export interface Host {
   lastUsedAt: number;
 }
 
-/** Strips trailing slashes and rejects anything that isn't http(s). */
+/** Adds https for a bare host, strips trailing slashes, and validates http(s). */
 export function normalizeHostUrl(raw: string): string {
-  const trimmed = raw.trim().replace(/\/+$/, "");
-  if (!/^https?:\/\/.+/i.test(trimmed)) {
-    throw new Error("Host address must start with http:// or https://");
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("Host address is required.");
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  const normalized = candidate.replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error("Enter a valid host address.");
   }
-  return trimmed;
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Host address must use http:// or https://");
+  }
+  if (parsed.hostname && !hasScheme && parsed.hostname !== "localhost" && !parsed.hostname.includes(".") && !/^[\da-f:]+$/i.test(parsed.hostname)) {
+    throw new Error("Enter a valid host address.");
+  }
+  if (!parsed.hostname || parsed.username || parsed.password) {
+    throw new Error("Host address cannot contain credentials.");
+  }
+  return normalized;
 }
 
 /** Adds or replaces a host by id, most-recently-used first. */
 export function upsertHost(hosts: Host[], host: Host): Host[] {
   const rest = hosts.filter((h) => h.id !== host.id);
   return [host, ...rest].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+}
+
+/** Picks the host the user used most recently for app startup. */
+export function resolveStartupHost(hosts: Host[]): Host | null {
+  return hosts.reduce<Host | null>((latest, host) => {
+    if (!latest || host.lastUsedAt > latest.lastUsedAt) return host;
+    return latest;
+  }, null);
+}
+
+/** Marks one known host as recently used and keeps the list sorted. */
+export function touchHost(hosts: Host[], id: string, now = Date.now()): Host[] {
+  const host = hosts.find((item) => item.id === id);
+  return host ? upsertHost(hosts, { ...host, lastUsedAt: now }) : hosts;
 }
 
 export function removeHostById(hosts: Host[], id: string): Host[] {

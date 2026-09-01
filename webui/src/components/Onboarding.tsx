@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
+import { Bell, Check, AlertTriangle, Loader2, Mic, UserRound } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { authFetch } from "@/lib/auth";
 
 import { useLanguage } from "@/lib/language";
+import { MOBILE_ONBOARDING_STEPS, nextMobileOnboardingStep, type MobileOnboardingStep } from "@/lib/mobileOnboarding";
 
 type CliTool = {
   id: string;
@@ -96,8 +97,89 @@ function connectTo(url: string) {
   save(url).catch(() => window.location.assign(url));
 }
 
+function MobileOnboarding({ onDone }: { onDone: () => void }) {
+  const polish = useLanguage() === "pl";
+  const [step, setStep] = useState<MobileOnboardingStep>("profile");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    track("mobile_onboarding_step", { step });
+  }, [step]);
+
+  const saveProfile = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const response = await authFetch("/api/config", {
+        method: "PUT",
+        body: JSON.stringify({ profile: { name: name.trim(), email: normalizedEmail } }),
+      });
+      if (!response.ok) throw new Error(polish ? "Nie udało się zapisać profilu." : "Could not save your profile.");
+      if (normalizedEmail) identifyEmail(normalizedEmail);
+      setStep(nextMobileOnboardingStep(step));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enablePush = () => {
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: "push.request" }));
+    setStep(nextMobileOnboardingStep(step));
+  };
+
+  const finish = () => {
+    window.localStorage.setItem("multibot.mobile.onboarding.done", "1");
+    setEmailGateDone("submitted");
+    track("mobile_onboarding_completed", { notifications: step === "ready" });
+    onDone();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app px-4 py-6 pt-[calc(var(--safe-top)+1.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)]">
+      <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja aplikacji mobilnej" : "Mobile setup"} className="w-full max-w-[460px] rounded-2xl border border-hairline/40 bg-panel p-6 shadow-2xl sm:p-8">
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-bold tracking-[0.18em] text-accent">MULTIBOT / MOBILE</div>
+          <div className="flex gap-1.5" aria-label={`${MOBILE_ONBOARDING_STEPS.indexOf(step) + 1} of ${MOBILE_ONBOARDING_STEPS.length}`}>
+            {MOBILE_ONBOARDING_STEPS.map((item) => <span key={item} className={`h-1.5 w-7 rounded-full ${item === step || MOBILE_ONBOARDING_STEPS.indexOf(item) < MOBILE_ONBOARDING_STEPS.indexOf(step) ? "bg-accent" : "bg-raised"}`} />)}
+          </div>
+        </div>
+        {step === "profile" && <div className="flex flex-col">
+          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"><UserRound size={24} /></div>
+          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Twój profil" : "Your profile"}</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Tak podpiszemy Twoje wiadomości we wspólnym workspace." : "This is how your messages will appear in the shared workspace."}</p>
+          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={polish ? "Twoje imię" : "Your name"} className={`${inputClass} mt-5`} />
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className={`${inputClass} mt-3`} />
+          <button onClick={() => void saveProfile()} disabled={!name.trim() || busy} className="mt-4 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white disabled:opacity-40">{busy ? (polish ? "Zapisywanie…" : "Saving…") : polish ? "Zapisz i dalej" : "Save and continue"}</button>
+          {error && <div role="alert" className="mt-3 text-[12px] text-danger">{error}</div>}
+        </div>}
+        {step === "notifications" && <div className="flex flex-col">
+          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"><Bell size={24} /></div>
+          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Nie przegap wiadomości" : "Stay in the loop"}</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Włącz powiadomienia, aby host mógł powiadomić Cię, gdy bot potrzebuje uwagi." : "Enable notifications so your host can tell you when a bot needs your attention."}</p>
+          <button onClick={enablePush} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Włącz powiadomienia" : "Enable notifications"}</button>
+          <button onClick={() => setStep(nextMobileOnboardingStep(step))} className="mt-3 py-2 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Może później" : "Maybe later"}</button>
+        </div>}
+        {step === "ready" && <div className="flex flex-col">
+          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-[#00c97222] text-[#38d591]"><Check size={25} /></div>
+          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Gotowe" : "You’re ready"}</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Telefon jest połączony z hostem. Możesz korzystać z tego samego workspace co na PC." : "Your phone is connected to the host. You can use the same workspace as on desktop."}</p>
+          <button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Otwórz workspace" : "Open workspace"}</button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const polish = useLanguage() === "pl";
+  if (Boolean(window.ReactNativeWebView)) return <MobileOnboarding onDone={onDone} />;
   const [entry, setEntry] = useState<"choice" | "server" | "connect">("choice");
   const [step, setStep] = useState(0);
   const [device, setDevice] = useState<DeviceInfo | null>(null);

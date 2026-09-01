@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, upsertHost, type Host } from "./host-logic.ts";
+import { newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
 import { parseQrPayload } from "./pair.ts";
 
 test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
@@ -12,6 +12,12 @@ test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
   assert.equal(normalizeHostUrl(" http://127.0.0.1:8799// "), "http://127.0.0.1:8799");
   assert.throws(() => normalizeHostUrl("not-a-url"));
   assert.throws(() => normalizeHostUrl(""));
+});
+
+test("normalizeHostUrl accepts a bare host and rejects credentials", () => {
+  assert.equal(normalizeHostUrl("host.ts.net/"), "https://host.ts.net");
+  assert.throws(() => normalizeHostUrl("https://user:password@host.ts.net"));
+  assert.throws(() => normalizeHostUrl("https://"));
 });
 
 test("upsertHost replaces by id and sorts most-recently-used first", () => {
@@ -23,6 +29,27 @@ test("upsertHost replaces by id and sorts most-recently-used first", () => {
   const a2: Host = { id: "a", name: "A2", url: "https://a2", createdAt: 1, lastUsedAt: 3 };
   const replaced = upsertHost(list, a2);
   assert.deepEqual(replaced, [a2, b]);
+});
+
+test("resolveStartupHost opens the most recently used host", () => {
+  const hosts: Host[] = [
+    { id: "old", name: "Old", url: "https://old.example", createdAt: 1, lastUsedAt: 10 },
+    { id: "recent", name: "Recent", url: "https://recent.example", createdAt: 2, lastUsedAt: 20 },
+  ];
+  assert.equal(resolveStartupHost(hosts)?.id, "recent");
+  assert.equal(resolveStartupHost([]), null);
+});
+
+test("touchHost marks the selected host as recent without changing other records", () => {
+  const hosts: Host[] = [
+    { id: "old", name: "Old", url: "https://old.example", createdAt: 1, lastUsedAt: 10 },
+    { id: "recent", name: "Recent", url: "https://recent.example", createdAt: 2, lastUsedAt: 20 },
+  ];
+  const touched = touchHost(hosts, "old", 30);
+  assert.deepEqual(touched.map((host) => host.id), ["old", "recent"]);
+  assert.equal(touched[0].lastUsedAt, 30);
+  assert.equal(touched[1], hosts[1]);
+  assert.deepEqual(touchHost(hosts, "missing", 30), hosts);
 });
 
 test("removeHostById drops only the matching id", () => {
