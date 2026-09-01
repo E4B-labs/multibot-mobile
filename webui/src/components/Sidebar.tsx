@@ -16,7 +16,7 @@ import {
   Pin,
   PinOff,
   Plus,
-  Puzzle,
+  Plug,
   Search,
   Settings,
   Trash2,
@@ -1068,7 +1068,7 @@ export function Sidebar() {
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
             >
-              <Puzzle size={15} className="text-ink-secondary" />
+              <Plug size={15} className="text-ink-secondary" />
               {polish ? "Wtyczki" : "Plugins"}
             </button>
             <button
