@@ -152,7 +152,6 @@ export function Composer({
   onClearReply?: () => void;
 }) {
   const { state, dispatch } = useStore();
-  const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
   const polish = useLanguage() === "pl";
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -711,11 +710,13 @@ setText("");
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        {/* Awatar pozostaje nad composerem, ale nie dostaje osobnego paska tła;
-            dzięki temu nie zasłania ostatniej wiadomości na telefonie. */}
-        <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
-          <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
-        </div>
+        {/* Awatar pojawia się tylko na czas aktywnej tury bota; gdy bot jest
+            bezczynny, nie zostawiamy po nim pustego paska nad composerem. */}
+        {bot.busy && (
+          <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
+            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} motion={bot.busy ? "working" : "none"} motionKey={bot.busy ? 1 : 0} animated size={44} />
+          </div>
+        )}
         <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
