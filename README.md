@@ -73,6 +73,10 @@ host. Do not use unknown hosts or paste credentials into issue reports. Read
 - [MultiBot Desktop and server](https://github.com/E4B-labs/multibot-desktop)
 - [MultiBot Desktop Releases](https://github.com/E4B-labs/multibot-desktop-releases)
 
+## Contributors
+
+- [SlafyGH](https://github.com/SlafyGH)
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
