@@ -21,19 +21,23 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    env:
-      # tests never launch Electron; skip the binary download
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test
-      - name: production UI build
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            webui/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm ci --prefix webui
+      - run: npm --prefix webui run typecheck
+      - run: npm run test:webui
+      - name: production WebView bundle
         if: matrix.os == 'ubuntu-latest'
-        run: pnpm exec vite build
+        run: |
+          npm run webui
+          git diff --exit-code -- src/webui-html.ts
