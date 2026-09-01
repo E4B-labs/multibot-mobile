@@ -5,7 +5,7 @@
 // jest krótsze i nie zostawia stanu, którego nie da się cofnąć.
 //
 // Użycie:
-//   git remote add original https://github.com/E4B-labs/multibot   (once)
+//   git remote add original https://github.com/E4B-labs/multibot-desktop   (once)
 //   node scripts/sync-webui.mjs
 //
 // Potem `git diff` i albo commit, albo `git checkout .`.
@@ -22,8 +22,8 @@
 //
 // Dlatego synchronizację robi się TRZYSTRONNIE, plik po pliku:
 //   OURS   = wersja telefonu sprzed synchronizacji (`git show <HEAD>:webui/src/<plik>`)
-//   BASE   = `src/<plik>` z repo `multibot` z commitu POPRZEDNIEJ synchronizacji
-//   THEIRS = `src/<plik>` z repo `multibot` z commitu, który właśnie wciągasz
+//   BASE   = `src/<plik>` z repo `multibot-desktop` z commitu POPRZEDNIEJ synchronizacji
+//   THEIRS = `src/<plik>` z repo `multibot-desktop` z commitu, który właśnie wciągasz
 //   git merge-file -p OURS BASE THEIRS > webui/src/<plik>
 // Konflikty rozstrzyga się w stronę „obie strony zostają": mobilne z OURS,
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
@@ -74,7 +74,7 @@ try {
   git("rev-parse", "--verify", REF);
 } catch {
   console.error(`Brak referencji ${REF}. Zrób najpierw:`);
-  console.error("  git remote add original https://github.com/E4B-labs/multibot");
+  console.error("  git remote add original https://github.com/E4B-labs/multibot-desktop");
   console.error("  git fetch original");
   process.exit(1);
 }

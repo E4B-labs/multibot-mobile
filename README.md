@@ -70,8 +70,8 @@ host. Do not use unknown hosts or paste credentials into issue reports. Read
 
 ## Related projects
 
-- [MultiBot Desktop and server](https://github.com/E4B-labs/multibot)
-- [MultiBot Releases](https://github.com/E4B-labs/multibot-releases)
+- [MultiBot Desktop and server](https://github.com/E4B-labs/multibot-desktop)
+- [MultiBot Desktop Releases](https://github.com/E4B-labs/multibot-desktop-releases)
 
 ## License
 
