@@ -2,7 +2,7 @@
   "name": "multibot2-mobile",
   "description": "MultiBot mobile shell: pair with a host, then show its full web UI in a WebView.",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
