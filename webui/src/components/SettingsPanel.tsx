@@ -1,0 +1,537 @@
+import { ChevronLeft, ImagePlus, Pencil, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useStore, type Bot } from "@/state/store";
+import { MausAvatar } from "./Avatar";
+import { MAUS_COLORS, MAUS_COLOR_NAMES, stateForBot } from "@/lib/mascot";
+import { ModelPicker } from "./ModelPicker";
+import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
+import { cn } from "@/lib/cn";
+import { authFetch } from "@/lib/auth";
+import { requestBrowserNotifications } from "@/lib/notifications";
+import { useLanguage } from "@/lib/language";
+import { botDisplayName, botDisplayTitle } from "@/lib/botNames";
+import { AvatarCropper } from "./AvatarCropper";
+import { MASCOT_SHAPES } from "@/lib/mascotShapes";
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-1.5 text-[13px] text-ink-secondary">{label}</div>
+      {children}
+    </label>
+  );
+}
+
+const inputCls =
+  "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none focus:border-hairline";
+
+// multibot: F10 — licznik zużycia tokenów silnika, karta pod EngineAutonomy.
+// Jeden GET przy otwarciu panelu (mount; karta keyowana bot.id jak F4), zero
+// pollingu:
+//   GET /api/engine/bots/mb-<threadId>/usage — {prompt_tokens, completion_tokens,
+//     total_tokens, turns} (engine/server/usage.py).
+// 404 = bot silnika jeszcze nie istnieje (wstaje leniwie przy pierwszej
+// wiadomości) = zero użycia, nie błąd; 502/503/błąd sieci = "Engine offline". Kosztu nie
+// pokazujemy — silnik zlicza wyłącznie tokeny.
+interface EngineUsageOut {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  turns: number;
+}
+
+const ZERO_USAGE: EngineUsageOut = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 };
+
+function EngineUsage({ bot }: { bot: Bot }) {
+  const polish = useLanguage() === "pl";
+  const usagePath = `/api/bots/${bot.id}/usage`;
+  const [status, setStatus] = useState<"loading" | "offline" | "ready">("loading");
+  const [usage, setUsage] = useState<EngineUsageOut>(ZERO_USAGE);
+
+  useEffect(() => {
+    authFetch(usagePath)
+      .then((res) => {
+        if (res.status === 404) return ZERO_USAGE; // brak bota = brak użycia
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<EngineUsageOut>;
+      })
+      .then((u) => {
+        setUsage(u);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("offline"));
+  }, [usagePath]);
+
+  const fmt = (n: number) => n.toLocaleString(polish ? "pl-PL" : "en-US");
+  const stat = (value: string, label: string) => (
+    <div>
+      <div className="text-[20px] font-semibold tabular-nums text-ink">{value}</div>
+      <div className="text-[12px] text-ink-secondary">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zużycie" : "Usage"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Tokeny użyte przez tego bota" : "Tokens this bot has used"}
+      </div>
+      {status === "offline" ? (
+        <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-secondary">
+          <span className="size-1.5 rounded-full bg-raised-hover" />
+          {polish ? "Usługa offline" : "Service offline"}
+        </div>
+      ) : status === "ready" && usage.turns === 0 ? (
+        <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Brak użycia" : "No usage yet"}</div>
+      ) : status === "ready" ? (
+        <div className="mt-3 flex gap-6">
+          {stat(fmt(usage.prompt_tokens), polish ? "Tokeny wejściowe" : "Tokens in")}
+          {stat(fmt(usage.completion_tokens), polish ? "Tokeny wyjściowe" : "Tokens out")}
+          {stat(fmt(usage.turns), polish ? "Tury" : "Turns")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ComposioAccountSelector({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const [accounts, setAccounts] = useState<Array<{ id: string; alias?: string; status: string }>>([]);
+  useEffect(() => {
+    authFetch("/api/connectors?services=gmail")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((body) => setAccounts(body.services?.gmail?.accounts ?? []))
+      .catch(() => setAccounts([]));
+  }, [bot.id]);
+  if (!accounts.length) return null;
+  const current = bot.composioAccounts?.gmail ?? "";
+  const set = (value: string) => dispatch({ type: "updateBot", botId: bot.id, patch: { composioAccounts: { ...(bot.composioAccounts ?? {}), ...(value ? { gmail: value } : {}) } } });
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Konto Gmail" : "Gmail account"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Wybór dotyczy tego bota." : "Selection applies to this bot."}</div>
+      <select value={current} onChange={(event) => set(event.target.value)} className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink" aria-label={polish ? "Konto Gmail" : "Gmail account"}>
+        <option value="">{polish ? "Automatyczny wybór" : "Automatic selection"}</option>
+        {accounts.map((account) => <option key={account.id} value={account.id}>{account.alias || account.id} · {account.status}</option>)}
+      </select>
+    </div>
+  );
+}
+
+interface ApprovalRuleOut {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+function ApprovalRules({ bot }: { bot: Bot }) {
+  const polish = useLanguage() === "pl";
+  const [rules, setRules] = useState<ApprovalRuleOut[] | null>(null);
+  useEffect(() => {
+    authFetch(`/api/bots/${bot.id}/approval-rules`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then(setRules)
+      .catch(() => setRules([]));
+  }, [bot.id]);
+  const remove = async (id: string) => {
+    const response = await authFetch(`/api/bots/${bot.id}/approval-rules/${id}`, { method: "DELETE" });
+    if (response.ok) setRules((current) => current?.filter((rule) => rule.id !== id) ?? []);
+  };
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Zapamiętane zgody" : "Remembered approvals"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Akcje dozwolone przez opcję „Allow for all”." : "Actions allowed with “Allow for all”."}
+      </div>
+      {rules?.length ? (
+        <div className="mt-3 divide-y divide-hairline/40">
+          {rules.map((rule) => (
+            <div key={rule.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={rule.label}>{rule.label}</span>
+              <button type="button" onClick={() => void remove(rule.id)} aria-label={`${polish ? "Cofnij" : "Revoke"} ${rule.label}`} className="rounded-lg p-1.5 text-ink-secondary hover:bg-raised hover:text-danger">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : rules ? <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Brak zapamiętanych zgód" : "No remembered approvals"}</div> : null}
+    </div>
+  );
+}
+
+function BotSharing({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const [visibility, setVisibility] = useState<"public" | "team" | "private">(bot.visibility ?? "team");
+  const [allowedUserIds, setAllowedUserIds] = useState<string[]>(bot.allowedUserIds ?? []);
+  const [members, setMembers] = useState<Array<{ uid: string; name?: string; email?: string; role: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([
+      authFetch("/api/bots/" + bot.id + "/sharing").then((response) => (response.ok ? response.json() : Promise.reject(new Error("sharing unavailable")))),
+      authFetch("/api/workspace/members").then((response) => (response.ok ? response.json() : Promise.reject(new Error("members unavailable")))),
+    ]).then(([sharing, roster]) => {
+      if (!alive) return;
+      if (sharing.visibility === "public" || sharing.visibility === "team" || sharing.visibility === "private") setVisibility(sharing.visibility);
+      if (Array.isArray(sharing.allowedUserIds)) setAllowedUserIds(sharing.allowedUserIds.map(String));
+      if (Array.isArray(roster.members)) setMembers(roster.members);
+    }).catch((reason) => alive && setError(reason instanceof Error ? reason.message : String(reason)));
+    return () => {
+      alive = false;
+    };
+  }, [bot.id]);
+
+  const save = async (nextVisibility: typeof visibility, nextAllowed: string[]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authFetch("/api/bots/" + bot.id + "/sharing", {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: nextVisibility, allowedUserIds: nextAllowed }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? String(response.status) + " " + response.statusText);
+      setVisibility(body.visibility);
+      setAllowedUserIds(body.allowedUserIds ?? []);
+      dispatch({ type: "botPatched", bot: { id: bot.id, visibility: body.visibility, ownerId: body.ownerId ?? undefined, allowedUserIds: body.allowedUserIds ?? [] } });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">{polish ? "Widoczność bota" : "Bot visibility"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">
+        {polish ? "Publiczny dla serwera, zespołowy albo prywatny dla wybranych kont." : "Public to the server, team-only, or private for selected accounts."}
+      </div>
+      <select
+        value={visibility}
+        disabled={busy}
+        onChange={(event) => {
+          const value = event.target.value as typeof visibility;
+          setVisibility(value);
+          void save(value, allowedUserIds);
+        }}
+        className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink"
+      >
+        <option value="public">{polish ? "Publiczny" : "Public"}</option>
+        <option value="team">{polish ? "Zespół" : "Team"}</option>
+        <option value="private">{polish ? "Prywatny" : "Private"}</option>
+      </select>
+      {visibility === "private" && (
+        <div className="mt-3 space-y-2">
+          {members.length ? members.map((member) => {
+            const checked = allowedUserIds.includes(member.uid);
+            return (
+              <label key={member.uid} className="flex items-center gap-2 text-[13px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={busy}
+                  onChange={() => {
+                    const next = checked ? allowedUserIds.filter((id) => id !== member.uid) : [...allowedUserIds, member.uid];
+                    setAllowedUserIds(next);
+                    void save(visibility, next);
+                  }}
+                />
+                <span className="truncate">{member.name || member.email || member.uid}</span>
+                {member.role === "owner" && <span className="text-[11px] text-ink-secondary">owner</span>}
+              </label>
+            );
+          }) : <div className="text-[12px] text-ink-secondary">{polish ? "Brak kont do wybrania." : "No accounts available."}</div>}
+        </div>
+      )}
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
+type AppearanceMode = "closed" | "bot" | "generate" | "photo";
+
+export function SettingsPanel({ bot }: { bot: Bot }) {
+  const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  // multibot: szukajka po kartach ustawień (port z OpenMausBot #418) —
+  // filtruje istniejące karty po ich tekście; zero nowej struktury sekcji.
+  const [query, setQuery] = useState("");
+  const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("closed");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = cardsRef.current;
+    if (!container) return;
+    const needle = query.trim().toLocaleLowerCase();
+    for (const card of Array.from(container.children)) {
+      const match = !needle || (card.textContent ?? "").toLocaleLowerCase().includes(needle);
+      (card as HTMLElement).style.display = match ? "" : "none";
+    }
+  }, [query, appearanceMode]);
+  const patch = (
+    p: Partial<
+      Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "avatarUrl">
+    >,
+  ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
+  const activeState = stateForBot(bot);
+  const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
+  // Na mobile panel idzie do document.body (createPortal), by na pewno był
+  // warstwą najwyższą nad drawerem (z-[60]) — niezależnie od kontekstu
+  // nakładania wewnątrz .multibot-shell. Na desktopie render w miejscu
+  // (prawa kolumna), więc portal nie gra.
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 700px)");
+    const update = () => setMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const panel = (
+    <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <button
+          onClick={() => dispatch({ type: "toggleSettings", open: false })}
+          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="text-[15px] font-semibold text-ink">{polish ? "Ustawienia" : "Settings"}</span>
+        <button
+          onClick={() => dispatch({ type: "toggleSettings", open: false })}
+          className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* multibot: szukajka ustawień — Escape czyści, dopiero potem zamyka panel */}
+      <div className="px-5 pb-1">
+        <div className="flex items-center gap-2 rounded-xl border border-hairline/40 bg-card px-3 py-2">
+          <Search size={14} className="shrink-0 text-ink-secondary" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                if (query) setQuery("");
+              }
+            }}
+            placeholder={polish ? "Szukaj w ustawieniach…" : "Search settings…"}
+            className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-secondary/60"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label={polish ? "Wyczyść" : "Clear"}
+              className="shrink-0 rounded-md p-0.5 text-ink-secondary hover:text-ink"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 pb-5">
+        <div className="flex flex-col items-center py-5 gap-2">
+          <button
+            type="button"
+            onClick={() => setAppearanceMode((mode) => (mode === "closed" ? "bot" : "closed"))}
+            aria-expanded={appearanceMode !== "closed"}
+            title={polish ? "Dodaj lub zmień zdjęcie profilowe" : "Add or change profile photo"}
+            className="group relative rounded-full transition-transform duration-200 hover:scale-[1.03] focus:outline-none"
+          >
+            <MausAvatar
+              color={bot.color}
+              shape={bot.mascotShape}
+              avatarUrl={bot.avatarUrl}
+              state={activeState}
+              size={112}
+              motion={mascotMotion?.kind ?? "none"}
+              motionKey={mascotMotion?.nonce ?? 0}
+            />
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-active:opacity-100">
+              <Pencil size={24} className="text-white" aria-hidden="true" />
+            </span>
+          </button>
+        </div>
+
+        <div ref={cardsRef} className="flex flex-col gap-4">
+          {appearanceMode === "bot" && (
+            <div className="animate-panel-in overflow-hidden rounded-xl border border-hairline/40 bg-card">
+              <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white">Bot</button>
+                  <button type="button" disabled className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary/50">{polish ? "Generuj" : "Generate"}</button>
+                  <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
+                </div>
+                <button type="button" onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised hover:text-ink">{polish ? "Resetuj" : "Reset"}</button>
+              </div>
+              <div className="p-3">
+                <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kształt ikony" : "Icon shape"}</div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {MASCOT_SHAPES.map((shape) => (
+                    <button type="button" key={shape} onClick={() => patch({ mascotShape: shape })} className={cn("flex h-[46px] items-center justify-center rounded-lg bg-inset transition-colors hover:bg-raised", (bot.mascotShape ?? "blob") === shape && "ring-2 ring-accent-border")} title={shape} aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}>
+                      <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} motion={mascotMotion?.kind ?? "none"} motionKey={mascotMotion?.nonce ?? 0} />
+                    </button>
+                  ))}
+                </div>
+                <div className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
+                <div className="flex flex-wrap gap-2">
+                  {MAUS_COLOR_NAMES.map((color) => <button type="button" key={color} onClick={() => patch({ color })} className={cn("size-7 rounded-full border-2 border-transparent transition-transform hover:scale-110", bot.color === color && "ring-2 ring-accent-border ring-offset-2 ring-offset-card")} style={{ backgroundColor: MAUS_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />)}
+                </div>
+              </div>
+            </div>
+          )}
+          {appearanceMode === "photo" && (
+            <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
+              <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink">Bot</button>
+                  <button type="button" disabled className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary/50">{polish ? "Generuj" : "Generate"}</button>
+                  <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
+                </div>
+                {bot.avatarUrl ? (
+                  <button
+                    onClick={async () => {
+                      setAvatarBusy(true);
+                      try {
+                        const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "DELETE" });
+                        if (!r.ok) throw new Error("delete failed");
+                        dispatch({ type: "botPatched", bot: { id: bot.id, avatarUrl: null } });
+                      } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
+                    }}
+                    disabled={avatarBusy}
+                    className="rounded-md px-2 py-1.5 text-[13px] text-danger"
+                  >
+                    {polish ? "Usuń" : "Remove"}
+                  </button>
+                ) : null}
+              </div>
+              <div className="p-3">
+                  {!pendingFile ? (
+                    <div className="flex flex-col items-center gap-3">
+                      {bot.avatarUrl ? <img src={bot.avatarUrl} alt="avatar" className="size-[96px] rounded-full object-cover border border-hairline/30" /> : <div className="flex size-[96px] items-center justify-center rounded-full bg-inset border border-dashed border-hairline"><ImagePlus size={24} className="text-ink-secondary" /></div>}
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setPendingFile(f); e.target.value = ""; }} />
+                      <button onClick={() => fileInputRef.current?.click()} disabled={avatarBusy} className="rounded-lg bg-accent px-4 py-2.5 text-[14px] font-medium text-white">{bot.avatarUrl ? (polish ? "Zmień zdjęcie" : "Change photo") : (polish ? "Wybierz zdjęcie" : "Choose photo")}</button>
+                    </div>
+                  ) : (
+                    <AvatarCropper
+                      file={pendingFile}
+                      onSave={async (dataUrl) => {
+                        setAvatarBusy(true);
+                        try {
+                          const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: dataUrl }) });
+                          const body = await r.json().catch(() => ({}));
+                          if (!r.ok) throw new Error(body.error ?? "upload failed");
+                          dispatch({ type: "botPatched", bot: body.bot });
+                          setPendingFile(null);
+                          setAppearanceMode("closed");
+                        } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
+                      }}
+                      onCancel={() => setPendingFile(null)}
+                    />
+                  )}
+              </div>
+            </div>
+          )}
+
+          <ComposioAccountSelector bot={bot} />
+
+
+          <Field label={polish ? "Nazwa" : "Name"}>
+            <input
+              className={inputCls}
+              value={botDisplayName(bot, polish ? "pl" : "en")}
+              onChange={(e) => patch({ name: e.target.value })}
+            />
+          </Field>
+          <Field label={polish ? "Rola" : "Title"}>
+            <input
+              className={inputCls}
+              placeholder={polish ? "Opisz, czym zajmuje się bot" : "Describe what your agent does"}
+              value={botDisplayTitle(bot, polish ? "pl" : "en")}
+              onChange={(e) => patch({ title: e.target.value })}
+            />
+          </Field>
+          <Field label={polish ? "Opis" : "Description"}>
+            <textarea
+              className={cn(inputCls, "min-h-[96px] resize-none")}
+              placeholder={polish ? "Do czego służy ten bot" : "What this agent is for"}
+              value={bot.description}
+              onChange={(e) => patch({ description: e.target.value })}
+            />
+          </Field>
+
+          <BotSharing bot={bot} />
+
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
+            <div>
+              <div className="text-[15px] font-medium text-ink">{polish ? "Model" : "Model"}</div>
+              <div className="mt-0.5 text-[13px] text-ink-secondary">
+                {polish ? "Provider i model używany przez tego bota" : "Which provider and model this bot runs on"}
+              </div>
+            </div>
+            <ModelPicker bot={bot} />
+          </div>
+
+          {/* multibot: workspace controls apply to every provider. Bot-to-bot
+              delegation is automatic; no per-bot switch exists. */}
+          <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
+          <ApprovalRules key={`approval-rules-${bot.id}-${state.workspaceVersion}`} bot={bot} />
+          <EngineUsage key={`usage-${bot.id}`} bot={bot} />
+
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
+            <div>
+              <div className="text-[15px] font-medium text-ink">
+                {polish ? "Powiadomienia" : "Notifications"}
+              </div>
+              <div className="mt-0.5 text-[13px] text-ink-secondary">
+                {polish ? "Powiadom, gdy bot skończy albo potrzebuje odpowiedzi" : "Get notified when this agent finishes or needs input"}
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={bot.notifications}
+              onClick={() => {
+                if (!bot.notifications) void requestBrowserNotifications();
+                patch({ notifications: !bot.notifications });
+              }}
+              className={cn(
+                "relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors",
+                bot.notifications ? "bg-accent" : "bg-raised",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-[3px] size-5 rounded-full bg-white transition-all",
+                  bot.notifications ? "left-[21px]" : "left-[3px]",
+                )}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+
+  return mobile ? createPortal(panel, document.body) : panel;
+}

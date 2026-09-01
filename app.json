@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "MultiBot Mobile",
+    "slug": "multibot2-mobile",
+    "scheme": "multibot",
+    "version": "0.3.6",
+    "runtimeVersion": "1.3.0",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#070707",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.multibot2.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan a QR code to pair with your MultiBot host.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.multibot2.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to scan a MultiBot pairing QR code."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
+    },
+    "icon": "./assets/icon.png"
+  }
+}
