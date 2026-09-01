@@ -10,7 +10,7 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/lib/logic.test.ts",
-    "test:webui": "npm --prefix webui exec vitest run",
+    "test:webui": "npm --prefix webui run test",
     "webui": "npm --prefix webui run build && node scripts/bundle-webui.mjs",
     "sync-webui": "node scripts/sync-webui.mjs"
   },

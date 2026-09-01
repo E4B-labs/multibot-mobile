@@ -11,10 +11,23 @@ export interface Host {
   lastUsedAt: number;
 }
 
+export type HostAuthMode = "v2" | "legacy";
+
+export function hostAuthHeaders(token: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${token}`,
+    "x-multibot-protocol": "2",
+  };
+}
+
 /** Adds https for a bare host, strips trailing slashes, and validates http(s). */
 export function normalizeHostUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Host address is required.");
+  const explicitScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed);
+  if (explicitScheme && !/^https?:\/\//i.test(trimmed)) {
+    throw new Error("Host address must use http:// or https://");
+  }
   const hasScheme = /^https?:\/\//i.test(trimmed);
   const candidate = hasScheme ? trimmed : `https://${trimmed}`;
   const normalized = candidate.replace(/\/+$/, "");

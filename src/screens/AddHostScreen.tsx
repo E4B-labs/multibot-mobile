@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "ex
 
 import { newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
 import { saveHost } from "../lib/hosts";
-import { claimPairing, parseQrPayload } from "../lib/pair";
+import { claimPairing, pairingCredential, parseQrPayload } from "../lib/pair";
 
 interface Props {
   onDone: (host: Host) => void;
@@ -24,8 +24,8 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function finish(rawUrl: string, tokenValue: string) {
-    const trimmedToken = tokenValue.trim();
+  async function finish(rawUrl: string, tokenValue: string | null, authMode: "v2" | "legacy" | null = null) {
+    const trimmedToken = tokenValue?.trim() ?? "";
     setBusy(true);
     setError(null);
     try {
@@ -37,7 +37,7 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
       };
-      await saveHost(host, trimmedToken || null);
+      await saveHost(host, trimmedToken || null, authMode);
       onDone(host);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add host");
@@ -66,7 +66,8 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
     setError(null);
     try {
       const result = await claimPairing(payload.url, payload.code, name.trim() || "My phone");
-      await finish(payload.url, result.token);
+      const credential = pairingCredential(result);
+      await finish(payload.url, credential.token, credential.mode);
     } catch (e) {
       // Trasy parowania (/api/pair/start, /api/pair/claim) już działają po
       // stronie serwera — nieudane claimowanie to zły/wygasły kod, nie brak
@@ -87,7 +88,8 @@ export default function AddHostScreen({ onDone, onCancel }: Props) {
       try {
         const normalized = normalizeHostUrl(url);
         const result = await claimPairing(normalized, code.trim(), name.trim() || "My phone");
-        await finish(normalized, result.token);
+        const credential = pairingCredential(result);
+        await finish(normalized, credential.token, credential.mode);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Pairing failed — try the access token instead.");
       } finally {
@@ -208,7 +210,7 @@ const styles = StyleSheet.create({
   title: { color: "#fcfcfc", fontSize: 28, fontWeight: "800", letterSpacing: -0.4, marginBottom: 2, marginTop: 2 },
   intro: { color: "#fcfcfc99", fontSize: 14, lineHeight: 20, marginBottom: 6 },
   segment: { flexDirection: "row", backgroundColor: "#151515", borderRadius: 10, padding: 4 },
-  segmentButton: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 8 },
+  segmentButton: { alignItems: "center", borderRadius: 8, flex: 1, justifyContent: "center", minHeight: 44 },
   segmentActive: { backgroundColor: "#fcfcfc" },
   segmentText: { color: "#fcfcfc99", fontSize: 15, fontWeight: "600" },
   segmentTextActive: { color: "#070707" },
@@ -216,7 +218,7 @@ const styles = StyleSheet.create({
   scanPrompt: { gap: 12 },
   camera: { height: 260, borderRadius: 12, overflow: "hidden" },
   scanSpinner: { position: "absolute", top: 120, left: "50%", marginLeft: -10 },
-  linkButton: { alignItems: "center" },
+  linkButton: { alignItems: "center", justifyContent: "center", minHeight: 44 },
   linkText: { color: "#fcfcfc99", fontSize: 14 },
   manualWrap: { gap: 4 },
   dim: { color: "#fcfcfc99", fontSize: 15 },
@@ -224,9 +226,9 @@ const styles = StyleSheet.create({
   hint: { color: "#fcfcfc55", fontSize: 12, lineHeight: 17, marginTop: 1 },
   input: { color: "#fcfcfc", backgroundColor: "#151515", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   error: { color: "#ff8080", fontSize: 13, marginTop: 8 },
-  primaryButton: { marginTop: 16, backgroundColor: "#fcfcfc", borderRadius: 10, paddingVertical: 14, alignItems: "center" },
+  primaryButton: { alignItems: "center", backgroundColor: "#fcfcfc", borderRadius: 10, marginTop: 16, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
   primaryDisabled: { opacity: 0.5 },
   primaryButtonText: { color: "#070707", fontSize: 16, fontWeight: "700" },
-  cancelButton: { marginTop: 12, paddingVertical: 10, alignItems: "center" },
+  cancelButton: { alignItems: "center", justifyContent: "center", marginTop: 12, minHeight: 44 },
   cancelButtonText: { color: "#fcfcfc99", fontSize: 14 },
 });

@@ -4,14 +4,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
-import { parseQrPayload } from "./pair.ts";
+import { hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { pairingCredential, parseQrPayload, type ClaimResult } from "./pair.ts";
 
 test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
   assert.equal(normalizeHostUrl("https://host.ts.net/"), "https://host.ts.net");
   assert.equal(normalizeHostUrl(" http://127.0.0.1:8799// "), "http://127.0.0.1:8799");
   assert.throws(() => normalizeHostUrl("not-a-url"));
   assert.throws(() => normalizeHostUrl(""));
+  assert.throws(() => normalizeHostUrl("ftp.example://example.com"));
+});
+
+test("host bearer requests opt into protocol v2", () => {
+  assert.deepEqual(hostAuthHeaders("secret"), {
+    authorization: "Bearer secret",
+    "x-multibot-protocol": "2",
+  });
 });
 
 test("normalizeHostUrl accepts a bare host and rejects credentials", () => {
@@ -102,4 +110,12 @@ test("parseQrPayload accepts a bare URL and rejects garbage", () => {
   assert.equal(parseQrPayload("not a url or json"), null);
   assert.equal(parseQrPayload(""), null);
   assert.equal(parseQrPayload("{}"), null);
+});
+
+test("pairing prefers a modern access token and falls back to the legacy token", () => {
+  const modern = pairingCredential({ token: "legacy", accessToken: "v2-access", authMode: "v2" });
+  assert.deepEqual(modern, { token: "v2-access", mode: "v2" });
+
+  const legacy: ClaimResult = { token: "legacy", authMode: "legacy" };
+  assert.deepEqual(pairingCredential(legacy), { token: "legacy", mode: "legacy" });
 });

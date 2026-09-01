@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   lastUsed: { color: "#fcfcfc55", fontSize: 11, marginTop: 5 },
   chevron: { color: "#fcfcfc55", fontSize: 25, marginLeft: 8 },
   actions: { borderTopColor: "#202020", borderTopWidth: 1, flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 10, paddingVertical: 6 },
-  actionButton: { justifyContent: "center", minHeight: 38, paddingHorizontal: 11 },
+  actionButton: { justifyContent: "center", minHeight: 44, paddingHorizontal: 11 },
   actionText: { color: "#fcfcfccc", fontSize: 12, fontWeight: "700" },
   removeButton: { marginLeft: 2 },
   removeText: { color: "#ff8989", fontSize: 12, fontWeight: "700" },

@@ -6,8 +6,8 @@ import { WebView, type WebViewNavigation } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import type { Host } from "../lib/host-logic";
-import { saveHost, getHostToken } from "../lib/hosts";
+import { hostAuthHeaders, type Host } from "../lib/host-logic";
+import { saveHost, getHostAuthMode, getHostToken } from "../lib/hosts";
 import { ensurePushRegistered } from "../lib/push";
 import { WEBUI_HTML } from "../webui-html";
 
@@ -39,7 +39,7 @@ async function probeHost(url: string, token: string): Promise<string | null> {
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
     const response = await fetch(`${url}/api/bots`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: hostAuthHeaders(token),
       signal: controller.signal,
     });
     if (response.status === 401) return "Serwer odpowiada, ale token jest nieprawidłowy.";
@@ -82,7 +82,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
 
   useEffect(() => {
     let cancelled = false;
-    void getHostToken(host.id).then(async (token) => {
+    void Promise.all([getHostToken(host.id), getHostAuthMode(host.id)]).then(async ([token, authMode]) => {
       if (cancelled) return;
       // Interfejs czyta token z `localStorage` pod kluczem `multibot.auth.token`
       // (webui/src/lib/auth.ts) i stamtąd bierze go każde wywołanie API oraz
@@ -110,7 +110,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
       setBootstrap(
         `try { document.documentElement.style.setProperty('--android-status-bar', '${STATUS_BAR_HEIGHT}px'); } catch (e) {}
-         try { ${token ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); localStorage.setItem("multibot.auth.mode", "legacy");` : `localStorage.removeItem("multibot.auth.token"); localStorage.removeItem("multibot.auth.mode");`} ${deep} } catch (e) {}
+         try { ${token ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); localStorage.setItem("multibot.auth.mode", ${JSON.stringify(authMode)});` : `localStorage.removeItem("multibot.auth.token"); localStorage.removeItem("multibot.auth.mode");`} ${deep} } catch (e) {}
          try { window.__APP_VERSION__ = ${JSON.stringify(appVersion)}; } catch (e) {}
          true;`,
       );
@@ -285,7 +285,8 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
             if (msg?.type === "auth.changed") {
               const nextToken = typeof msg.token === "string" ? msg.token : null;
-              void saveHost({ ...host, lastUsedAt: Date.now() }, nextToken);
+              const nextMode = msg.mode === "v2" ? "v2" : "legacy";
+              void saveHost({ ...host, lastUsedAt: Date.now() }, nextToken, nextToken ? nextMode : null);
             }
             if (msg?.type === "push.request") void ensurePushRegistered(host);
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
