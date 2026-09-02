@@ -13,6 +13,7 @@ import {
 } from "react";
 import type { MascotShape } from "@/lib/mascotShapes";
 import type { MausColor, MausMotion } from "@/lib/mascot";
+import type { AutoVerifySettings } from "@/lib/autoVerifyTypes";
 import { MAUS_COLORS } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
 import { getLanguage } from "@/lib/language";
@@ -113,6 +114,9 @@ export interface ConfigStatus {
   opencode?: { configured: boolean };
   composio: { configured: boolean; apiKeyConfigured?: boolean };
   box: { configured: boolean };
+  /** Bot-wide execution policy stored on the connected host. */
+  timeZone?: string;
+  autoVerify?: AutoVerifySettings;
   /** who's using the app — collected in onboarding, shown in the sidebar */
   profile?: { name: string; email: string };
 }
@@ -240,7 +244,7 @@ type Action =
   | { type: "send"; botId: string; text: string; reasoning?: string; attachmentIds?: string[]; replyToId?: string }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
-  | { type: "newBot" }
+  | { type: "newBot"; visibility?: "team" | "private" }
   | { type: "botAdded"; bot: Bot }
   | { type: "deleteBot"; botId: string }
   | { type: "duplicateBot"; botId: string }
@@ -893,7 +897,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "newBot":
-          api("/api/bots", { method: "POST" })
+          api("/api/bots", { method: "POST", body: JSON.stringify({ visibility: action.visibility ?? "team" }) })
             .then(({ bot }) => rawDispatch({ type: "botAdded", bot }))
             .catch(showError);
           break;
