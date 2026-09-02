@@ -260,7 +260,7 @@ function BotSharing({ bot }: { bot: Bot }) {
   );
 }
 
-type AppearanceMode = "closed" | "bot" | "generate" | "photo";
+type AppearanceMode = "closed" | "bot" | "photo";
 
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
@@ -380,7 +380,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
                 <div className="flex gap-1">
                   <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white">Bot</button>
-                  <button type="button" disabled className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary/50">{polish ? "Generuj" : "Generate"}</button>
                   <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
                 </div>
                 <button type="button" onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised hover:text-ink">{polish ? "Resetuj" : "Reset"}</button>
@@ -390,7 +389,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 <div className="grid grid-cols-5 gap-1.5">
                   {MASCOT_SHAPES.map((shape) => (
                     <button type="button" key={shape} onClick={() => patch({ mascotShape: shape })} className={cn("flex h-[46px] items-center justify-center rounded-lg bg-inset transition-colors hover:bg-raised", (bot.mascotShape ?? "blob") === shape && "ring-2 ring-accent-border")} title={shape} aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}>
-                      <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} motion={mascotMotion?.kind ?? "none"} motionKey={mascotMotion?.nonce ?? 0} />
+                      <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} animated={false} trackPointer={false} showFace={false} />
                     </button>
                   ))}
                 </div>
@@ -406,7 +405,6 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
                 <div className="flex gap-1">
                   <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink">Bot</button>
-                  <button type="button" disabled className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary/50">{polish ? "Generuj" : "Generate"}</button>
                   <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
                 </div>
                 {bot.avatarUrl ? (

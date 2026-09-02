@@ -3,7 +3,7 @@
     "name": "MultiBot Mobile",
     "slug": "multibot2-mobile",
     "scheme": "multibot",
-    "version": "0.3.7",
+    "version": "0.3.8",
     "runtimeVersion": "1.3.0",
     "platforms": [
       "android",
