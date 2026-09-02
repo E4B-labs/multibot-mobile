@@ -714,7 +714,7 @@ setText("");
             bezczynny, nie zostawiamy po nim pustego paska nad composerem. */}
         {bot.busy && (
           <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
-            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} motion={bot.busy ? "working" : "none"} motionKey={bot.busy ? 1 : 0} animated size={44} />
+            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state="thinking" motion="thinking-dots" motionKey={1} animated size={44} />
           </div>
         )}
         <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />

@@ -33,6 +33,13 @@ const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?
 const LOAD_TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 8_000;
 
+type AppUpdateState = {
+  status: "idle" | "checking" | "available" | "downloading" | "downloaded" | "error";
+  version?: string;
+  percent?: number;
+  message?: string;
+};
+
 async function probeHost(url: string, token: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
@@ -191,6 +198,38 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     );
   };
 
+  const sendUpdateState = (state: AppUpdateState) => {
+    webRef.current?.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent("mb:app-update-state", { detail: ${JSON.stringify(state)} })); true;`,
+    );
+  };
+
+  async function handleAppUpdate(action: "check" | "download" | "install") {
+    try {
+      if (!Updates.isEnabled) throw new Error("Updates are not enabled in this build.");
+      if (action === "check") {
+        sendUpdateState({ status: "checking" });
+        const result = await Updates.checkForUpdateAsync();
+        sendUpdateState(result.isAvailable
+          ? { status: "available", version: Updates.updateId?.slice(0, 8) || "OTA" }
+          : { status: "idle" });
+        return;
+      }
+      if (action === "download") {
+        sendUpdateState({ status: "downloading", percent: 0 });
+        await Updates.fetchUpdateAsync();
+        sendUpdateState({ status: "downloaded", version: Updates.updateId?.slice(0, 8) || "OTA" });
+        return;
+      }
+      await Updates.reloadAsync();
+    } catch (error) {
+      sendUpdateState({
+        status: "error",
+        message: error instanceof Error ? error.message : "Could not update the app.",
+      });
+    }
+  }
+
   async function takeNativePhoto() {
     if (!cameraRequest || !cameraPermission?.granted || !cameraReady) return;
     const request = cameraRequest;
@@ -292,6 +331,9 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
+            if (msg?.type === "app.update.check" || msg?.type === "app.update.download" || msg?.type === "app.update.install") {
+              void handleAppUpdate(msg.type.slice("app.update.".length));
+            }
           } catch {
             /* interfejs wysyła też inne wiadomości — nie nasza sprawa */
           }
