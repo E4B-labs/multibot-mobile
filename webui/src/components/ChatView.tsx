@@ -529,7 +529,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           if (!follow && atEnd()) setFollow(true);
         }}
       >
-        <div className="flex w-full flex-col gap-3 pb-10">
+        <div className="flex w-full flex-col gap-1 pb-10">
           {bot.messages.map((m) => {
             let child: ReactNode;
             switch (m.kind) {
