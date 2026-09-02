@@ -8,7 +8,7 @@ import { RefreshTabIcon, SlidersTabIcon, WrenchTabIcon } from "./SettingsTabIcon
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
-import { useUpdaterState } from "@/lib/updater";
+import { getUpdater, useUpdaterState } from "@/lib/updater";
 import { cn } from "@/lib/cn";
 import { authFetch, setAuthToken } from "@/lib/auth";
 // multibot: F11 — status silnika dla EngineStatusRow
@@ -710,7 +710,7 @@ function CommandLineTools() {
 function UpdatesRow() {
   const s = useUpdaterState();
   const polish = useLanguage() === "pl";
-  const updater = window.ogb?.updater;
+  const updater = getUpdater();
   const currentVersion = (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__;
   const label =
     s?.status === "checking"
@@ -1144,3 +1144,4 @@ export function AppSettingsPanel() {
     </aside>
   );
 }
+

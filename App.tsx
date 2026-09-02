@@ -1,31 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
-import { normalizeHostUrl, resolveStartupHost } from "./src/lib/host-logic";
-import { deleteHost, listHosts, markHostUsed, renameHost } from "./src/lib/hosts";
+import { normalizeHostUrl } from "./src/lib/host-logic";
+import { deleteHost, listHosts } from "./src/lib/hosts";
 import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
-import { fetchMobileRelease, installAndroidRelease, isNewerMobileRelease, type MobileRelease } from "./src/lib/mobile-release";
 import AddHostScreen from "./src/screens/AddHostScreen";
-import HostManagerScreen from "./src/screens/HostManagerScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
 // No navigation library: three screens, switched by local state. Adding
 // react-navigation for this would be an unrequested abstraction — bring it
 // in when a fourth screen or deep-link routing actually needs it.
 type Route =
-  | { name: "firstrun"; initialUrl?: string }
-  | { name: "hosts" }
+  | { name: "firstrun" }
   | { name: "webview"; host: Host; botId?: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "firstrun" });
   const [hosts, setHosts] = useState<Host[]>([]);
   const hostsRef = useRef<Host[]>([]);
-  // Przy pierwszym załadowaniu otwieramy ostatnio używanego hosta. Lista hostów
-  // pozostaje dostępna po cofnięciu z WebView i z jego paska hosta.
+  // Przy pierwszym załadowaniu, jeśli istnieje już host, wchodzimy od razu w
+  // panel czatu zamiast do wyboru hostów — aplikacja obsługuje jednego hosta
+  // i nie wraca do listy.
   const didInit = useRef(false);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +31,6 @@ export default function App() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
-  const [mobileRelease, setMobileRelease] = useState<MobileRelease | null>(null);
 
   const refresh = useCallback(() => {
     void listHosts().then((h) => {
@@ -41,45 +38,17 @@ export default function App() {
       setLoading(false);
       if (!didInit.current && h.length >= 1) {
         didInit.current = true;
-        const startup = resolveStartupHost(h);
-        if (startup) setRoute({ name: "webview", host: startup });
+        setRoute({ name: "webview", host: h[0] });
       }
     });
   }, []);
 
-  const openHost = useCallback((host: Host) => {
-    const usedAt = Date.now();
-    const updated = { ...host, lastUsedAt: usedAt };
-    void markHostUsed(host.id, usedAt).catch(() => {}).then(() => {
-      setHosts((current) => [updated, ...current.filter((item) => item.id !== host.id)].sort((a, b) => b.lastUsedAt - a.lastUsedAt));
-      setRoute({ name: "webview", host: updated });
-    });
-  }, []);
-
-  const openHostManager = useCallback(() => {
-    void refresh();
-    setRoute({ name: "hosts" });
-  }, [refresh]);
-
-  const removeStoredHost = useCallback(async (hostId: string) => {
-    await deleteHost(hostId);
-    const remaining = (await listHosts());
-    setHosts(remaining);
-    if (!remaining.length) {
+  const changeHost = useCallback((hostId: string) => {
+    void deleteHost(hostId).finally(() => {
       didInit.current = false;
+      setHosts([]);
       setRoute({ name: "firstrun" });
-    } else {
-      setRoute({ name: "hosts" });
-    }
-  }, []);
-
-  const renameStoredHost = useCallback(async (hostId: string, name: string) => {
-    await renameHost(hostId, name);
-    const updated = await listHosts();
-    setHosts(updated);
-    setRoute((current) => current.name === "webview" && current.host.id === hostId
-      ? { ...current, host: updated.find((host) => host.id === hostId) ?? current.host }
-      : current);
+    });
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -98,8 +67,9 @@ export default function App() {
 
     const openFromTarget = (target: ReturnType<typeof extractBotTarget>) => {
       if (!target.hostUrl) {
-        // Bez adresu hosta otwieramy ostatnio używanego hosta.
-        const existing = resolveStartupHost(hostsRef.current);
+        // Bez adresu hosta otwieramy zapisanego hosta (aplikacja obsługuje
+        // jednego) — ekran listy został usunięty.
+        const existing = hostsRef.current[0];
         // `botId` przekazujemy TAKŻE tutaj — serwer nie wysyła `hostUrl`, więc
         // bez tego tapnięcie otwierało aplikację, ale nie tego bota.
         if (existing) setRoute({ name: "webview", host: existing, botId: target.botId });
@@ -131,7 +101,7 @@ export default function App() {
   // kroku jego lista urządzeń zostaje pusta i telefon nie dostaje NIC, mimo że
   // reszta łańcucha (wyzwalacz `needsAttention`, wysyłka do exp.host) działa.
   // Ponawiamy przy każdym powrocie aplikacji na wierzch, bo pierwsza próba
-  // pada, kiedy telefon jest chwilowo poza siecią hosta (np. sieć jeszcze
+  // pada, kiedy telefon jest chwilowo poza siecią hosta (np. Tailscale jeszcze
   // nie wstał), a wtedy jedna nieudana próba uciszyłaby powiadomienia na stałe.
   useEffect(() => {
     const host = hosts[0];
@@ -144,40 +114,28 @@ export default function App() {
   }, [hosts]);
 
   const checkForUpdate = useCallback(async (showError = false) => {
+    if (__DEV__ || !Updates.isEnabled) {
+      if (showError) setUpdateError("Updates disabled in this build (isEnabled=false). Reinstall APK from EAS production.");
+      return;
+    }
     if (checkingUpdate || downloadingUpdate) return;
     setCheckingUpdate(true);
     if (showError) setUpdateError(null);
-    let otaAvailable = false;
-    let apkAvailable = false;
     try {
-      if (!__DEV__ && Updates.isEnabled) {
-        try {
-          const result = await Updates.checkForUpdateAsync();
-          otaAvailable = result.isAvailable;
-          setUpdateAvailable(otaAvailable);
-        } catch (e: any) {
-          if (showError) setUpdateError(e?.message ? String(e.message) : "Could not check OTA update.");
-        }
-      }
-      try {
-        const release = await fetchMobileRelease();
-        apkAvailable = isNewerMobileRelease(release);
-        setMobileRelease(apkAvailable ? release : null);
-      } catch {
-        // Build manifest is optional. OTA remains usable when manifest is offline.
-      }
-      if (showError && !otaAvailable && !apkAvailable) {
-        setUpdateError("No update available — you are on latest version.");
-      }
+      const result = await Updates.checkForUpdateAsync();
+      setUpdateAvailable(result.isAvailable);
+      if (result.isAvailable) setUpdateError(null);
+      else if (showError) setUpdateError("No update available — you are on latest version.");
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : "Could not check for update.";
-      if (showError) setUpdateError(msg);
+      if (showError || updateAvailable) setUpdateError(msg);
     } finally {
       setCheckingUpdate(false);
     }
-  }, [checkingUpdate, downloadingUpdate]);
+  }, [checkingUpdate, downloadingUpdate, updateAvailable]);
 
   useEffect(() => {
+    if (__DEV__ || !Updates.isEnabled) return;
     let cancelled = false;
     void checkForUpdate(false);
     const sub = AppState.addEventListener("change", (state) => {
@@ -185,29 +143,17 @@ export default function App() {
     });
     // ponawiaj check co 60s gdy modal ukryty — naprawia „kliknął Later i już nie widzi aktualizacji"
     const interval = setInterval(() => {
-      if (!cancelled && !updateAvailable && !mobileRelease && !checkingUpdate && !downloadingUpdate) void checkForUpdate(false);
+      if (!cancelled && !updateAvailable && !checkingUpdate && !downloadingUpdate) void checkForUpdate(false);
     }, 60_000);
     return () => {
       cancelled = true;
       sub.remove();
       clearInterval(interval);
     };
-  }, [checkForUpdate, updateAvailable, mobileRelease, checkingUpdate, downloadingUpdate]);
+  }, [checkForUpdate, updateAvailable, checkingUpdate, downloadingUpdate]);
 
   const applyUpdate = useCallback(async () => {
     if (downloadingUpdate) return;
-    if (mobileRelease) {
-      setDownloadingUpdate(true);
-      setUpdateError(null);
-      try {
-        await installAndroidRelease(mobileRelease);
-        setDownloadingUpdate(false);
-      } catch (e: any) {
-        setUpdateError(e?.message ? String(e.message) : "Could not download APK update.");
-        setDownloadingUpdate(false);
-      }
-      return;
-    }
     if (!Updates.isEnabled) {
       setUpdateError("Updates disabled w tym buildzie. Zainstaluj APK z EAS production (runtime 1.0.0).");
       return;
@@ -255,7 +201,7 @@ export default function App() {
       setUpdateError(raw);
     }
     setDownloadingUpdate(false);
-  }, [downloadingUpdate, mobileRelease]);
+  }, [downloadingUpdate]);
 
   return (
     <>
@@ -268,63 +214,27 @@ export default function App() {
           <View style={styles.splash} />
         )}
         {route.name === "firstrun" && !loading && (
-          // Brak zapisanych hostów: pierwszy krok to połączenie z hostem.
+          // Pierwsze uruchomienie (brak hosta w SecureStore): od razu ekran
+          // dodawania. Po dodaniu hosta wchodzimy w WebView i już do niego
+          // nie wracamy — stąd brak osobnego ekranu listy.
           <AddHostScreen
-            initialUrl={route.initialUrl}
             onDone={(host) => {
               refresh();
               setRoute({ name: "webview", host });
             }}
-            onCancel={() => {
-              if (hosts.length) setRoute({ name: "hosts" });
-            }}
-          />
-        )}
-        {route.name === "hosts" && !loading && (
-          <HostManagerScreen
-            hosts={hosts}
-            activeHostId={hosts[0]?.id}
-            onAdd={() => setRoute({ name: "firstrun" })}
-            onSelect={openHost}
-            onRename={renameStoredHost}
-            onRemove={removeStoredHost}
+            onCancel={() => {}}
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen
-            host={route.host}
-            botId={route.botId}
-            onBack={openHostManager}
-            onConnectHost={(url) => setRoute({ name: "firstrun", initialUrl: url })}
-            onBotVisible={setVisibleBot}
-          />
+          <WebViewScreen host={route.host} botId={route.botId} onBack={() => changeHost(route.host.id)} onBotVisible={setVisibleBot} />
         )}
       </SafeAreaView>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => {
-          setUpdateAvailable(false);
-          setMobileRelease(null);
-        }}
-        transparent
-        visible={updateAvailable || Boolean(mobileRelease)}
-      >
-        <Pressable
-          onPress={() => {
-            setUpdateAvailable(false);
-            setMobileRelease(null);
-          }}
-          style={styles.updateOverlay}
-        >
+      <Modal animationType="fade" onRequestClose={() => setUpdateAvailable(false)} transparent visible={updateAvailable}>
+        <Pressable onPress={() => setUpdateAvailable(false)} style={styles.updateOverlay}>
           <Pressable onPress={(event) => event.stopPropagation()} style={styles.updateCard}>
-            <Text style={styles.updateTitle}>{mobileRelease ? "New app build" : "Update available"}</Text>
-            <Text style={styles.updateBody}>
-              {mobileRelease
-                ? `MultiBot ${mobileRelease.version} (${mobileRelease.versionCode}) is ready. Download and open Android installer.`
-                : "A newer version of the app is ready. Download it now without a new build."}
-            </Text>
-            {mobileRelease?.notes ? <Text style={styles.updateBody}>{mobileRelease.notes}</Text> : null}
+            <Text style={styles.updateTitle}>Update available</Text>
+            <Text style={styles.updateBody}>A newer version of the app is ready. Download it now without a new build.</Text>
             {checkingUpdate ? <Text style={styles.updateBody}>Checking…</Text> : null}
             {updateError ? <Text style={styles.updateError}>{updateError}</Text> : null}
             {updateError ? (
@@ -337,16 +247,21 @@ export default function App() {
                 >
                   <Text style={styles.updateSecondaryText}>{checkingUpdate ? "Checking…" : "Sprawdź ponownie"}</Text>
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={downloadingUpdate}
+                  onPress={() => void Linking.openURL("https://expo.dev/artifacts/eas/9fjNaP_hJnwllRWlmTQf1QoDPrKFIRafCtNPGm1Xz9E.apk")}
+                  style={({ pressed }) => [styles.updateSecondary, { flex: 1, backgroundColor: "#1a1a1a" }, pressed && styles.updatePressed]}
+                >
+                  <Text style={styles.updateSecondaryText}>Pobierz APK</Text>
+                </Pressable>
               </View>
             ) : null}
             <View style={styles.updateActions}>
               <Pressable
                 accessibilityRole="button"
                 disabled={downloadingUpdate}
-                onPress={() => {
-                  setUpdateAvailable(false);
-                  setMobileRelease(null);
-                }}
+                onPress={() => setUpdateAvailable(false)}
                 style={({ pressed }) => [styles.updateSecondary, pressed && styles.updatePressed, downloadingUpdate && styles.updateDisabled]}
               >
                 <Text style={styles.updateSecondaryText}>Later</Text>
@@ -360,7 +275,7 @@ export default function App() {
                 {downloadingUpdate ? (
                   <ActivityIndicator color="#070707" />
                 ) : (
-                  <Text style={styles.updatePrimaryText}>{mobileRelease ? "Download &amp; install APK" : "Download &amp; restart"}</Text>
+                  <Text style={styles.updatePrimaryText}>Download &amp; restart</Text>
                 )}
               </Pressable>
             </View>

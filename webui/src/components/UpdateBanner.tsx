@@ -4,7 +4,7 @@
 // download, a download in progress, a restart to apply, or an error.
 import { useState } from "react";
 import { ArrowDownToLine, RefreshCw, Sparkles, X } from "lucide-react";
-import { useUpdaterState } from "@/lib/updater";
+import { getUpdater, useUpdaterState } from "@/lib/updater";
 import { useLanguage } from "@/lib/language";
 
 export function UpdateBanner() {
@@ -16,7 +16,8 @@ export function UpdateBanner() {
   if (!s || s.status === "idle" || s.status === "checking") return null;
   const key = `${s.status}:${s.version ?? ""}`;
   if (dismissed === key) return null;
-  const updater = window.ogb!.updater!;
+  const updater = getUpdater();
+  if (!updater) return null;
 
   const title =
     s.status === "available"

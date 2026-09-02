@@ -1,11 +1,11 @@
 import { track } from "@/lib/analytics";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Plug, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
+import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
-import { normalizeState, stateForBot } from "@/lib/mascot";
+import { normalizeState } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
@@ -94,7 +94,7 @@ const SLASH_TYPE: Record<SlashKind, [string, string]> = {
 const SLASH_ICON: Record<SlashKind, ReactNode> = {
   action: <SlidersHorizontal size={15} />,
   skill: <Wand2 size={15} />,
-  plugin: <Plug size={15} />,
+  plugin: <Puzzle size={15} />,
   agent: <Wrench size={15} />,
   routine: <CalendarClock size={15} />,
 };
@@ -152,7 +152,6 @@ export function Composer({
   onClearReply?: () => void;
 }) {
   const { state, dispatch } = useStore();
-  const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
   const polish = useLanguage() === "pl";
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -256,7 +255,7 @@ export function Composer({
   // (strzałki, Enter/Tab wstawia, Esc chowa do następnej zmiany tekstu).
   // ŹRÓDŁO SKILLI: harness per bot (`/api/bots/{id}/skills`) — ten sam, z którego
   // czyta panel Umiejętności. Wcześniejszy odczyt z /api/engine/skills pod
-  // Driver silnika zostawiał paletę i "@" puste, choć bot miał skille
+  // bramką slafyDriver zostawiał paletę i "@" puste, choć bot miał skille
   // (harness trzyma je per bot i wstrzykuje w każdą turę, niezależnie od silnika).
   // multibot: rutyny są per bot, więc cache trzyma id bota — bez tego
   // przełączenie bota zostawiłoby w palecie cudzą listę.
@@ -677,7 +676,7 @@ setText("");
 
   const toggleMic = () => {
     if (!secureContext && !window.ogb) {
-      setSpeechError("Dictation is unavailable over plain HTTP. Open this app on localhost or HTTPS.");
+      setSpeechError("Dictation is unavailable over plain HTTP. Open this app on localhost or HTTPS (for example Tailscale).");
       return;
     }
     // multibot: bridge first (packaged app), Web Speech in plain browsers
@@ -711,11 +710,13 @@ setText("");
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        {/* Awatar pozostaje nad composerem, ale nie dostaje osobnego paska tła;
-            dzięki temu nie zasłania ostatniej wiadomości na telefonie. */}
-        <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
-          <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? stateForBot(bot)} size={44} motion={bot.busy ? "working" : mascotMotion?.kind ?? "none"} motionKey={bot.busy ? 1 : mascotMotion?.nonce ?? 0} animated />
-        </div>
+        {/* Awatar pojawia się tylko na czas aktywnej tury bota; gdy bot jest
+            bezczynny, nie zostawiamy po nim pustego paska nad composerem. */}
+        {bot.busy && (
+          <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
+            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state="thinking" motion="thinking-dots" motionKey={1} animated size={44} />
+          </div>
+        )}
         <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
