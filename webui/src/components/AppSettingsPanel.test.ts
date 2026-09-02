@@ -25,4 +25,12 @@ describe("mobile app settings parity", () => {
     expect(card).toContain("tabIndex={0}");
     expect(card).toContain('style={{ width: 44, height: 26, borderRadius: 13, display: "inline-block" }}');
   });
+
+  it("shows numbered update-log pages without next/previous shortcuts", () => {
+    expect(panel).toContain('<UpdateLog repository="E4B-labs/multibot-mobile"');
+    expect(panel).toContain("pageNumbers");
+    expect(panel).toContain("aria-label={polish ? \"Strony historii zmian\" : \"Update history pages\"}");
+    expect(panel).not.toContain("Nowsze");
+    expect(panel).not.toContain("Starsze");
+  });
 });
