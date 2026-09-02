@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, AlertTriangle, Loader2, Mic, UserRound } from "lucide-react";
+import { Bell, Check, AlertTriangle, Loader2, Mic } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { authFetch } from "@/lib/auth";
 
 import { useLanguage } from "@/lib/language";
-import { MOBILE_ONBOARDING_STEPS, nextMobileOnboardingStep, type MobileOnboardingStep } from "@/lib/mobileOnboarding";
 
 type CliTool = {
   id: string;
@@ -37,6 +36,7 @@ type DeviceInfo = {
 
 type Progress = { id?: string; step?: string; message?: string; done?: boolean; error?: string };
 const isElectron = navigator.userAgent.includes("Electron");
+const isMobileClient = Boolean(window.ReactNativeWebView);
 const inputClass = "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
 
 function StatusRow({ ok, warn, title, detail, action }: { ok: boolean; warn?: boolean; title: string; detail: string; action?: React.ReactNode }) {
@@ -92,94 +92,17 @@ async function readProgress(path: string, onProgress: (value: Progress) => void)
 // across restarts (it reloads the window itself); in a plain browser — or an
 // older shell without the bridge method — just navigate.
 function connectTo(url: string) {
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "host.connect", url }));
+    return;
+  }
   const save = window.ogb?.addRemoteHost;
   if (!save) return window.location.assign(url);
   save(url).catch(() => window.location.assign(url));
 }
 
-function MobileOnboarding({ onDone }: { onDone: () => void }) {
-  const polish = useLanguage() === "pl";
-  const [step, setStep] = useState<MobileOnboardingStep>("profile");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    track("mobile_onboarding_step", { step });
-  }, [step]);
-
-  const saveProfile = async () => {
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const response = await authFetch("/api/config", {
-        method: "PUT",
-        body: JSON.stringify({ profile: { name: name.trim(), email: normalizedEmail } }),
-      });
-      if (!response.ok) throw new Error(polish ? "Nie udało się zapisać profilu." : "Could not save your profile.");
-      if (normalizedEmail) identifyEmail(normalizedEmail);
-      setStep(nextMobileOnboardingStep(step));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const enablePush = () => {
-    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: "push.request" }));
-    setStep(nextMobileOnboardingStep(step));
-  };
-
-  const finish = () => {
-    window.localStorage.setItem("multibot.mobile.onboarding.done", "1");
-    setEmailGateDone("submitted");
-    track("mobile_onboarding_completed", { notifications: step === "ready" });
-    onDone();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app px-4 py-6 pt-[calc(var(--safe-top)+1.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)]">
-      <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja aplikacji mobilnej" : "Mobile setup"} className="w-full max-w-[460px] rounded-2xl border border-hairline/40 bg-panel p-6 shadow-2xl sm:p-8">
-        <div className="flex items-center justify-between">
-          <div className="text-[11px] font-bold tracking-[0.18em] text-accent">MULTIBOT / MOBILE</div>
-          <div className="flex gap-1.5" aria-label={`${MOBILE_ONBOARDING_STEPS.indexOf(step) + 1} of ${MOBILE_ONBOARDING_STEPS.length}`}>
-            {MOBILE_ONBOARDING_STEPS.map((item) => <span key={item} className={`h-1.5 w-7 rounded-full ${item === step || MOBILE_ONBOARDING_STEPS.indexOf(item) < MOBILE_ONBOARDING_STEPS.indexOf(step) ? "bg-accent" : "bg-raised"}`} />)}
-          </div>
-        </div>
-        {step === "profile" && <div className="flex flex-col">
-          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"><UserRound size={24} /></div>
-          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Twój profil" : "Your profile"}</h1>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Tak podpiszemy Twoje wiadomości we wspólnym workspace." : "This is how your messages will appear in the shared workspace."}</p>
-          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={polish ? "Twoje imię" : "Your name"} className={`${inputClass} mt-5`} />
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className={`${inputClass} mt-3`} />
-          <button onClick={() => void saveProfile()} disabled={!name.trim() || busy} className="mt-4 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white disabled:opacity-40">{busy ? (polish ? "Zapisywanie…" : "Saving…") : polish ? "Zapisz i dalej" : "Save and continue"}</button>
-          {error && <div role="alert" className="mt-3 text-[12px] text-danger">{error}</div>}
-        </div>}
-        {step === "notifications" && <div className="flex flex-col">
-          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"><Bell size={24} /></div>
-          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Nie przegap wiadomości" : "Stay in the loop"}</h1>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Włącz powiadomienia, aby host mógł powiadomić Cię, gdy bot potrzebuje uwagi." : "Enable notifications so your host can tell you when a bot needs your attention."}</p>
-          <button onClick={enablePush} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Włącz powiadomienia" : "Enable notifications"}</button>
-          <button onClick={() => setStep(nextMobileOnboardingStep(step))} className="mt-3 py-2 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Może później" : "Maybe later"}</button>
-        </div>}
-        {step === "ready" && <div className="flex flex-col">
-          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-[#00c97222] text-[#38d591]"><Check size={25} /></div>
-          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Gotowe" : "You’re ready"}</h1>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Telefon jest połączony z hostem. Możesz korzystać z tego samego workspace co na PC." : "Your phone is connected to the host. You can use the same workspace as on desktop."}</p>
-          <button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Otwórz workspace" : "Open workspace"}</button>
-        </div>}
-      </div>
-    </div>
-  );
-}
-
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const polish = useLanguage() === "pl";
-  if (Boolean(window.ReactNativeWebView)) return <MobileOnboarding onDone={onDone} />;
   const [entry, setEntry] = useState<"choice" | "server" | "connect">("choice");
   const [step, setStep] = useState(0);
   const [device, setDevice] = useState<DeviceInfo | null>(null);
@@ -291,18 +214,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const finish = () => {
     track("onboarding_completed", { engines_available: cli?.filter((item) => item.detected).length ?? -1, mic: perms?.mic ?? "n/a" });
+    if (isMobileClient) window.localStorage.setItem("multibot.mobile.onboarding.v2.done", "1");
     setEmailGateDone("submitted");
     onDone();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app py-6 pt-[calc(var(--safe-top)+1.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)]">
-      <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja MultiBota" : "Multibot setup"} className="mx-4 flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app px-4 py-4 pt-[calc(var(--safe-top)+1rem)] pb-[calc(var(--safe-bottom)+1rem)] sm:py-6 sm:pt-[calc(var(--safe-top)+1.5rem)] sm:pb-[calc(var(--safe-bottom)+1.5rem)]">
+      <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja MultiBota" : "Multibot setup"} className="flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-5 sm:p-8">
         {entry === "choice" && <div className="flex flex-col">
           <MausAvatar color="green" state="happy" size={72} />
           <h1 className="mt-4 text-[20px] font-semibold text-ink">MultiBot</h1>
           <p className="mt-1.5 text-[14px] text-ink-secondary">{polish ? "Zacznij od jednej z dwóch rzeczy." : "Start with one of two things."}</p>
-          <button onClick={() => setEntry("server")} className="mt-6 rounded-xl bg-raised p-4 text-left text-ink hover:bg-raised-hover"><div className="font-semibold">{polish ? "Postaw serwer" : "Set up a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{polish ? "To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć." : "This device will be the server. Bots and their memory live here."}</div></button>
+          <button onClick={() => setEntry("server")} className="mt-6 rounded-xl bg-raised p-4 text-left text-ink hover:bg-raised-hover"><div className="font-semibold">{polish ? "Skonfiguruj serwer" : "Set up a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{isMobileClient ? polish ? "Skonfiguruj hosta, do którego jest podłączony telefon." : "Configure the host this phone is connected to." : polish ? "To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć." : "This device will be the server. Bots and their memory live here."}</div></button>
           <button onClick={() => setEntry("connect")} className="mt-3 rounded-xl bg-raised p-4 text-left text-ink"><div className="font-semibold">{polish ? "Zaloguj się do serwera" : "Sign in to a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{polish ? "Serwer już gdzieś stoi. To urządzenie tylko się do niego łączy." : "A server already exists somewhere. This device only connects to it."}</div></button>
         </div>}
 
@@ -331,7 +255,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </div> : <div className="mt-5 flex items-center gap-2 text-ink-secondary"><Loader2 size={16} className="animate-spin" /> {polish ? "Skanowanie urządzenia…" : "Scanning device…"}</div>}
           {deviceError && <div className="mt-3 text-[12px] text-danger">{deviceError}</div>}
           <div className="mt-5 text-[14px] font-medium text-ink">{polish ? "Uruchomić tu serwer bota 24/7?" : "Keep a bot server running here 24/7?"}</div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <button onClick={() => { setServerWanted(true); void startProvision(); }} className="flex-1 rounded-lg bg-accent py-2.5 text-[14px] font-medium text-white">{polish ? "Tak, skonfiguruj" : "Yes, set it up"}</button>
             <button onClick={() => { setServerWanted(false); setStep(1); }} className="flex-1 rounded-lg bg-raised py-2.5 text-[14px] text-ink">{polish ? "Nie teraz" : "Not now"}</button>
           </div>
@@ -380,7 +304,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Uruchom MultiBot" : "Start using Multibot"}</button>
           <button onClick={finish} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Pomiń" : "Skip for now"}</button>
         </div>}
-        {step === 5 && <div className="flex flex-col"><h1 className="text-[18px] font-semibold text-ink">{polish ? "Gotowe" : "Ready"}</h1><p className="mt-2 text-[13.5px] text-ink-secondary">{polish ? "Workspace jest gotowy." : "Your workspace is ready."}</p><button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Uruchom MultiBot" : "Start using Multibot"}</button></div>}
+        {step === 5 && isMobileClient && <div className="flex flex-col">
+          <div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-accent/15 text-accent"><Bell size={24} /></div>
+          <h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Nie przegap wiadomości" : "Stay in the loop"}</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Włącz powiadomienia, aby host mógł powiadomić Cię, gdy bot potrzebuje uwagi." : "Enable notifications so your host can tell you when a bot needs your attention."}</p>
+          <button onClick={() => { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: "push.request" })); setStep(6); }} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Włącz powiadomienia" : "Enable notifications"}</button>
+          <button onClick={() => setStep(6)} className="mt-3 py-2 text-[12px] text-ink-secondary hover:text-ink">{polish ? "Może później" : "Maybe later"}</button>
+        </div>}
+        {step === 5 && !isMobileClient && <div className="flex flex-col"><h1 className="text-[18px] font-semibold text-ink">{polish ? "Gotowe" : "Ready"}</h1><p className="mt-2 text-[13.5px] text-ink-secondary">{polish ? "Workspace jest gotowy." : "Your workspace is ready."}</p><button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white">{polish ? "Uruchom MultiBot" : "Start using Multibot"}</button></div>}
+        {step === 6 && isMobileClient && <div className="flex flex-col"><div className="mt-8 flex size-12 items-center justify-center rounded-2xl bg-[#00c97222] text-[#38d591]"><Check size={25} /></div><h1 className="mt-5 text-[22px] font-semibold text-ink">{polish ? "Gotowe" : "You’re ready"}</h1><p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{polish ? "Telefon jest połączony z hostem. Możesz korzystać z tego samego workspace co na PC." : "Your phone is connected to the host. You can use the same workspace as desktop."}</p><button onClick={finish} className="mt-5 w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white">{polish ? "Otwórz workspace" : "Open workspace"}</button></div>}
       </div>
     </div>
   );

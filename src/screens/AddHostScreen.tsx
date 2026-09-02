@@ -7,17 +7,18 @@ import { saveHost } from "../lib/hosts";
 import { claimPairing, pairingCredential, parseQrPayload } from "../lib/pair";
 
 interface Props {
+  initialUrl?: string;
   onDone: (host: Host) => void;
   onCancel: () => void;
 }
 
 type Segment = "scan" | "manual";
 
-export default function AddHostScreen({ onDone, onCancel }: Props) {
-  const [segment, setSegment] = useState<Segment>("scan");
+export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
+  const [segment, setSegment] = useState<Segment>(initialUrl ? "manual" : "scan");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanLocked, setScanLocked] = useState(false);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl ?? "");
   const [code, setCode] = useState("");
   const [token, setToken] = useState("");
   const [name, setName] = useState("My phone");
