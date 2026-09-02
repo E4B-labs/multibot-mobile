@@ -15,7 +15,7 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
-import type { Host } from "./host-logic";
+import { hostAuthHeaders, type Host } from "./host-logic";
 import { getHostToken } from "./hosts";
 
 // Bot otwarty na ekranie w tej chwili. Powiadomienie o NIM byłoby szumem —
@@ -117,7 +117,7 @@ async function registerOnHost(host: Host): Promise<boolean> {
   try {
     const res = await fetch(`${host.url}/api/devices/${encodeURIComponent(host.id)}/push`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${hostToken}` },
+      headers: { "content-type": "application/json", ...hostAuthHeaders(hostToken) },
       // Świadomie bez `botId`: serwer filtruje urządzenia po bocie, a wpis bez
       // bota dostaje powiadomienia od wszystkich botów tego hosta.
       body: JSON.stringify({ token: expoToken }),

@@ -31,6 +31,9 @@ try {
   process.exit(1);
 }
 
+// Keep the generated module identical on Windows and POSIX runners.
+html = html.replace(/\r\n?/g, "\n");
+
 // Ikona i manifest PWA zostają w wyjściu jako osobne pliki, bo `viteSingleFile`
 // wkleja do środka tylko kod i style. W WebView nie robią nic (nie ma paska
 // adresu ani ekranu instalacji), a wskazują na pliki, których w paczce nie ma —

@@ -3,7 +3,9 @@
 // The QR + one-time-code flow below (parseQrPayload + claimPairing) follows
 // the contract documented in PLAN-CLIENTS.md C1: `POST /api/pair/start` on
 // the host generates a QR with `{ url, code }`; the phone scans it and calls
-// `POST /api/pair/claim { code, deviceName }` to get a token back. Both
+// `POST /api/pair/claim { code, deviceName }` to get a credential back. Modern
+// hosts include an identity access token; older hosts return the legacy token.
+// Both
 // endpoints are live (server/pairing.ts): the code expires in 5 minutes, is
 // single-use, and dies after 5 wrong guesses. AddHostScreen still degrades to
 // manual token entry on any failure, so an older host without pairing works
@@ -36,8 +38,16 @@ export function parseQrPayload(raw: string): QrPayload | null {
 }
 
 export interface ClaimResult {
-  token: string;
+  token?: string;
+  accessToken?: string;
+  authMode?: "v2" | "legacy";
   deviceId?: string;
+}
+
+export function pairingCredential(result: ClaimResult): { token: string; mode: "v2" | "legacy" } {
+  if (result.accessToken?.trim()) return { token: result.accessToken.trim(), mode: "v2" };
+  if (result.token?.trim()) return { token: result.token.trim(), mode: result.authMode === "v2" ? "v2" : "legacy" };
+  throw new Error("Pairing response did not contain an access token.");
 }
 
 /** Trades a scanned code for this host's token. Throws with a message the UI
@@ -55,5 +65,7 @@ export async function claimPairing(hostUrl: string, code: string, deviceName: st
         : `Pairing failed (HTTP ${res.status}).`,
     );
   }
-  return (await res.json()) as ClaimResult;
+  const result = (await res.json()) as ClaimResult;
+  pairingCredential(result);
+  return result;
 }

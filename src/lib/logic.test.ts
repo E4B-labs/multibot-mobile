@@ -4,14 +4,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, upsertHost, type Host } from "./host-logic.ts";
-import { parseQrPayload } from "./pair.ts";
+import { hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { pairingCredential, parseQrPayload, type ClaimResult } from "./pair.ts";
 
 test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
   assert.equal(normalizeHostUrl("https://host.ts.net/"), "https://host.ts.net");
   assert.equal(normalizeHostUrl(" http://127.0.0.1:8799// "), "http://127.0.0.1:8799");
   assert.throws(() => normalizeHostUrl("not-a-url"));
   assert.throws(() => normalizeHostUrl(""));
+  assert.throws(() => normalizeHostUrl("ftp.example://example.com"));
+});
+
+test("host bearer requests opt into protocol v2", () => {
+  assert.deepEqual(hostAuthHeaders("secret"), {
+    authorization: "Bearer secret",
+    "x-multibot-protocol": "2",
+  });
+});
+
+test("normalizeHostUrl accepts a bare host and rejects credentials", () => {
+  assert.equal(normalizeHostUrl("host.ts.net/"), "https://host.ts.net");
+  assert.throws(() => normalizeHostUrl("https://user:password@host.ts.net"));
+  assert.throws(() => normalizeHostUrl("https://"));
 });
 
 test("upsertHost replaces by id and sorts most-recently-used first", () => {
@@ -23,6 +37,27 @@ test("upsertHost replaces by id and sorts most-recently-used first", () => {
   const a2: Host = { id: "a", name: "A2", url: "https://a2", createdAt: 1, lastUsedAt: 3 };
   const replaced = upsertHost(list, a2);
   assert.deepEqual(replaced, [a2, b]);
+});
+
+test("resolveStartupHost opens the most recently used host", () => {
+  const hosts: Host[] = [
+    { id: "old", name: "Old", url: "https://old.example", createdAt: 1, lastUsedAt: 10 },
+    { id: "recent", name: "Recent", url: "https://recent.example", createdAt: 2, lastUsedAt: 20 },
+  ];
+  assert.equal(resolveStartupHost(hosts)?.id, "recent");
+  assert.equal(resolveStartupHost([]), null);
+});
+
+test("touchHost marks the selected host as recent without changing other records", () => {
+  const hosts: Host[] = [
+    { id: "old", name: "Old", url: "https://old.example", createdAt: 1, lastUsedAt: 10 },
+    { id: "recent", name: "Recent", url: "https://recent.example", createdAt: 2, lastUsedAt: 20 },
+  ];
+  const touched = touchHost(hosts, "old", 30);
+  assert.deepEqual(touched.map((host) => host.id), ["old", "recent"]);
+  assert.equal(touched[0].lastUsedAt, 30);
+  assert.equal(touched[1], hosts[1]);
+  assert.deepEqual(touchHost(hosts, "missing", 30), hosts);
 });
 
 test("removeHostById drops only the matching id", () => {
@@ -75,4 +110,12 @@ test("parseQrPayload accepts a bare URL and rejects garbage", () => {
   assert.equal(parseQrPayload("not a url or json"), null);
   assert.equal(parseQrPayload(""), null);
   assert.equal(parseQrPayload("{}"), null);
+});
+
+test("pairing prefers a modern access token and falls back to the legacy token", () => {
+  const modern = pairingCredential({ token: "legacy", accessToken: "v2-access", authMode: "v2" });
+  assert.deepEqual(modern, { token: "v2-access", mode: "v2" });
+
+  const legacy: ClaimResult = { token: "legacy", authMode: "legacy" };
+  assert.deepEqual(pairingCredential(legacy), { token: "legacy", mode: "legacy" });
 });

@@ -1,6 +1,15 @@
 // G2: one authenticated transport for every browser request.
 const TOKEN_KEY = "multibot.auth.token";
+const TOKEN_MODE_KEY = "multibot.auth.mode";
 const AUTH_REQUIRED = "multibot:auth-required";
+
+function notifyNativeAuth(token: string | null, mode: "legacy" | "v2" | null): void {
+  try {
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: "auth.changed", token, mode }));
+  } catch {
+    /* The desktop/browser build has no native bridge. */
+  }
+}
 
 export function getAuthToken(): string {
   try {
@@ -10,11 +19,17 @@ export function getAuthToken(): string {
   }
 }
 
-export function setAuthToken(token: string): void {
+export function setAuthToken(token: string, mode: "legacy" | "v2" = "legacy"): void {
   try {
     const value = token.trim();
-    if (value) localStorage.setItem(TOKEN_KEY, value);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (value) {
+      localStorage.setItem(TOKEN_KEY, value);
+      localStorage.setItem(TOKEN_MODE_KEY, mode);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_MODE_KEY);
+    }
+    notifyNativeAuth(value || null, value ? mode : null);
   } catch {
     /* storage can be disabled in private browsing */
   }
@@ -23,9 +38,24 @@ export function setAuthToken(token: string): void {
 export function clearAuthToken(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_MODE_KEY);
+    notifyNativeAuth(null, null);
   } catch {
     /* storage can be disabled in private browsing */
   }
+}
+
+export function getAuthMode(): "legacy" | "v2" | null {
+  try {
+    const mode = localStorage.getItem(TOKEN_MODE_KEY);
+    return mode === "legacy" || mode === "v2" ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setV2AuthToken(token: string): void {
+  setAuthToken(token, "v2");
 }
 
 export function bootstrapLocalAuthToken(): void {
@@ -41,6 +71,7 @@ export function authEventName(): string {
 
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
+  headers.set("x-multibot-protocol", "2");
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   const token = getAuthToken();
   if (token) headers.set("authorization", `Bearer ${token}`);

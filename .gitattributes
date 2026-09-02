@@ -1,3 +1,15 @@
-# multibot: skrypty shellowe zawsze LF — checkout na windows-latest robił CRLF
-# i wywalał test_termux_script (bash -n pada na \r).
+# Keep generated output reproducible across Windows and POSIX runners. Without
+# explicit eol rules, core.autocrlf changes WebView source before Vite bundles it.
+* text=auto
+*.cjs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.md text eol=lf
 *.sh text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

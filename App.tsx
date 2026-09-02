@@ -4,27 +4,28 @@ import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
-import { normalizeHostUrl } from "./src/lib/host-logic";
-import { deleteHost, listHosts } from "./src/lib/hosts";
+import { normalizeHostUrl, resolveStartupHost } from "./src/lib/host-logic";
+import { deleteHost, listHosts, markHostUsed, renameHost } from "./src/lib/hosts";
 import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import { fetchMobileRelease, installAndroidRelease, isNewerMobileRelease, type MobileRelease } from "./src/lib/mobile-release";
 import AddHostScreen from "./src/screens/AddHostScreen";
+import HostManagerScreen from "./src/screens/HostManagerScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
 // No navigation library: three screens, switched by local state. Adding
 // react-navigation for this would be an unrequested abstraction — bring it
 // in when a fourth screen or deep-link routing actually needs it.
 type Route =
-  | { name: "firstrun" }
+  | { name: "firstrun"; initialUrl?: string }
+  | { name: "hosts" }
   | { name: "webview"; host: Host; botId?: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "firstrun" });
   const [hosts, setHosts] = useState<Host[]>([]);
   const hostsRef = useRef<Host[]>([]);
-  // Przy pierwszym załadowaniu, jeśli istnieje już host, wchodzimy od razu w
-  // panel czatu zamiast do wyboru hostów — aplikacja obsługuje jednego hosta
-  // i nie wraca do listy.
+  // Przy pierwszym załadowaniu otwieramy ostatnio używanego hosta. Lista hostów
+  // pozostaje dostępna po cofnięciu z WebView i z jego paska hosta.
   const didInit = useRef(false);
   const [loading, setLoading] = useState(true);
 
@@ -40,17 +41,45 @@ export default function App() {
       setLoading(false);
       if (!didInit.current && h.length >= 1) {
         didInit.current = true;
-        setRoute({ name: "webview", host: h[0] });
+        const startup = resolveStartupHost(h);
+        if (startup) setRoute({ name: "webview", host: startup });
       }
     });
   }, []);
 
-  const changeHost = useCallback((hostId: string) => {
-    void deleteHost(hostId).finally(() => {
-      didInit.current = false;
-      setHosts([]);
-      setRoute({ name: "firstrun" });
+  const openHost = useCallback((host: Host) => {
+    const usedAt = Date.now();
+    const updated = { ...host, lastUsedAt: usedAt };
+    void markHostUsed(host.id, usedAt).catch(() => {}).then(() => {
+      setHosts((current) => [updated, ...current.filter((item) => item.id !== host.id)].sort((a, b) => b.lastUsedAt - a.lastUsedAt));
+      setRoute({ name: "webview", host: updated });
     });
+  }, []);
+
+  const openHostManager = useCallback(() => {
+    void refresh();
+    setRoute({ name: "hosts" });
+  }, [refresh]);
+
+  const removeStoredHost = useCallback(async (hostId: string) => {
+    await deleteHost(hostId);
+    const remaining = (await listHosts());
+    setHosts(remaining);
+    if (!remaining.length) {
+      didInit.current = false;
+      setRoute({ name: "firstrun" });
+    } else {
+      setRoute({ name: "hosts" });
+    }
+  }, []);
+
+  const renameStoredHost = useCallback(async (hostId: string, name: string) => {
+    await renameHost(hostId, name);
+    const updated = await listHosts();
+    setHosts(updated);
+    setRoute((current) => current.name === "webview" && current.host.id === hostId
+      ? { ...current, host: updated.find((host) => host.id === hostId) ?? current.host }
+      : current);
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -69,9 +98,8 @@ export default function App() {
 
     const openFromTarget = (target: ReturnType<typeof extractBotTarget>) => {
       if (!target.hostUrl) {
-        // Bez adresu hosta otwieramy zapisanego hosta (aplikacja obsługuje
-        // jednego) — ekran listy został usunięty.
-        const existing = hostsRef.current[0];
+        // Bez adresu hosta otwieramy ostatnio używanego hosta.
+        const existing = resolveStartupHost(hostsRef.current);
         // `botId` przekazujemy TAKŻE tutaj — serwer nie wysyła `hostUrl`, więc
         // bez tego tapnięcie otwierało aplikację, ale nie tego bota.
         if (existing) setRoute({ name: "webview", host: existing, botId: target.botId });
@@ -240,19 +268,36 @@ export default function App() {
           <View style={styles.splash} />
         )}
         {route.name === "firstrun" && !loading && (
-          // Pierwsze uruchomienie (brak hosta w SecureStore): od razu ekran
-          // dodawania. Po dodaniu hosta wchodzimy w WebView i już do niego
-          // nie wracamy — stąd brak osobnego ekranu listy.
+          // Brak zapisanych hostów: pierwszy krok to połączenie z hostem.
           <AddHostScreen
+            initialUrl={route.initialUrl}
             onDone={(host) => {
               refresh();
               setRoute({ name: "webview", host });
             }}
-            onCancel={() => {}}
+            onCancel={() => {
+              if (hosts.length) setRoute({ name: "hosts" });
+            }}
+          />
+        )}
+        {route.name === "hosts" && !loading && (
+          <HostManagerScreen
+            hosts={hosts}
+            activeHostId={hosts[0]?.id}
+            onAdd={() => setRoute({ name: "firstrun" })}
+            onSelect={openHost}
+            onRename={renameStoredHost}
+            onRemove={removeStoredHost}
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={() => changeHost(route.host.id)} onBotVisible={setVisibleBot} />
+          <WebViewScreen
+            host={route.host}
+            botId={route.botId}
+            onBack={openHostManager}
+            onConnectHost={(url) => setRoute({ name: "firstrun", initialUrl: url })}
+            onBotVisible={setVisibleBot}
+          />
         )}
       </SafeAreaView>
 

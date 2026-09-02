@@ -6,14 +6,16 @@ import { WebView, type WebViewNavigation } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import type { Host } from "../lib/host-logic";
-import { getHostToken } from "../lib/hosts";
+import { hostAuthHeaders, type Host } from "../lib/host-logic";
+import { saveHost, getHostAuthMode, getHostToken } from "../lib/hosts";
+import { ensurePushRegistered } from "../lib/push";
 import { WEBUI_HTML } from "../webui-html";
 
 interface Props {
   host: Host;
   botId?: string;
   onBack: () => void;
+  onConnectHost?: (url: string) => void;
   /** Który bot jest właśnie na ekranie — powłoka wycisza jego powiadomienia. */
   onBotVisible?: (botId: string | null) => void;
 }
@@ -38,7 +40,7 @@ async function probeHost(url: string, token: string): Promise<string | null> {
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
     const response = await fetch(`${url}/api/bots`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: hostAuthHeaders(token),
       signal: controller.signal,
     });
     if (response.status === 401) return "Serwer odpowiada, ale token jest nieprawidłowy.";
@@ -56,7 +58,7 @@ async function probeHost(url: string, token: string): Promise<string | null> {
   }
 }
 
-export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
+export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBotVisible }: Props) {
   const webRef = useRef<WebView>(null);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
@@ -74,20 +76,10 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
-  // natywnego paska) to domyślny ekran czatu. Przycisk „‹ Hosts" (collapse)
-  // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
-  const [expanded, setExpanded] = useState(true);
-
   useEffect(() => {
     let cancelled = false;
-    void getHostToken(host.id).then(async (token) => {
+    void Promise.all([getHostToken(host.id), getHostAuthMode(host.id)]).then(async ([token, authMode]) => {
       if (cancelled) return;
-      if (!token) {
-        // Wpis hosta bez tokenu: interfejs pokazałby ekran logowania albo nic.
-        setFailed("Dla tego hosta nie ma zapisanego tokenu — usuń go i dodaj ponownie.");
-        return;
-      }
       // Interfejs czyta token z `localStorage` pod kluczem `multibot.auth.token`
       // (webui/src/lib/auth.ts) i stamtąd bierze go każde wywołanie API oraz
       // każde połączenie WebSocket. Wcześniej trafiał tam z fragmentu adresu,
@@ -98,11 +90,13 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // `localStorage` działa, bo `baseUrl` niżej nadaje dokumentowi origin
       // hosta. To ten sam mechanizm sprawia, że `fetch("/api/...")` w środku
       // interfejsu trafia do serwera MultiBota, a nie w próżnię.
-      const problem = await probeHost(host.url, token);
-      if (cancelled) return;
-      if (problem) {
-        setFailed(problem);
-        return;
+      if (token) {
+        const problem = await probeHost(host.url, token);
+        if (cancelled) return;
+        if (problem) {
+          setFailed(problem);
+          return;
+        }
       }
       const deep = botId ? `location.hash = ${JSON.stringify(`#bot=${botId}`)};` : "";
       // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
@@ -112,7 +106,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
       setBootstrap(
         `try { document.documentElement.style.setProperty('--android-status-bar', '${STATUS_BAR_HEIGHT}px'); } catch (e) {}
-         try { localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); ${deep} } catch (e) {}
+         try { ${token ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(token)}); localStorage.setItem("multibot.auth.mode", ${JSON.stringify(authMode)});` : `localStorage.removeItem("multibot.auth.token"); localStorage.removeItem("multibot.auth.mode");`} ${deep} } catch (e) {}
          try { window.__APP_VERSION__ = ${JSON.stringify(appVersion)}; } catch (e) {}
          true;`,
       );
@@ -261,16 +255,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
 
   return (
     <View style={styles.flex}>
-      {!expanded && (
-        <View style={styles.header}>
-          <Text style={styles.headerName} numberOfLines={1}>
-            {host.name}
-          </Text>
-          <Pressable style={styles.headerToggle} onPress={() => setExpanded(true)}>
-            <Text style={styles.headerToggleText}>⤢</Text>
-          </Pressable>
-        </View>
-      )}
       <WebView
         ref={webRef}
         key={attempt}
@@ -284,7 +268,17 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data);
+            if (msg?.type === "host.connect" && typeof msg.url === "string") {
+              onConnectHost?.(msg.url);
+              return;
+            }
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            if (msg?.type === "auth.changed") {
+              const nextToken = typeof msg.token === "string" ? msg.token : null;
+              const nextMode = msg.mode === "v2" ? "v2" : "legacy";
+              void saveHost({ ...host, lastUsedAt: Date.now() }, nextToken, nextToken ? nextMode : null);
+            }
+            if (msg?.type === "push.request") void ensurePushRegistered(host);
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
               setCameraReady(false);
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
@@ -294,7 +288,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
             /* interfejs wysyła też inne wiadomości — nie nasza sprawa */
           }
         }}
-        style={[styles.flex, expanded ? { paddingTop: STATUS_BAR_HEIGHT } : undefined]}
+        style={[styles.flex, { paddingTop: STATUS_BAR_HEIGHT }]}
         // The harness UI — including the bot-computer noVNC iframe reached
         // through /api/bots/:id/computer/vnc/... — needs JS, DOM storage
         // (for the access-token bootstrap above) and inline media; none of
@@ -366,31 +360,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: "#070707" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#070707", padding: 24, gap: 10 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0f0f0f",
-    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 8) : 8,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1c1c1c",
-  },
-  headerBack: { paddingHorizontal: 12, paddingVertical: 6 },
-  headerBackText: { color: "#fcfcfc", fontSize: 24, fontWeight: "700" },
-  headerName: { flex: 1, color: "#fcfcfc", fontSize: 15, fontWeight: "600", marginLeft: 4 },
-  headerToggle: { paddingHorizontal: 12, paddingVertical: 6 },
-  headerToggleText: { color: "#fcfcfc99", fontSize: 18 },
-  collapseButton: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "#070707cc",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  collapseText: { color: "#fcfcfc", fontSize: 13 },
   errorTitle: { color: "#fcfcfc", fontSize: 18, fontWeight: "700" },
   errorBody: { color: "#fcfcfc99", fontSize: 14, textAlign: "center" },
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },

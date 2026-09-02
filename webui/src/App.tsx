@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { StoreProvider, useStore } from "@/state/store";
 import { Onboarding } from "@/components/Onboarding";
@@ -26,51 +26,72 @@ import { MailPanel } from "@/components/MailPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
-import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
-// multibot (A1): logowanie Google — pola konfiguracji i cała droga do sesji
-import { fetchAuthStatus, renderGoogleButton, type GoogleLoginConfig } from "@/lib/googleLogin";
+import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken, setV2AuthToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const language = useLanguage();
-  const polish = language === "pl";
+  const polish = useLanguage() === "pl";
+  type Mode = "login" | "register" | "host" | "recover" | "legacy";
+  type Status = { server?: { configured: boolean; name: string; serverId: string }; session?: boolean };
+  const [status, setStatus] = useState<Status | null>(null);
+  const [mode, setMode] = useState<Mode>("login");
+  const [serverName, setServerName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [serverPassword, setServerPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Google pokazujemy tylko wtedy, gdy serwer ma czym się logować — inaczej
-  // ekran obiecywałby przycisk, który i tak skończyłby błędem.
-  const [google, setGoogle] = useState<GoogleLoginConfig | null>(null);
-  const googleSlot = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let alive = true;
-    void fetchAuthStatus()
-      .then((status) => {
+    void fetch("/api/auth/status")
+      .then((response) => response.json() as Promise<Status>)
+      .then((next) => {
         if (!alive) return;
-        if (status.session) onLogin(); // ciasteczko z poprzedniego logowania
-        else if (status.google.configured) setGoogle(status.google);
+        setStatus(next);
+        if (next.session) onLogin();
+        else if (!next.server?.configured) setMode("host");
       })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [onLogin]);
+      .catch(() => setError(polish ? "Nie można odczytać stanu serwera." : "Could not read server status."));
+    return () => { alive = false; };
+  }, [onLogin, polish]);
 
-  useEffect(() => {
-    if (!google || !googleSlot.current) return;
-    void renderGoogleButton(googleSlot.current, google, (e) => {
-      if (e) setError(e.message);
-      else onLogin();
-    }).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [google, onLogin]);
   const submit = async () => {
-    if (!token.trim() || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
-    setAuthToken(token);
     try {
-      const response = await authFetch("/api/instances");
-      if (!response.ok) throw new Error(response.status === 401 ? (polish ? "Nieprawidłowy token dostępu" : "Invalid access token") : polish ? "Serwer niedostępny" : "Server unavailable");
+      if (mode === "legacy") {
+        if (!token.trim()) return;
+        setAuthToken(token, "legacy");
+        const response = await authFetch("/api/instances");
+        if (!response.ok) throw new Error(response.status === 401 ? (polish ? "Nieprawidłowy token dostępu" : "Invalid access token") : polish ? "Serwer niedostępny" : "Server unavailable");
+        onLogin();
+        return;
+      }
+      let response: Response;
+      if (mode === "host") {
+        if (!status?.server?.configured) {
+          response = await authFetch("/api/setup/server", { method: "POST", body: JSON.stringify({ name: serverName, serverPassword }) });
+          if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? `Setup failed (${response.status})`);
+        }
+        setMode("register");
+        response = await authFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, displayName, serverPassword, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else if (mode === "register") {
+        response = await authFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, displayName, serverPassword, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else if (mode === "recover") {
+        response = await authFetch("/api/auth/recover", { method: "POST", body: JSON.stringify({ username, recoveryCode, newPassword: password, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else {
+        if (!status?.server?.configured) throw new Error(polish ? "Ten host nie jest jeszcze skonfigurowany." : "This host is not configured yet.");
+        response = await authFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password, deviceName: navigator.userAgent.slice(0, 80) }) });
+      }
+      const result = await response.json().catch(() => ({})) as { accessToken?: string; recoveryCode?: string; error?: string };
+      if (!response.ok || !result.accessToken) throw new Error(result.error ?? `Authentication failed (${response.status})`);
+      setV2AuthToken(result.accessToken);
+      if (result.recoveryCode) window.alert(`${polish ? "Zapisz recovery code. Pokażemy go tylko raz:" : "Save recovery code. It is shown once:"}\n\n${result.recoveryCode}`);
       onLogin();
     } catch (e) {
       clearAuthToken();
@@ -79,50 +100,28 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
       setBusy(false);
     }
   };
+
+  const configured = status?.server?.configured ?? false;
+  const field = "mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink outline-none focus:border-hairline";
   return (
-    <main className="multibot-login flex h-full min-h-screen items-center justify-center bg-app px-5 text-ink">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-        className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl"
-      >
-        <h1 className="text-[18px] font-semibold">{polish ? "Zaloguj się" : "Sign in"}</h1>
-        {google && (
-          <>
-            <p className="mt-1 text-[13px] text-ink-secondary">
-              {polish ? "Zaloguj się kontem Google właściciela serwera." : "Sign in with the owner's Google account."}
-            </p>
-            <div ref={googleSlot} className="mt-4 flex justify-center" />
-            <div className="mt-4 flex items-center gap-2 text-[11px] text-ink-secondary">
-              <span className="h-px flex-1 bg-hairline/40" />
-              {polish ? "albo token" : "or token"}
-              <span className="h-px flex-1 bg-hairline/40" />
-            </div>
-          </>
-        )}
-        {!google && (
-          <p className="mt-1 text-[13px] text-ink-secondary">{polish ? "Wpisz token dostępu do tego serwera MultiBot." : "Enter access token for this Multibot server."}</p>
-        )}
-        <input
-          autoFocus
-          type="password"
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-          placeholder={polish ? "Token dostępu" : "Access token"}
-          aria-label={polish ? "Token dostępu" : "Access token"}
-          autoComplete="current-password"
-          className="mt-4 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink outline-none focus:border-hairline"
-        />
-        <button
-          type="submit"
-          disabled={busy || !token.trim()}
-          className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50"
-        >
-          {busy ? (polish ? "Sprawdzanie…" : "Checking…") : polish ? "Zaloguj się" : "Sign in"}
-        </button>
-        {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
+    <main className="multibot-login flex h-full min-h-screen items-center justify-center overflow-y-auto bg-app px-5 py-6 text-ink">
+      <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl">
+        <div className="mb-4 text-[11px] font-bold tracking-[0.18em] text-accent">MULTIBOT / HOST</div>
+        <h1 className="text-[18px] font-semibold">{mode === "host" && !configured ? polish ? "Utwórz serwer" : "Create server" : configured ? (polish ? "Zaloguj się do serwera" : "Sign in to server") : polish ? "Konfiguracja hosta" : "Host setup"}</h1>
+        <p className="mt-1 text-[13px] text-ink-secondary">{status?.server?.name ?? (polish ? "Bezpieczny wspólny workspace" : "Secure shared workspace")}</p>
+        {mode === "host" && !configured && <input value={serverName} onChange={(event) => setServerName(event.target.value)} placeholder={polish ? "Nazwa serwera" : "Server name"} aria-label={polish ? "Nazwa serwera" : "Server name"} className={field} autoFocus />}
+        {mode !== "legacy" && <>
+          {(mode === "register" || mode === "host") && <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder={polish ? "Nazwa profilu" : "Display name"} aria-label="Display name" className={field} />}
+          <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" aria-label="Username" autoComplete="username" className={field} autoFocus={mode === "login" || mode === "recover"} />
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "recover" ? polish ? "Nowe hasło profilu" : "New profile password" : polish ? "Hasło profilu" : "Profile password"} aria-label="Profile password" autoComplete={mode === "login" ? "current-password" : "new-password"} className={field} />
+          {(mode === "host" || mode === "register") && <input type="password" value={serverPassword} onChange={(event) => setServerPassword(event.target.value)} placeholder={polish ? "Hasło serwera" : "Server password"} aria-label="Server password" autoComplete="off" className={field} />}
+          {mode === "recover" && <input value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} placeholder={polish ? "Jednorazowy recovery code" : "One-time recovery code"} aria-label="Recovery code" autoComplete="one-time-code" className={field} />}
+        </>}
+        {mode === "legacy" && <input autoFocus type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={polish ? "Stary token migracyjny" : "Legacy migration token"} aria-label={polish ? "Stary token migracyjny" : "Legacy migration token"} autoComplete="current-password" className={field} />}
+        <button type="submit" disabled={busy} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50">{busy ? (polish ? "Praca…" : "Working…") : mode === "host" ? polish ? "Utwórz serwer i profil" : "Create server and profile" : mode === "register" ? polish ? "Utwórz profil" : "Create profile" : mode === "recover" ? polish ? "Odzyskaj konto" : "Recover account" : mode === "legacy" ? polish ? "Użyj starego tokenu" : "Use legacy token" : polish ? "Zaloguj się" : "Sign in"}</button>
+        {configured && mode !== "legacy" && <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-ink-secondary"><button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="hover:text-ink">{mode === "login" ? polish ? "Utwórz profil" : "Create profile" : polish ? "Mam już profil" : "I have an account"}</button><button type="button" onClick={() => setMode("recover")} className="hover:text-ink">{polish ? "Odzyskaj" : "Recover"}</button></div>}
+        <button type="button" onClick={() => setMode(mode === "legacy" ? "login" : "legacy")} className="mt-4 text-[12px] text-ink-secondary hover:text-ink">{mode === "legacy" ? polish ? "Nowe logowanie" : "New sign-in" : polish ? "Mam stary token" : "I have a legacy token"}</button>
+        {error && <div role="alert" className="mt-3 text-[12px] text-danger">{error}</div>}
       </form>
     </main>
   );
@@ -241,10 +240,8 @@ export default function App() {
   const electronLocal =
     isElectron && !window.__MULTIBOT_REMOTE__ && ["127.0.0.1", "localhost"].includes(window.location.hostname);
   const configured = emailGateDone() || (Boolean(getAuthToken()) && !electronLocal);
-  // Na telefonie `isElectron` jest fałszem, więc `electronLocal` nigdy się nie
-  // zapala: zapisany token nadal wycisza onboarding, tak jak przed synchronizacją.
-  // Powłoka mobilna wstawia go do localStorage przed startem strony, więc panel
-  // „postaw serwer" wisiałby nad zalogowanym czatem jako drugie logowanie.
+  // Mobile completes host setup and authentication before mounting this workspace.
+  // Do not cover that authenticated workspace with the desktop setup overlay.
   const [gated, setGated] = useState(() => !configured);
   // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
   // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.
@@ -258,11 +255,6 @@ export default function App() {
     window.addEventListener(authEventName(), onAuthRequired);
     return () => window.removeEventListener(authEventName(), onAuthRequired);
   }, []);
-  // Zalogowanie gasi też bramkę: skoro serwer przyjął token (albo ciasteczko,
-  // albo Google), to istnieje i jest skonfigurowany — onboarding „postaw
-  // serwer" nie ma po nim sensu. Bez tego świeża przeglądarka liczyła
-  // `configured` PRZED zalogowaniem (token jeszcze pusty), więc zaraz po
-  // wpisaniu tokenu nad aplikacją wyskakiwał drugi panel logowania.
   if (!authenticated) return <LoginScreen onLogin={() => { setAuthenticated(true); setGated(false); }} />;
   return (
     <StoreProvider>

@@ -15,6 +15,7 @@ import { authFetch, setAuthToken } from "@/lib/auth";
 import { engineOnline } from "@/lib/engineStatus";
 import { languageLabel, setLanguage, useLanguage, type Language } from "@/lib/language";
 import { SkinPicker } from "./SkinPicker";
+import { BotSettingsCard } from "./BotSettingsCard";
 import { applyMotionMode, readMotionMode, type MotionMode } from "@/lib/motion";
 
 const slug = (value: string) =>
@@ -988,6 +989,7 @@ export function AppSettingsPanel() {
                   <ProfileFields />
                 </div>
               </div>
+              <BotSettingsCard polish={polish} />
               <div className="mt-4 rounded-xl bg-card p-4">
                 <div className="text-[15px] font-medium text-ink">{polish ? "Skórka" : "Skin"}</div>
                 <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Kolory interfejsu zapisują się lokalnie." : "Interface colors are stored locally."}</div>
