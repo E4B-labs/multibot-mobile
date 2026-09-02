@@ -12,4 +12,10 @@ describe("mobile host authentication", () => {
     expect(app).toContain('setMode("register")');
     expect(app).not.toContain("Finish setup on the PC or VPS that runs MultiBot");
   });
+
+  it("does not block an authenticated mobile client with the desktop onboarding overlay", () => {
+    expect(app).toContain("const [gated, setGated] = useState(() => !configured);");
+    expect(app).toContain("setAuthenticated(true); setGated(false);");
+    expect(app).not.toContain("isMobileClient ? !mobileOnboardingDone()");
+  });
 });
