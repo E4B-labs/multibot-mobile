@@ -76,11 +76,6 @@ export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBo
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
-  // natywnego paska) to domyślny ekran czatu. Przycisk „‹ Hosts" (collapse)
-  // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
-  const [expanded, setExpanded] = useState(true);
-
   useEffect(() => {
     let cancelled = false;
     void Promise.all([getHostToken(host.id), getHostAuthMode(host.id)]).then(async ([token, authMode]) => {
@@ -260,16 +255,6 @@ export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBo
 
   return (
     <View style={styles.flex}>
-      {!expanded && (
-        <View style={styles.header}>
-          <Text style={styles.headerName} numberOfLines={1}>
-            {host.name}
-          </Text>
-          <Pressable style={styles.headerToggle} onPress={() => setExpanded(true)}>
-            <Text style={styles.headerToggleText}>⤢</Text>
-          </Pressable>
-        </View>
-      )}
       <WebView
         ref={webRef}
         key={attempt}
@@ -303,7 +288,7 @@ export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBo
             /* interfejs wysyła też inne wiadomości — nie nasza sprawa */
           }
         }}
-        style={[styles.flex, expanded ? { paddingTop: STATUS_BAR_HEIGHT } : undefined]}
+        style={[styles.flex, { paddingTop: STATUS_BAR_HEIGHT }]}
         // The harness UI — including the bot-computer noVNC iframe reached
         // through /api/bots/:id/computer/vnc/... — needs JS, DOM storage
         // (for the access-token bootstrap above) and inline media; none of
@@ -368,11 +353,6 @@ export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBo
           </View>
         </View>
       )}
-      {expanded && (
-        <Pressable accessibilityRole="button" style={styles.hostSwitcher} onPress={onBack}>
-          <Text style={styles.hostSwitcherText}>Hosts</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -380,31 +360,6 @@ export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBo
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: "#070707" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#070707", padding: 24, gap: 10 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0f0f0f",
-    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 8) : 8,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1c1c1c",
-  },
-  headerBack: { paddingHorizontal: 12, paddingVertical: 6 },
-  headerBackText: { color: "#fcfcfc", fontSize: 24, fontWeight: "700" },
-  headerName: { flex: 1, color: "#fcfcfc", fontSize: 15, fontWeight: "600", marginLeft: 4 },
-  headerToggle: { paddingHorizontal: 12, paddingVertical: 6 },
-  headerToggleText: { color: "#fcfcfc99", fontSize: 18 },
-  collapseButton: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "#070707cc",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  collapseText: { color: "#fcfcfc", fontSize: 13 },
   errorTitle: { color: "#fcfcfc", fontSize: 18, fontWeight: "700" },
   errorBody: { color: "#fcfcfc99", fontSize: 14, textAlign: "center" },
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
@@ -421,6 +376,4 @@ const styles = StyleSheet.create({
   cameraButtonText: { color: "#070707", fontWeight: "700" },
   cameraCancel: { borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: "#2f2f2f" },
   cameraCancelText: { color: "#fcfcfc", fontWeight: "600" },
-  hostSwitcher: { position: "absolute", top: Platform.OS === "android" ? (StatusBar.currentHeight ?? 8) + 8 : 12, left: 10, backgroundColor: "#070707cc", borderColor: "#ffffff22", borderRadius: 9, borderWidth: 1, minHeight: 44, justifyContent: "center", paddingHorizontal: 13 },
-  hostSwitcherText: { color: "#fcfcfc", fontSize: 13, fontWeight: "700" },
 });

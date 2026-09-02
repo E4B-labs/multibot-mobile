@@ -12,10 +12,10 @@ interface Props {
   onCancel: () => void;
 }
 
-type Segment = "scan" | "manual";
+type Step = "address" | "scan" | "pairing";
 
 export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
-  const [segment, setSegment] = useState<Segment>(initialUrl ? "manual" : "scan");
+  const [step, setStep] = useState<Step>("address");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanLocked, setScanLocked] = useState(false);
   const [url, setUrl] = useState(initialUrl ?? "");
@@ -57,9 +57,9 @@ export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
       return;
     }
     if (!payload.code) {
-      // Bare URL QR, no pairing code — drop it into the manual form.
+      // Bare URL QR, no pairing code — drop it into the address step.
       setUrl(payload.url);
-      setSegment("manual");
+      setStep("address");
       setScanLocked(false);
       return;
     }
@@ -75,11 +75,15 @@ export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
       // backendu. Cofamy do ręcznego wpisania tokena, zamiast zablokować przepływ.
       setUrl(payload.url);
       setError(e instanceof Error ? e.message : "Pairing failed");
-      setSegment("manual");
+      setStep("pairing");
     } finally {
       setBusy(false);
       setScanLocked(false);
     }
+  }
+
+  async function handleContinue() {
+    await finish(url, null);
   }
 
   async function handleConnect() {
@@ -104,27 +108,47 @@ export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.eyebrow}>MULTIBOT / CONNECT</Text>
-      <Text style={styles.title}>Connect to a host</Text>
-      <Text style={styles.intro}>Your bots stay on the host. This phone keeps the connection and opens the same workspace as desktop.</Text>
+      {step === "address" && (
+        <View>
+          <Text style={styles.eyebrow}>MULTIBOT / CONNECT</Text>
+          <Text style={styles.title}>Connect to a host</Text>
+          <Text style={styles.intro}>First enter the host address. The next step will ask for your profile and server password.</Text>
+          <Text style={styles.label}>Host address</Text>
+          <TextInput
+            style={styles.input}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://your-host.ts.net"
+            placeholderTextColor="#fcfcfc55"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            autoFocus={!initialUrl}
+          />
+          {error && <Text style={styles.error}>{error}</Text>}
+          <Pressable
+            style={[styles.primaryButton, busy && styles.primaryDisabled]}
+            disabled={busy || !url.trim()}
+            onPress={() => void handleContinue()}
+          >
+            {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Continue</Text>}
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setStep("scan")}>
+            <Text style={styles.linkText}>Scan QR instead</Text>
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setStep("pairing")}>
+            <Text style={styles.linkText}>Use pairing code or access token</Text>
+          </Pressable>
+          <Pressable style={styles.cancelButton} onPress={onCancel}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
 
-      <View style={styles.segment}>
-        <Pressable
-          style={[styles.segmentButton, segment === "scan" && styles.segmentActive]}
-          onPress={() => setSegment("scan")}
-        >
-          <Text style={[styles.segmentText, segment === "scan" && styles.segmentTextActive]}>Scan QR</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.segmentButton, segment === "manual" && styles.segmentActive]}
-          onPress={() => setSegment("manual")}
-        >
-          <Text style={[styles.segmentText, segment === "manual" && styles.segmentTextActive]}>Manual</Text>
-        </Pressable>
-      </View>
-
-      {segment === "scan" ? (
+      {step === "scan" ? (
         <View style={styles.scanWrap}>
+          <Text style={styles.eyebrow}>MULTIBOT / CONNECT</Text>
+          <Text style={styles.title}>Scan host QR</Text>
           {!permission ? (
             <ActivityIndicator color="#fcfcfc" />
           ) : !permission.granted ? (
@@ -143,12 +167,21 @@ export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
             />
           )}
           {busy && <ActivityIndicator style={styles.scanSpinner} color="#fcfcfc" />}
-          <Pressable style={styles.linkButton} onPress={() => setSegment("manual")}>
-            <Text style={styles.linkText}>Enter address &amp; token manually</Text>
+          <Pressable style={styles.linkButton} onPress={() => setStep("address")}>
+            <Text style={styles.linkText}>Enter host address</Text>
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setStep("pairing")}>
+            <Text style={styles.linkText}>Use pairing code or access token</Text>
+          </Pressable>
+          <Pressable style={styles.cancelButton} onPress={onCancel}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </Pressable>
         </View>
-      ) : (
+      ) : step === "pairing" ? (
         <View style={styles.manualWrap}>
+          <Text style={styles.eyebrow}>MULTIBOT / CONNECT</Text>
+          <Text style={styles.title}>Pair with a host</Text>
+          <Text style={styles.intro}>Use this only when the host showed you a QR code, pairing code, or access token.</Text>
           <Text style={styles.label}>Host address</Text>
           <TextInput
             style={styles.input}
@@ -181,24 +214,21 @@ export default function AddHostScreen({ initialUrl, onDone, onCancel }: Props) {
             secureTextEntry
           />
           <Text style={styles.hint}>Leave the token empty to sign in inside the shared MultiBot screen.</Text>
+          <Text style={styles.label}>Device name</Text>
+          <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor="#fcfcfc55" />
+          {error && <Text style={styles.error}>{error}</Text>}
+          <Pressable
+            style={[styles.primaryButton, busy && styles.primaryDisabled]}
+            disabled={busy || !url.trim()}
+            onPress={() => void handleConnect()}
+          >
+            {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Connect</Text>}
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setStep("address")}>
+            <Text style={styles.linkText}>Back to host address</Text>
+          </Pressable>
         </View>
-      )}
-
-      <Text style={styles.label}>Device name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor="#fcfcfc55" />
-
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      <Pressable
-        style={[styles.primaryButton, busy && styles.primaryDisabled]}
-        disabled={busy || !url.trim()}
-        onPress={() => void handleConnect()}
-      >
-        {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Connect</Text>}
-      </Pressable>
-      <Pressable style={styles.cancelButton} onPress={onCancel}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </Pressable>
+      ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -210,11 +240,6 @@ const styles = StyleSheet.create({
   eyebrow: { color: "#38d591", fontSize: 11, fontWeight: "800", letterSpacing: 1.8, marginTop: 4 },
   title: { color: "#fcfcfc", fontSize: 28, fontWeight: "800", letterSpacing: -0.4, marginBottom: 2, marginTop: 2 },
   intro: { color: "#fcfcfc99", fontSize: 14, lineHeight: 20, marginBottom: 6 },
-  segment: { flexDirection: "row", backgroundColor: "#151515", borderRadius: 10, padding: 4 },
-  segmentButton: { alignItems: "center", borderRadius: 8, flex: 1, justifyContent: "center", minHeight: 44 },
-  segmentActive: { backgroundColor: "#fcfcfc" },
-  segmentText: { color: "#fcfcfc99", fontSize: 15, fontWeight: "600" },
-  segmentTextActive: { color: "#070707" },
   scanWrap: { gap: 12 },
   scanPrompt: { gap: 12 },
   camera: { height: 260, borderRadius: 12, overflow: "hidden" },

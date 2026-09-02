@@ -7,8 +7,6 @@ import { emailGateDone, initAnalytics } from "@/lib/analytics";
 // zostaje lokalnie, bo wspólny moduł na jedno wyrażenie to więcej pliku niż
 // treści. ponytail: wyciągnąć do `src/lib/`, gdyby doszła czwarta.
 const isElectron = navigator.userAgent.includes("Electron");
-const isMobileClient = Boolean(window.ReactNativeWebView);
-const mobileOnboardingDone = () => window.localStorage.getItem("multibot.mobile.onboarding.v2.done") === "1";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatView } from "@/components/ChatView";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -242,10 +240,9 @@ export default function App() {
   const electronLocal =
     isElectron && !window.__MULTIBOT_REMOTE__ && ["127.0.0.1", "localhost"].includes(window.location.hostname);
   const configured = emailGateDone() || (Boolean(getAuthToken()) && !electronLocal);
-  // Na mobile token otwiera hosta, ale nie kończy onboardingu roli klienta.
-  // Stan końca jest lokalny dla originu hosta, więc każdy host może przejść go
-  // niezależnie i tylko raz.
-  const [gated, setGated] = useState(() => isMobileClient ? !mobileOnboardingDone() : !configured);
+  // Mobile completes host setup and authentication before mounting this workspace.
+  // Do not cover that authenticated workspace with the desktop setup overlay.
+  const [gated, setGated] = useState(() => !configured);
   // Sesja z logowania Google siedzi w ciasteczku HttpOnly, więc `getAuthToken`
   // jej nie widzi — `LoginScreen` sam sprawdza `/api/auth/status` i wpuszcza.
   const [authenticated, setAuthenticated] = useState(() => Boolean(getAuthToken()));
@@ -258,7 +255,7 @@ export default function App() {
     window.addEventListener(authEventName(), onAuthRequired);
     return () => window.removeEventListener(authEventName(), onAuthRequired);
   }, []);
-  if (!authenticated) return <LoginScreen onLogin={() => { setAuthenticated(true); setGated(isMobileClient && !mobileOnboardingDone()); }} />;
+  if (!authenticated) return <LoginScreen onLogin={() => { setAuthenticated(true); setGated(false); }} />;
   return (
     <StoreProvider>
       <Shell />
