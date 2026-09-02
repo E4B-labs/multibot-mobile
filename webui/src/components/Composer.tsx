@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
+import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Plug, SlidersHorizontal, Square, Wand2, Wrench, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -94,7 +94,7 @@ const SLASH_TYPE: Record<SlashKind, [string, string]> = {
 const SLASH_ICON: Record<SlashKind, ReactNode> = {
   action: <SlidersHorizontal size={15} />,
   skill: <Wand2 size={15} />,
-  plugin: <Puzzle size={15} />,
+  plugin: <Plug size={15} />,
   agent: <Wrench size={15} />,
   routine: <CalendarClock size={15} />,
 };
