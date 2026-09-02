@@ -15,6 +15,7 @@ interface Props {
   host: Host;
   botId?: string;
   onBack: () => void;
+  onConnectHost?: (url: string) => void;
   /** Który bot jest właśnie na ekranie — powłoka wycisza jego powiadomienia. */
   onBotVisible?: (botId: string | null) => void;
 }
@@ -57,7 +58,7 @@ async function probeHost(url: string, token: string): Promise<string | null> {
   }
 }
 
-export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
+export default function WebViewScreen({ host, botId, onBack, onConnectHost, onBotVisible }: Props) {
   const webRef = useRef<WebView>(null);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
@@ -282,6 +283,10 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data);
+            if (msg?.type === "host.connect" && typeof msg.url === "string") {
+              onConnectHost?.(msg.url);
+              return;
+            }
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
             if (msg?.type === "auth.changed") {
               const nextToken = typeof msg.token === "string" ? msg.token : null;

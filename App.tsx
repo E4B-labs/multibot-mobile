@@ -16,7 +16,7 @@ import WebViewScreen from "./src/screens/WebViewScreen";
 // react-navigation for this would be an unrequested abstraction — bring it
 // in when a fourth screen or deep-link routing actually needs it.
 type Route =
-  | { name: "firstrun" }
+  | { name: "firstrun"; initialUrl?: string }
   | { name: "hosts" }
   | { name: "webview"; host: Host; botId?: string };
 
@@ -270,6 +270,7 @@ export default function App() {
         {route.name === "firstrun" && !loading && (
           // Brak zapisanych hostów: pierwszy krok to połączenie z hostem.
           <AddHostScreen
+            initialUrl={route.initialUrl}
             onDone={(host) => {
               refresh();
               setRoute({ name: "webview", host });
@@ -290,7 +291,13 @@ export default function App() {
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={openHostManager} onBotVisible={setVisibleBot} />
+          <WebViewScreen
+            host={route.host}
+            botId={route.botId}
+            onBack={openHostManager}
+            onConnectHost={(url) => setRoute({ name: "firstrun", initialUrl: url })}
+            onBotVisible={setVisibleBot}
+          />
         )}
       </SafeAreaView>
 

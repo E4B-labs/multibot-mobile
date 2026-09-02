@@ -8,7 +8,7 @@ import { emailGateDone, initAnalytics } from "@/lib/analytics";
 // treści. ponytail: wyciągnąć do `src/lib/`, gdyby doszła czwarta.
 const isElectron = navigator.userAgent.includes("Electron");
 const isMobileClient = Boolean(window.ReactNativeWebView);
-const mobileOnboardingDone = () => window.localStorage.getItem("multibot.mobile.onboarding.done") === "1";
+const mobileOnboardingDone = () => window.localStorage.getItem("multibot.mobile.onboarding.v2.done") === "1";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatView } from "@/components/ChatView";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -33,10 +33,11 @@ import { useLanguage } from "@/lib/language";
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const polish = useLanguage() === "pl";
-  type Mode = "login" | "register" | "recover" | "legacy";
+  type Mode = "login" | "register" | "host" | "recover" | "legacy";
   type Status = { server?: { configured: boolean; name: string; serverId: string }; session?: boolean };
   const [status, setStatus] = useState<Status | null>(null);
   const [mode, setMode] = useState<Mode>("login");
+  const [serverName, setServerName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [serverPassword, setServerPassword] = useState("");
@@ -54,6 +55,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         if (!alive) return;
         setStatus(next);
         if (next.session) onLogin();
+        else if (!next.server?.configured) setMode("host");
       })
       .catch(() => setError(polish ? "Nie można odczytać stanu serwera." : "Could not read server status."));
     return () => { alive = false; };
@@ -72,14 +74,22 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         onLogin();
         return;
       }
-      if (!status?.server?.configured) throw new Error(polish ? "Ten host nie jest jeszcze skonfigurowany. Dokończ konfigurację na komputerze lub VPS." : "This host is not configured yet. Finish setup on the PC or VPS that runs MultiBot.");
-      const endpoint = mode === "register" ? "/api/auth/register" : mode === "recover" ? "/api/auth/recover" : "/api/auth/login";
-      const body = mode === "register"
-        ? { username, password, displayName, serverPassword, deviceName: navigator.userAgent.slice(0, 80) }
-        : mode === "recover"
-          ? { username, recoveryCode, newPassword: password, deviceName: navigator.userAgent.slice(0, 80) }
-          : { username, password, deviceName: navigator.userAgent.slice(0, 80) };
-      const response = await authFetch(endpoint, { method: "POST", body: JSON.stringify(body) });
+      let response: Response;
+      if (mode === "host") {
+        if (!status?.server?.configured) {
+          response = await authFetch("/api/setup/server", { method: "POST", body: JSON.stringify({ name: serverName, serverPassword }) });
+          if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? `Setup failed (${response.status})`);
+        }
+        setMode("register");
+        response = await authFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, displayName, serverPassword, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else if (mode === "register") {
+        response = await authFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password, displayName, serverPassword, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else if (mode === "recover") {
+        response = await authFetch("/api/auth/recover", { method: "POST", body: JSON.stringify({ username, recoveryCode, newPassword: password, deviceName: navigator.userAgent.slice(0, 80) }) });
+      } else {
+        if (!status?.server?.configured) throw new Error(polish ? "Ten host nie jest jeszcze skonfigurowany." : "This host is not configured yet.");
+        response = await authFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password, deviceName: navigator.userAgent.slice(0, 80) }) });
+      }
       const result = await response.json().catch(() => ({})) as { accessToken?: string; recoveryCode?: string; error?: string };
       if (!response.ok || !result.accessToken) throw new Error(result.error ?? `Authentication failed (${response.status})`);
       setV2AuthToken(result.accessToken);
@@ -99,18 +109,18 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     <main className="multibot-login flex h-full min-h-screen items-center justify-center overflow-y-auto bg-app px-5 py-6 text-ink">
       <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl">
         <div className="mb-4 text-[11px] font-bold tracking-[0.18em] text-accent">MULTIBOT / HOST</div>
-        <h1 className="text-[18px] font-semibold">{configured ? (polish ? "Zaloguj się do serwera" : "Sign in to server") : polish ? "Host wymaga konfiguracji" : "Host needs setup"}</h1>
+        <h1 className="text-[18px] font-semibold">{mode === "host" && !configured ? polish ? "Utwórz serwer" : "Create server" : configured ? (polish ? "Zaloguj się do serwera" : "Sign in to server") : polish ? "Konfiguracja hosta" : "Host setup"}</h1>
         <p className="mt-1 text-[13px] text-ink-secondary">{status?.server?.name ?? (polish ? "Bezpieczny wspólny workspace" : "Secure shared workspace")}</p>
-        {!configured && <div className="mt-4 rounded-xl bg-inset p-3.5 text-[13px] leading-relaxed text-ink-secondary">{polish ? "Ten telefon jest klientem hosta. Uruchom konfigurację serwera na komputerze lub VPS, a potem wróć tutaj i zaloguj się." : "This phone is a host client. Finish server setup on the PC or VPS that runs MultiBot, then come back and sign in here."}</div>}
-        {mode !== "legacy" && configured && <>
-          {mode === "register" && <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder={polish ? "Nazwa profilu" : "Display name"} aria-label="Display name" className={field} autoFocus />}
-          <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" aria-label="Username" autoComplete="username" className={field} autoFocus={mode !== "register"} />
+        {mode === "host" && !configured && <input value={serverName} onChange={(event) => setServerName(event.target.value)} placeholder={polish ? "Nazwa serwera" : "Server name"} aria-label={polish ? "Nazwa serwera" : "Server name"} className={field} autoFocus />}
+        {mode !== "legacy" && <>
+          {(mode === "register" || mode === "host") && <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder={polish ? "Nazwa profilu" : "Display name"} aria-label="Display name" className={field} />}
+          <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" aria-label="Username" autoComplete="username" className={field} autoFocus={mode === "login" || mode === "recover"} />
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "recover" ? polish ? "Nowe hasło profilu" : "New profile password" : polish ? "Hasło profilu" : "Profile password"} aria-label="Profile password" autoComplete={mode === "login" ? "current-password" : "new-password"} className={field} />
-          {mode === "register" && <input type="password" value={serverPassword} onChange={(event) => setServerPassword(event.target.value)} placeholder={polish ? "Hasło serwera" : "Server password"} aria-label="Server password" autoComplete="off" className={field} />}
+          {(mode === "host" || mode === "register") && <input type="password" value={serverPassword} onChange={(event) => setServerPassword(event.target.value)} placeholder={polish ? "Hasło serwera" : "Server password"} aria-label="Server password" autoComplete="off" className={field} />}
           {mode === "recover" && <input value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} placeholder={polish ? "Jednorazowy recovery code" : "One-time recovery code"} aria-label="Recovery code" autoComplete="one-time-code" className={field} />}
         </>}
         {mode === "legacy" && <input autoFocus type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={polish ? "Stary token migracyjny" : "Legacy migration token"} aria-label={polish ? "Stary token migracyjny" : "Legacy migration token"} autoComplete="current-password" className={field} />}
-        {(configured || mode === "legacy") && <button type="submit" disabled={busy} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50">{busy ? (polish ? "Praca…" : "Working…") : mode === "register" ? polish ? "Utwórz profil" : "Create profile" : mode === "recover" ? polish ? "Odzyskaj konto" : "Recover account" : mode === "legacy" ? polish ? "Użyj starego tokenu" : "Use legacy token" : polish ? "Zaloguj się" : "Sign in"}</button>}
+        <button type="submit" disabled={busy} className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[13px] font-medium text-white disabled:opacity-50">{busy ? (polish ? "Praca…" : "Working…") : mode === "host" ? polish ? "Utwórz serwer i profil" : "Create server and profile" : mode === "register" ? polish ? "Utwórz profil" : "Create profile" : mode === "recover" ? polish ? "Odzyskaj konto" : "Recover account" : mode === "legacy" ? polish ? "Użyj starego tokenu" : "Use legacy token" : polish ? "Zaloguj się" : "Sign in"}</button>
         {configured && mode !== "legacy" && <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-ink-secondary"><button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="hover:text-ink">{mode === "login" ? polish ? "Utwórz profil" : "Create profile" : polish ? "Mam już profil" : "I have an account"}</button><button type="button" onClick={() => setMode("recover")} className="hover:text-ink">{polish ? "Odzyskaj" : "Recover"}</button></div>}
         <button type="button" onClick={() => setMode(mode === "legacy" ? "login" : "legacy")} className="mt-4 text-[12px] text-ink-secondary hover:text-ink">{mode === "legacy" ? polish ? "Nowe logowanie" : "New sign-in" : polish ? "Mam stary token" : "I have a legacy token"}</button>
         {error && <div role="alert" className="mt-3 text-[12px] text-danger">{error}</div>}
