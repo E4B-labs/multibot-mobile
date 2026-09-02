@@ -8,6 +8,8 @@ import {
   ChevronRight,
   ClipboardCopy,
   Copy,
+  Crown,
+  Eye,
   EyeOff,
   FolderPlus,
   Loader2,
@@ -36,7 +38,7 @@ import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
 
-/** "Milind Soni" → "MS", "milind" → "M", "you@x.dev" → "Y", unset → "?" */
+/** Full name → initials, email → first letter, unset → "?". */
 function profileInitials(profile?: { name?: string; email?: string }): string {
   const name = profile?.name?.trim();
   if (name) {
@@ -60,14 +62,27 @@ function preview(bot: Bot): string {
   return last.text ?? "";
 }
 
+export function hiddenBotsForSidebar(bots: Bot[]): Bot[] {
+  return bots.filter((bot) => bot.hidden === true);
+}
+
 interface MenuState {
   botId: string;
   x: number;
   y: number;
 }
 
-function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
+function BotContextMenu({
+  menu,
+  onClose,
+  onMoveToSection,
+}: {
+  menu: MenuState;
+  onClose: () => void;
+  onMoveToSection: (botId: string) => void;
+}) {
   const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === menu.botId);
 
   useEffect(() => {
@@ -143,10 +158,11 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
           bot.pinned ? "Unpin" : "Pin",
           () => dispatch({ type: "updateBot", botId: bot.id, patch: { pinned: !bot.pinned } }),
         ),
-        item(<FolderPlus size={16} className="text-ink-secondary" />, "Move to new section", undefined, {
-          disabled: true,
-          hint: "Coming soon",
-        }),
+        item(
+          <FolderPlus size={16} className="text-ink-secondary" />,
+          bot.section ? polish ? "Zmień sekcję" : "Change section" : polish ? "Przenieś do sekcji" : "Move to section",
+          () => onMoveToSection(bot.id),
+        ),
         item(<BellDot size={16} className="text-ink-secondary" />, "Mark as Unread", () =>
           dispatch({ type: "markUnread", botId: bot.id }),
         ),
@@ -163,13 +179,150 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
           void navigator.clipboard?.writeText(bot.threadId);
         }),
         divider("d3"),
-        item(<EyeOff size={16} className="text-ink-secondary" />, "Hide from sidebar", () =>
-          dispatch({ type: "updateBot", botId: bot.id, patch: { hidden: true } }),
+        item(
+          bot.hidden ? <Eye size={16} className="text-ink-secondary" /> : <EyeOff size={16} className="text-ink-secondary" />,
+          bot.hidden ? "Show in sidebar" : "Hide from sidebar",
+          () => dispatch({ type: "updateBot", botId: bot.id, patch: { hidden: !bot.hidden } }),
         ),
         item(<Trash2 size={16} />, "Delete", () => dispatch({ type: "deleteBot", botId: bot.id }), {
           danger: true,
         }),
       ]}
+    </div>,
+    document.body,
+  );
+}
+
+// Desktopowe sekcje botów zachowują się na telefonie jak lekkie nagłówki listy:
+// tap zwija/rozwija sekcję, bez dokładania kolejnego poziomu nawigacji.
+function SectionDivider({
+  name,
+  collapsed,
+  onToggle,
+  polish,
+}: {
+  name: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  polish: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? polish ? `Rozwiń sekcję ${name}` : `Expand section ${name}` : polish ? `Zwiń sekcję ${name}` : `Collapse section ${name}`}
+      title={collapsed ? polish ? "Rozwiń sekcję" : "Expand section" : polish ? "Zwiń sekcję" : "Collapse section"}
+      className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 pb-1 pt-3 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+    >
+      {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+      <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em]">{name}</span>
+      <span className="h-px flex-1 bg-white/10" />
+    </button>
+  );
+}
+
+/** Mobile popover for assigning a bot to an existing or new section. */
+function SectionPicker({
+  botId,
+  anchor,
+  onClose,
+}: {
+  botId: string;
+  anchor: { x: number; y: number };
+  onClose: () => void;
+}) {
+  const { state, dispatch } = useStore();
+  const polish = useLanguage() === "pl";
+  const [draft, setDraft] = useState("");
+  const bot = state.bots.find((item) => item.id === botId);
+
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      if (event.button === 2) return;
+      if (!(event.target as HTMLElement).closest("[data-section-picker]")) onClose();
+    };
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onClose);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [onClose]);
+
+  if (!bot) return null;
+  const top = Math.max(8, Math.min(anchor.y, window.innerHeight - 300));
+  const left = Math.max(8, Math.min(anchor.x, window.innerWidth - 244));
+  const names = [...new Set(state.bots.map((item) => item.section?.trim()).filter((value): value is string => Boolean(value)))];
+  const assign = (section: string | null) => {
+    dispatch({ type: "updateBot", botId, patch: { section } });
+    onClose();
+  };
+
+  return createPortal(
+    <div
+      data-section-picker
+      style={{ top, left }}
+      className="fixed z-[90] max-h-[min(300px,calc(100vh-16px))] w-[236px] overflow-y-auto rounded-xl border border-hairline/50 bg-card p-1.5 shadow-2xl shadow-black/60"
+    >
+      <div className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-secondary">
+        {polish ? "Sekcje" : "Sections"}
+      </div>
+      {names.length > 0 && (
+        <div className="flex flex-wrap gap-1 px-1 pb-1">
+          {names.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => assign(name)}
+              className={cn(
+                "rounded-full border border-hairline/50 px-2 py-1 text-[12px]",
+                bot.section === name ? "bg-accent text-white" : "text-ink hover:bg-raised",
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = draft.trim().slice(0, 60);
+          if (name) assign(name);
+        }}
+        className="flex gap-1 px-1 py-1"
+      >
+        <input
+          autoFocus
+          value={draft}
+          maxLength={60}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={polish ? "Nowa sekcja…" : "New section…"}
+          className="min-w-0 flex-1 rounded-lg bg-inset px-2 py-1.5 text-[13px] text-ink outline-none placeholder:text-ink-secondary/60"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim()}
+          aria-label={polish ? "Dodaj do sekcji" : "Add to section"}
+          className="shrink-0 rounded-lg bg-raised px-2.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-40"
+        >
+          ✓
+        </button>
+      </form>
+      {bot.section && (
+        <button
+          type="button"
+          onClick={() => assign(null)}
+          className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-danger hover:bg-raised/70"
+        >
+          <FolderPlus size={14} className="rotate-180" />
+          {polish ? "Usuń z sekcji" : "Remove from section"}
+        </button>
+      )}
     </div>,
     document.body,
   );
@@ -216,6 +369,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
+            {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-accent" aria-label="Section chief" />}
             <span className="truncate text-[15px] font-semibold text-ink">{botDisplayName(bot, lang)}</span>
           </div>
           {last && (
@@ -237,6 +391,48 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         </div>
       </div>
     </button>
+  );
+}
+
+function HiddenBotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
+  const { dispatch } = useStore();
+  const lang = useLanguage();
+  return (
+    <div className="flex items-center gap-1 rounded-2xl px-1 py-1 hover:bg-white/[0.04]">
+      <button
+        type="button"
+        onClick={() => {
+          dispatch({ type: "select", id: bot.id });
+          document.body.classList.remove("mb-drawer-open");
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onMenu({ botId: bot.id, x: e.clientX, y: e.clientY });
+        }}
+        style={{ WebkitTouchCallout: "none" }}
+        className="flex min-w-0 flex-1 select-none items-center gap-3 py-2 pl-2 text-left"
+      >
+        <MausAvatar
+          color={bot.color}
+          avatarUrl={bot.avatarUrl}
+          shape={bot.mascotShape}
+          state={bot.busy ? busyMascotMotion(bot.id).state : stateForBot(bot)}
+          size={40}
+          motion={bot.busy ? busyMascotMotion(bot.id).motion : "none"}
+          motionKey={bot.busy ? 1 : 0}
+        />
+        <span className="min-w-0 truncate text-[14px] text-ink">{botDisplayName(bot, lang)}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => dispatch({ type: "updateBot", botId: bot.id, patch: { hidden: false } })}
+        aria-label={`Show ${botDisplayName(bot, lang)} in sidebar`}
+        title="Show again"
+        className="shrink-0 rounded-lg p-2 text-ink-secondary hover:bg-white/10 hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      >
+        <Eye size={16} />
+      </button>
+    </div>
   );
 }
 
@@ -580,7 +776,18 @@ export function Sidebar() {
   // multibot: zwijana sekcja grup (port PC 23cc789) — tapnięcie nagłówka
   // „Grupy" chowa/rozwija listę grup; stan lokalny, jak u PC.
   const [groupsCollapsed, setGroupsCollapsed] = useState(false);
+  const [hiddenBotsCollapsed, setHiddenBotsCollapsed] = useState(true);
+  const [sectionPicker, setSectionPicker] = useState<{ botId: string; x: number; y: number } | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
   const toggleGroups = () => setGroupsCollapsed((c) => !c);
+  const toggleSection = (name: string) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Dymek profilu i jego menu: menu idzie portalem do <body>, więc nie ma
   // rodzica, względem którego mogłoby się ustawić — kotwiczymy je na pozycji
@@ -605,7 +812,7 @@ export function Sidebar() {
     setMenu((prev) => (prev?.botId === next.botId ? null : next));
 
   // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
-  // slafy (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
+  // engine (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
   // nie odpytujemy). Boty i instancje hydratują się async, więc efekt na
   // [hasLocalBot] odpala się raz, gdy flaga stanie się prawdą — to jest to
   // "jedno sprawdzenie przy mount aplikacji"; kolejne robi AppSettingsPanel
@@ -648,6 +855,7 @@ export function Sidebar() {
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
+  const hiddenBots = hiddenBotsForSidebar(state.bots);
 
   // multibot: przypięty bot — duży awatar 1:1 pod wyszukiwarką, bez szpilki (wzór z foty)
   const pinnedBots = visibleBots.filter((b) => b.pinned);
@@ -662,6 +870,21 @@ export function Sidebar() {
           b.description.toLowerCase().includes(q),
       )
     : baseBots;
+  const unsectionedBots = filteredBots.filter((bot) => !bot.section?.trim());
+  const sectionedBots = (() => {
+    const result: Array<{ name: string; bots: Bot[] }> = [];
+    for (const bot of filteredBots) {
+      const name = bot.section?.trim();
+      if (!name) continue;
+      let section = result.find((item) => item.name === name);
+      if (!section) {
+        section = { name, bots: [] };
+        result.push(section);
+      }
+      section.bots.push(bot);
+    }
+    return result;
+  })();
   const filteredPinned = q
     ? pinnedBots.filter(
         (b) =>
@@ -669,6 +892,13 @@ export function Sidebar() {
           b.description.toLowerCase().includes(q),
       )
     : pinnedBots;
+  const filteredHidden = q
+    ? hiddenBots.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.description.toLowerCase().includes(q),
+      )
+    : hiddenBots;
 
   // Grupy filtrujemy tym samym zapytaniem co boty — paleta wyszukiwania stoi
   // nad całą listą, więc zostawienie grup poza filtrem wyglądałoby na błąd.
@@ -784,12 +1014,23 @@ export function Sidebar() {
                   onClick={() => {
                     track("bot_created");
                     setAddMenuOpen(false);
-                    dispatch({ type: "newBot" });
+                    dispatch({ type: "newBot", visibility: "team" });
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
                 >
                   <BotIcon size={15} className="text-ink-secondary" />
-                  {polish ? "Nowy bot" : "New bot"}
+                  {polish ? "Nowy bot zespołowy" : "New team bot"}
+                </button>
+                <button
+                  onClick={() => {
+                    track("bot_created");
+                    setAddMenuOpen(false);
+                    dispatch({ type: "newBot", visibility: "private" });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+                >
+                  <BotIcon size={15} className="text-ink-secondary" />
+                  {polish ? "Nowy bot prywatny" : "New private bot"}
                 </button>
                 <button
                   onClick={() => {
@@ -824,7 +1065,7 @@ export function Sidebar() {
           >
             {/* Jeden wiersz: pole szukania + X. Osobny nagłówek „Szukaj" nad
                 polem z własną ramką robił dwie ramki i pusty pas u góry —
-                Kacper 21.08: „dziwny spacing". */}
+                poprawka: „dziwny spacing". */}
             <div className="min-w-0 flex-1">
               <SearchPalette
                 query={query}
@@ -901,8 +1142,25 @@ export function Sidebar() {
             do krawędzi ekranu), wcięcie zostaje po prawej, gdzie stoi godzina. */}
         <div className="flex-1 overflow-y-auto pr-2">
           <div className="flex flex-col gap-0.5">
-            {filteredBots.map((b) => (
+            {unsectionedBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={openBotMenu} />
+            ))}
+            {sectionedBots.map((section) => (
+              <div key={section.name}>
+                <SectionDivider
+                  name={section.name}
+                  collapsed={collapsedSections.has(section.name)}
+                  onToggle={() => toggleSection(section.name)}
+                  polish={polish}
+                />
+                {!collapsedSections.has(section.name) && (
+                  <div className="flex flex-col gap-0.5">
+                    {section.bots.map((bot) => (
+                      <BotRow key={bot.id} bot={bot} onMenu={openBotMenu} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
 
@@ -934,6 +1192,28 @@ export function Sidebar() {
               )}
             </div>
           )}
+
+          {filteredHidden.length > 0 && (
+            <div className="mt-3 flex flex-col gap-0.5 border-t border-white/10 pt-1">
+              <button
+                type="button"
+                onClick={() => setHiddenBotsCollapsed((value) => !value)}
+                aria-expanded={!hiddenBotsCollapsed}
+                aria-label={hiddenBotsCollapsed ? "Expand hidden bots" : "Collapse hidden bots"}
+                className="flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 pt-1 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                {hiddenBotsCollapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+                <span className="text-[12px] font-medium uppercase tracking-wide">Hidden bots ({filteredHidden.length})</span>
+              </button>
+              {!hiddenBotsCollapsed && (
+                <div className="flex flex-col gap-0.5">
+                  {filteredHidden.map((bot) => (
+                    <HiddenBotRow key={bot.id} bot={bot} onMenu={openBotMenu} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {engineOffline && (
@@ -948,7 +1228,17 @@ export function Sidebar() {
           </div>
         )}
 
-        {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
+        {menu && (
+          <BotContextMenu
+            menu={menu}
+            onClose={() => setMenu(null)}
+            onMoveToSection={(botId) => {
+              setSectionPicker({ botId, x: menu.x, y: menu.y });
+              setMenu(null);
+            }}
+          />
+        )}
+        {sectionPicker && <SectionPicker botId={sectionPicker.botId} anchor={sectionPicker} onClose={() => setSectionPicker(null)} />}
         {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
         {groupCreateOpen && (
           <GroupCreateSheet
@@ -988,10 +1278,8 @@ export function Sidebar() {
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
             >
-              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
-                <Plug size={15} />
-              </span>
-              <span className="font-semibold">{polish ? "Wtyczki" : "Plugins"}</span>
+              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">\n                 <Plug size={15} />\n               </span>
+              {polish ? "Wtyczki" : "Plugins"}
             </button>
             <button
               onClick={() => {

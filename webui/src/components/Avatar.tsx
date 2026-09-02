@@ -166,6 +166,8 @@ export type MausAvatarProps = {
   trackPointer?: boolean;
   /** Run the animation. Off renders the state's resting face. */
   animated?: boolean;
+  /** Disable the thinking indicator's pulse animation when requested. */
+  reduceMotion?: boolean;
   /** Legacy Maus face-placement knobs — accepted, ignored. */
   eyeSpacing?: number;
   faceX?: number;
@@ -193,6 +195,7 @@ function MausAvatarComponent(
     forward = true,
     trackPointer = true,
     animated = true,
+    reduceMotion = false,
   }: MausAvatarProps,
   ref: React.Ref<MausAvatarHandle>,
 ) {

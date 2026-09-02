@@ -5,7 +5,7 @@ import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
-import { normalizeState, stateForBot } from "@/lib/mascot";
+import { normalizeState } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
