@@ -19,4 +19,10 @@ describe("mobile app settings parity", () => {
     expect(panel).not.toContain("hardwareAcceleration");
     expect(panel).not.toContain("Akceleracja sprzętowa");
   });
+
+  it("uses the same mobile-safe switch geometry for auto-verification", () => {
+    expect(card).toContain('role="switch"');
+    expect(card).toContain("tabIndex={0}");
+    expect(card).toContain('style={{ width: 44, height: 26, borderRadius: 13, display: "inline-block" }}');
+  });
 });

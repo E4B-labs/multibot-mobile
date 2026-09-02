@@ -52,6 +52,7 @@ export function BotSettingsCard({ polish }: { polish: boolean }) {
     setDraft("");
   };
   const inputClass = "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[14px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
+  const toggleAutoVerify = () => save({ autoVerify: { ...autoVerify, enabled: !autoVerify.enabled } });
 
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
@@ -62,7 +63,26 @@ export function BotSettingsCard({ polish }: { polish: boolean }) {
       </div>
       <div className="mt-4 flex items-start justify-between gap-3 border-t border-hairline/40 pt-4">
         <div className="min-w-0"><div className="text-[15px] font-medium text-ink">{polish ? "Autoweryfikacja" : "Auto-verification"}</div><div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "MultiBot sprawdza każdą akcję przed jej uruchomieniem i w razie potrzeby najpierw pyta Ciebie." : "MultiBot checks each action before running it and asks you first when needed."}</div></div>
-        <button type="button" role="switch" aria-checked={autoVerify.enabled} aria-label={polish ? "Autoweryfikacja" : "Auto-verification"} onClick={() => save({ autoVerify: { ...autoVerify, enabled: !autoVerify.enabled } })} className={cn("relative mt-1 h-[26px] w-[44px] shrink-0 rounded-full transition-colors", autoVerify.enabled ? "bg-accent" : "bg-raised-hover")}><span className={cn("absolute top-[3px] size-5 rounded-full bg-white transition-[left]", autoVerify.enabled ? "left-[21px]" : "left-[3px]")} /></button>
+        <div
+          role="switch"
+          tabIndex={0}
+          aria-checked={autoVerify.enabled}
+          aria-label={polish ? "Autoweryfikacja" : "Auto-verification"}
+          onClick={toggleAutoVerify}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleAutoVerify();
+            }
+          }}
+          className={cn("relative mt-1 shrink-0 cursor-pointer border border-hairline/40 transition-colors", autoVerify.enabled ? "bg-accent" : "bg-raised-hover")}
+          style={{ width: 44, height: 26, borderRadius: 13, display: "inline-block" }}
+        >
+          <span
+            className="absolute rounded-full bg-white"
+            style={{ width: 20, height: 20, top: 3, left: autoVerify.enabled ? 21 : 3, transition: "left 150ms ease" }}
+          />
+        </div>
       </div>
       <div className="mt-4 border-t border-hairline/40 pt-4">
         <div className="text-[15px] font-medium text-ink">{polish ? "Reguły Autoweryfikacji" : "Auto-verification rules"}</div>
