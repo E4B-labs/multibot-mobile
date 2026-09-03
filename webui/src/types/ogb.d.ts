@@ -31,6 +31,12 @@ declare global {
       /** Unread-conversation count for the taskbar badge. Fire-and-forget;
        * absent in plain browsers, so callers must feature-detect. */
       setUnreadCount?(count: number): void;
+      /** Banerka systemowa rysowana przez proces główny — kliknięcie potrafi
+       * wtedy podnieść okno. Nieobecne w przeglądarce: tam renderer sięga po
+       * zwykłe Notification, więc callers muszą sprawdzać obecność. */
+      notify?(payload: { title: string; body: string; botId?: string }): void;
+      /** Kliknięto banerkę należącą do bota — otwórz go. Zwraca odsubskrybowanie. */
+      onNotificationClick?(cb: (botId: string) => void): () => void;
       exportDiagnostics?(): Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string }>;
       /** In-app auto-update (packaged app only; dormant in dev). onState
        * fires immediately with the current state, then on transitions. */
