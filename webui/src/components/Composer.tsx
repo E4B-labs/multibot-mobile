@@ -168,6 +168,12 @@ export function Composer({
   // multibot: aktywna rozmowa bot-bot dla oglądanego bota (awatar partnera +
   // dymki ze szlaczkami nad composereem); null gdy bot nikogo nie „gadaje"
   const peerChat = usePeerChat(bot.id);
+  const botThinkingInPeerChat = peerChat
+    ? peerChat.activeBotId === bot.id || (
+        peerChat.activeBotId === undefined && bot.busy === true && peerChat.peerBot.busy !== true
+      )
+    : bot.busy === true;
+  const composerAvatarState = normalizeState(bot.mascotExpression) ?? stateForBot({ ...bot, busy: false });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -712,9 +718,18 @@ setText("");
       <div className="relative mx-auto max-w-[900px]">
         {/* Awatar pojawia się tylko na czas aktywnej tury bota; gdy bot jest
             bezczynny, nie zostawiamy po nim pustego paska nad composerem. */}
-        {bot.busy && (
+        {(bot.busy || peerChat) && (
           <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none">
-            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state="thinking" motion="thinking-dots" motionKey={1} animated size={44} />
+            <MausAvatar
+              color={bot.color}
+              avatarUrl={bot.avatarUrl}
+              shape={bot.mascotShape}
+              state={botThinkingInPeerChat ? "thinking" : composerAvatarState}
+              motion={botThinkingInPeerChat ? "thinking-dots" : "none"}
+              motionKey={botThinkingInPeerChat ? 1 : 0}
+              animated={botThinkingInPeerChat}
+              size={44}
+            />
           </div>
         )}
         <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
