@@ -28,7 +28,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { busyMascotMotion, stateForBot, type MausMotion, type MausState } from "@/lib/mascot";
+import { busyMascotMotion, type MausMotion, type MausState } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -431,10 +431,8 @@ function HiddenBotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => 
           color={bot.color}
           avatarUrl={bot.avatarUrl}
           shape={bot.mascotShape}
-          state={bot.busy ? busyMascotMotion(bot.id).state : stateForBot(bot)}
           size={40}
-          motion={bot.busy ? busyMascotMotion(bot.id).motion : "none"}
-          motionKey={bot.busy ? 1 : 0}
+          {...sidebarAvatarProps(bot)}
         />
         <span className="min-w-0 truncate text-[14px] text-ink">{botDisplayName(bot, lang)}</span>
       </button>
@@ -610,9 +608,7 @@ function GroupRow({
                 color={b.color} avatarUrl={b.avatarUrl}
                 shape={b.mascotShape}
                 size={40}
-                state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
-                motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
-                motionKey={b.busy ? 1 : 0}
+                {...sidebarAvatarProps(b)}
               />
             </span>
           ))}
@@ -766,10 +762,8 @@ function GroupCreateSheet({
                 <MausAvatar
                   color={b.color} avatarUrl={b.avatarUrl}
                   shape={b.mascotShape}
-                  state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                   size={32}
-                  motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
-                  motionKey={b.busy ? 1 : 0}
+                  {...sidebarAvatarProps(b)}
                 />
                 <span className="min-w-0 flex-1 truncate">{botDisplayName(b, polish ? "pl" : "en")}</span>
               </button>
@@ -1162,10 +1156,8 @@ export function Sidebar() {
                   <MausAvatar
                     color={b.color} avatarUrl={b.avatarUrl}
                     shape={b.mascotShape}
-                    state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                     size={avatarSize}
-                    motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
-                    motionKey={b.busy ? 1 : 0}
+                    {...sidebarAvatarProps(b)}
                   />
                   <span className="w-full truncate text-center text-[12px] font-medium leading-tight text-ink">
                     {botDisplayName(b, polish ? "pl" : "en")}

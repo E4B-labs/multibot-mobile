@@ -41,3 +41,23 @@ describe("sidebar avatar", () => {
     expect(busy).toEqual({ ...busyMascotMotion("b1"), animated: true, motionKey: 1 });
   });
 });
+
+describe("sidebar group row avatars", () => {
+  const member = (over: Partial<Bot>): Bot =>
+    ({ id: "m1", name: "Member", color: "#fff", messages: [], ...over }) as Bot;
+
+  it("freezes idle group members and animates only the busy ones", () => {
+    expect(sidebarAvatarProps(member({ busy: false })).animated).toBe(false);
+    expect(sidebarAvatarProps(member({ busy: false })).motion).toBe("none");
+    expect(sidebarAvatarProps(member({ busy: true })).animated).toBe(true);
+  });
+
+  it("wires every sidebar avatar through sidebarAvatarProps", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    // Grupowy stos składu, ukryte boty, przypięte boty i lista w oknie
+    // tworzenia grupy — każdy z nich brał wcześniej `busyMascotMotion`
+    // inline i przez to animował bota, który nie pracuje.
+    expect(sidebar).not.toContain("busy ? busyMascotMotion(");
+    expect(sidebar.match(/\{\.\.\.sidebarAvatarProps\(/g)?.length).toBe(4);
+  });
+});
