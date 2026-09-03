@@ -27,6 +27,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
 import { authEventName, authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
+import { postNativeMessage } from "@/lib/nativeBridge";
 // multibot (A1): logowanie Google — pola konfiguracji i cała droga do sesji
 import { fetchAuthStatus, renderGoogleButton, type GoogleLoginConfig } from "@/lib/googleLogin";
 import { useLanguage } from "@/lib/language";
@@ -161,12 +162,42 @@ function Shell() {
   useEffect(() => {
     const open = () => document.body.classList.add("mb-drawer-open");
     open();
+    const onNativeBack = () => {
+      // Panele modalne mają pierwszeństwo przed nawigacją aplikacji.
+      if (state.pluginsOpen) {
+        dispatch({ type: "togglePlugins", open: false });
+        return;
+      }
+      if (state.appSettingsOpen) {
+        dispatch({ type: "toggleAppSettings", open: false });
+        return;
+      }
+      if (state.settingsOpen) {
+        dispatch({ type: "toggleSettings", open: false });
+        return;
+      }
+      if (state.computerOpen) {
+        dispatch({ type: "toggleComputer", open: false });
+        return;
+      }
+      if (document.body.classList.contains("mb-drawer-open")) {
+        // The bot picker is already visible: a second Back minimizes the
+        // native app instead of changing the server or clearing its token.
+        postNativeMessage({ type: "mobile.back.exit" });
+        return;
+      }
+      document.body.classList.add("mb-drawer-open");
+    };
+    window.addEventListener("mb:native-back", onNativeBack);
     const onVis = () => {
       if (document.visibilityState === "visible") open();
     };
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
+    return () => {
+      window.removeEventListener("mb:native-back", onNativeBack);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [dispatch, state.appSettingsOpen, state.computerOpen, state.pluginsOpen, state.settingsOpen]);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}

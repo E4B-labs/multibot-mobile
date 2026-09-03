@@ -986,7 +986,8 @@ export function Sidebar() {
                 document.body.classList.remove("mb-drawer-open");
                 dispatch({ type: "togglePlugins", open: true });
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+              data-plugin-menu-item
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
             >
               <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
                 <Plug size={15} />

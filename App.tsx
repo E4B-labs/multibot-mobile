@@ -226,7 +226,7 @@ export default function App() {
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={() => changeHost(route.host.id)} onBotVisible={setVisibleBot} />
+          <WebViewScreen host={route.host} botId={route.botId} onChangeServer={() => changeHost(route.host.id)} onBotVisible={setVisibleBot} />
         )}
       </SafeAreaView>
 

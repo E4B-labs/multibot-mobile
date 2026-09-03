@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
-import { WebView, type WebViewNavigation } from "react-native-webview";
+import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
@@ -13,7 +13,8 @@ import { WEBUI_HTML } from "../webui-html";
 interface Props {
   host: Host;
   botId?: string;
-  onBack: () => void;
+  /** Usuwa zapisany host i wraca do konfiguracji wyłącznie po jawnym żądaniu. */
+  onChangeServer: () => void;
   /** Który bot jest właśnie na ekranie — powłoka wycisza jego powiadomienia. */
   onBotVisible?: (botId: string | null) => void;
 }
@@ -63,7 +64,7 @@ async function probeHost(url: string, token: string): Promise<string | null> {
   }
 }
 
-export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
+export default function WebViewScreen({ host, botId, onChangeServer, onBotVisible }: Props) {
   const webRef = useRef<WebView>(null);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
@@ -74,9 +75,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
   // How much of the page made it in before it stopped — "loading" means the
   // same at 0% and at 99% without this.
   const [progress, setProgress] = useState(0);
-  // WebView history depth, so the back control (and the hardware button on
-  // Android) steps out of the in-page chat before bailing to the host list.
-  const [canGoBack, setCanGoBack] = useState(false);
   const [cameraRequest, setCameraRequest] = useState<{ requestId: string; purpose: "attachment" | "avatar" } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef<CameraView>(null);
@@ -146,20 +144,26 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     return () => clearTimeout(timer);
   }, [loaded, failed, host.url, attempt, progress]);
 
-  // Android hardware back: step out of the in-page history first, only leave to
-  // the host list when the WebView itself can't go further.
+  // Android hardware back belongs to the mobile UI, not to the WebView history:
+  // first press opens the bot drawer, second press lets the native activity be
+  // minimized. The old fallback called `onBack`, which deleted the saved host
+  // and its token, effectively logging the user out of the server.
   useEffect(() => {
     const onHardwareBack = () => {
-      if (canGoBack) {
-        webRef.current?.goBack();
+      if (!loaded || failed || !webRef.current) {
+        // There is no web UI to navigate yet. Keep the host and token intact;
+        // leaving the native activity is the safe equivalent of minimizing it.
+        BackHandler.exitApp();
         return true;
       }
-      onBack();
+      webRef.current?.injectJavaScript(
+        'window.dispatchEvent(new Event("mb:native-back")); true;',
+      );
       return true;
     };
     const sub = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
     return () => sub.remove();
-  }, [canGoBack, onBack]);
+  }, [failed, loaded]);
 
   // Tapnięcie w powiadomienie przy JUŻ otwartej aplikacji: bootstrap poszedł
   // dawno temu, więc hash trzeba wstrzyknąć teraz.
@@ -168,16 +172,10 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
     webRef.current?.injectJavaScript(`location.hash = ${JSON.stringify(`#bot=${botId}`)}; true;`);
   }, [botId, loaded]);
 
-  function handleBack() {
-    if (canGoBack) webRef.current?.goBack();
-    else onBack();
-  }
-
   function retry() {
     setFailed(null);
     setLoaded(false);
     setProgress(0);
-    setCanGoBack(false);
     setAttempt((n) => n + 1);
   }
 
@@ -285,7 +283,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
         <Pressable style={styles.backButton} onPress={retry}>
           <Text style={styles.backButtonText}>Try again</Text>
         </Pressable>
-        <Pressable style={styles.backButton} onPress={onBack}>
+        <Pressable style={styles.backButton} onPress={onChangeServer}>
           <Text style={styles.backButtonText}>Change server</Text>
         </Pressable>
       </View>
@@ -326,6 +324,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           try {
             const msg = JSON.parse(nativeEvent.data);
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            if (msg?.type === "mobile.back.exit") BackHandler.exitApp();
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
               setCameraReady(false);
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
@@ -355,7 +354,6 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
           setProgress(nativeEvent.progress);
           if (nativeEvent.progress >= 1) setLoaded(true);
         }}
-        onNavigationStateChange={(nav: WebViewNavigation) => setCanGoBack(nav.canGoBack)}
         startInLoadingState
         // Not wrapped in a ScrollView and scrollEnabled stays at its default
         // (true): pinch-zoom and scroll inside the noVNC/fullscreen view must
