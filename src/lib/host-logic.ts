@@ -103,3 +103,35 @@ export function formatLastUsed(ts: number): string {
   if (wk < 5) return `${wk} wk ago`;
   return new Date(ts).toLocaleDateString();
 }
+
+/** Where to probe a host for reachability. With a saved token the authenticated
+ * bot list answers; without one only the public auth status does — a tokenless
+ * host is valid, the web UI signs in with username + password itself. */
+export function hostProbePath(token: string | null): string {
+  return token ? "/api/bots" : "/api/auth/status";
+}
+
+/** A 100.x address only resolves inside the tailnet, so the Tailscale hint is
+ * only true for those — a trycloudflare URL fails for other reasons. */
+export function isTailnetUrl(url: string): boolean {
+  return /^https?:\/\/100\.\d/.test(url.trim());
+}
+
+/** Script injected before the web UI boots. A token (legacy hosts) is seeded
+ * into localStorage under the key webui/src/lib/auth.ts reads; without one
+ * nothing auth-related is seeded and the web UI shows its own login screen. */
+export function buildBootstrap(opts: {
+  token?: string | null;
+  botId?: string;
+  statusBarHeight: number;
+  appVersion: string;
+}): string {
+  const deep = opts.botId ? `location.hash = ${JSON.stringify(`#bot=${opts.botId}`)};` : "";
+  const auth = opts.token
+    ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(opts.token)});`
+    : "";
+  return `try { document.documentElement.style.setProperty('--android-status-bar', '${opts.statusBarHeight}px'); } catch (e) {}
+         try { ${auth} ${deep} } catch (e) {}
+         try { window.__APP_VERSION__ = ${JSON.stringify(opts.appVersion)}; } catch (e) {}
+         true;`;
+}

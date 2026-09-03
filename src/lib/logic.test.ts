@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { buildBootstrap, hostProbePath, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
 import { pairingCredential, parseQrPayload, type ClaimResult } from "./pair.ts";
 
 test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
@@ -118,4 +118,23 @@ test("pairing prefers a modern access token and falls back to the legacy token",
 
   const legacy: ClaimResult = { token: "legacy", authMode: "legacy" };
   assert.deepEqual(pairingCredential(legacy), { token: "legacy", mode: "legacy" });
+});
+
+test("a host without a saved token opens the web sign-in instead of failing", () => {
+  const anon = buildBootstrap({ token: null, statusBarHeight: 24, appVersion: "1.0.0" });
+  assert.ok(!anon.includes("multibot.auth.token"));
+  assert.ok(anon.includes("--android-status-bar"));
+  assert.equal(hostProbePath(null), "/api/auth/status");
+
+  // Legacy hosts keep the token bootstrap and the authenticated probe.
+  const legacy = buildBootstrap({ token: "t0k", botId: "b1", statusBarHeight: 0, appVersion: "1.0.0" });
+  assert.ok(legacy.includes('localStorage.setItem("multibot.auth.token", "t0k")'));
+  assert.ok(legacy.includes("#bot=b1"));
+  assert.equal(hostProbePath("t0k"), "/api/bots");
+});
+
+test("the Tailscale hint is only for tailnet addresses", () => {
+  assert.equal(isTailnetUrl("http://100.78.241.9:8799"), true);
+  assert.equal(isTailnetUrl("https://random-words.trycloudflare.com"), false);
+  assert.equal(isTailnetUrl("https://100things.example.com"), false);
 });
