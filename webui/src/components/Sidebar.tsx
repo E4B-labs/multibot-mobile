@@ -2,6 +2,7 @@ import { track } from "@/lib/analytics";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AlertTriangle,
   BellDot,
   Bot as BotIcon,
   ChevronDown,
@@ -37,6 +38,7 @@ import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
+import { groupAvatarSplit, groupRowTitle } from "@/lib/groupRow";
 
 /** Full name → initials, email → first letter, unset → "?". */
 function profileInitials(profile?: { name?: string; email?: string }): string {
@@ -555,6 +557,12 @@ function GroupRow({
     .map((id) => bots.find((b) => engineBotId(b.threadId) === id))
     .filter((b): b is Bot => b != null);
   const selected = state.groupOpen?.id === group.id;
+  const { shown, overflow } = groupAvatarSplit(members, 2, group.bot_ids.length);
+  // Czas ostatniej wiadomości bierzemy z wątku grupy, jeśli serwer go dosłał —
+  // gdy grupa przyszła bez wiadomości, po prawej nie ma nic (żadnej liczby).
+  const lastAt = group.messages?.[group.messages.length - 1]?.at;
+  // Ten sam sygnał, co kropka przy bocie: `needsAttention` dowolnego członka.
+  const attention = members.find((b) => b.needsAttention != null)?.needsAttention;
 
   return (
     <button
@@ -579,38 +587,55 @@ function GroupRow({
           Bez pierścienia-oddzielnika: czarna obwódka znika na tle drawera,
           ale na podświetleniu zaznaczonego wiersza wychodziła jako ciemny
           okrąg. Przy botach nieznanych aplikacji zostaje dawne koło, żeby
-          wiersz nie był pusty. Pokazujemy najwyżej trzech członków. */}
+          wiersz nie był pusty. Widoczni są najwyżej dwaj członkowie, reszta
+          idzie na plakietkę `+N` w prawym dolnym rogu stosu. */}
       {members.length > 0 ? (
-        <span className="flex shrink-0 items-center">
-          {members.slice(0, 3).map((b, i) => (
-            <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-2.5")}>
+        <span className="relative flex shrink-0 items-center">
+          {shown.map((b, i) => (
+            <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-3")}>
               <MausAvatar
                 color={b.color} avatarUrl={b.avatarUrl}
                 shape={b.mascotShape}
-                size={32}
+                size={40}
                 state={b.busy ? busyMascotMotion(b.id).state : stateForBot(b)}
                 motion={b.busy ? busyMascotMotion(b.id).motion : "none"}
                 motionKey={b.busy ? 1 : 0}
               />
             </span>
           ))}
+          {overflow > 0 && (
+            <span className="absolute -bottom-0.5 -right-1 flex min-w-4 items-center justify-center rounded-full bg-control px-1 text-[10px] font-semibold text-ink">
+              +{overflow}
+            </span>
+          )}
+          {attention && (
+            <span
+              title={attention}
+              className="absolute -right-1 -top-0.5 flex items-center justify-center rounded-full bg-app text-warning"
+            >
+              <AlertTriangle size={12} />
+            </span>
+          )}
         </span>
       ) : (
         <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/10 text-ink-secondary">
           <Users size={24} />
         </span>
       )}
-      <div className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold text-ink">
-          {group.name || group.id}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {/* Wzorem Groka tytułem wiersza jest skład, nie nazwa grupy — nazwa
+            zostaje w `title=` oraz tam, gdzie i była: w menu i w nagłówku
+            pokoju. Gdy żaden członek nie jest tej aplikacji znany, zostaje
+            nazwa, żeby wiersz nie był pusty. */}
+        <span
+          title={group.name || group.id}
+          className="block min-w-0 flex-1 truncate text-[15px] font-semibold text-ink"
+        >
+          {groupRowTitle(members.map((b) => botDisplayName(b, polish ? "pl" : "en"))) || group.name || group.id}
         </span>
-        <span className="mt-0.5 block truncate text-[13px] text-ink-secondary">
-          {/* Skład liczymy z `bot_ids`, nie z dopasowanych botów: grupa może
-              trzymać bota, którego ta aplikacja nie zna, a wtedy „0 botów"
-              byłoby zwyczajnie nieprawdą. */}
-          {group.bot_ids.length} {polish ? "botów" : "bots"}
-          {members.length > 0 && ` · ${members.map((b) => botDisplayName(b, polish ? "pl" : "en")).join(", ")}`}
-        </span>
+        {lastAt != null && (
+          <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(lastAt)}</span>
+        )}
       </div>
     </button>
   );
