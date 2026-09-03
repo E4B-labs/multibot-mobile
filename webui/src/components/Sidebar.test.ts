@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hiddenBotsForSidebar } from "./Sidebar";
+import { busyMascotMotion } from "@/lib/mascot";
+import type { Bot } from "@/state/store";
+import { hiddenBotsForSidebar, sidebarAvatarProps } from "./Sidebar";
 
 describe("hidden bot recovery", () => {
   it("keeps hidden bots available for sidebar recovery", () => {
@@ -19,5 +21,23 @@ describe("mobile bot sections", () => {
     expect(sidebar).toContain("SectionPicker");
     expect(sidebar).toContain("onMoveToSection");
     expect(sidebar).not.toContain('disabled: true,\n          hint: "Coming soon"');
+  });
+});
+
+describe("sidebar avatar", () => {
+  const bot = (over: Partial<Bot>): Bot =>
+    ({ id: "b1", name: "Bot", color: "#fff", messages: [], ...over }) as Bot;
+
+  it("freezes idle bots and animates only while busy", () => {
+    expect(sidebarAvatarProps(bot({ busy: false }))).toEqual({
+      state: "idle",
+      motion: "none",
+      animated: false,
+      motionKey: 0,
+    });
+    const busy = sidebarAvatarProps(bot({ busy: true }));
+    expect(busy.animated).toBe(true);
+    expect(busy.motion).not.toBe("none");
+    expect(busy).toEqual({ ...busyMascotMotion("b1"), animated: true, motionKey: 1 });
   });
 });

@@ -28,7 +28,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { busyMascotMotion, stateForBot } from "@/lib/mascot";
+import { busyMascotMotion, stateForBot, type MausMotion, type MausState } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -52,6 +52,19 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
   }
   const email = profile?.email?.trim();
   return email ? email[0]!.toUpperCase() : "R";
+}
+
+/**
+ * Awatar w wierszu bota w szufladzie: bot, ktory nie pracuje, stoi calkiem
+ * nieruchomo (neutralny stan "idle", zero beatow, `animated:false` -> `paused`
+ * w CursorAvatar). Animacja tylko na czas `busy`.
+ */
+export function sidebarAvatarProps(
+  bot: Bot,
+): { state: MausState; motion: MausMotion; animated: boolean; motionKey: number } {
+  if (!bot.busy) return { state: "idle", motion: "none", animated: false, motionKey: 0 };
+  const busy = busyMascotMotion(bot.id);
+  return { state: busy.state, motion: busy.motion, animated: true, motionKey: 1 };
 }
 
 function preview(bot: Bot): string {
@@ -335,8 +348,7 @@ function SectionPicker({
 function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
   const { state, dispatch } = useStore();
   const selected = state.selectedId === bot.id;
-  const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
-  const busyMotion = bot.busy ? busyMascotMotion(bot.id) : null;
+  const avatar = sidebarAvatarProps(bot);
   const lang = useLanguage();
   const last = bot.messages[bot.messages.length - 1];
   return (
@@ -363,10 +375,11 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
       <MausAvatar
         color={bot.color} avatarUrl={bot.avatarUrl}
         shape={bot.mascotShape}
-        state={busyMotion?.state ?? stateForBot(bot)}
+        state={avatar.state}
         size={56}
-        motion={busyMotion?.motion ?? mascotMotion?.kind ?? "none"}
-        motionKey={busyMotion ? 1 : mascotMotion?.nonce ?? 0}
+        motion={avatar.motion}
+        motionKey={avatar.motionKey}
+        animated={avatar.animated}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
