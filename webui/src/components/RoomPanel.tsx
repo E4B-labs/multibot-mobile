@@ -131,7 +131,7 @@ export function RoomPanel() {
               const entryBot = members.find((b) => b.id === entry.from);
               return (
                 <div key={entry.id} className="flex justify-start gap-2.5">
-                  {/* multibot: wypowiedź bota na całą szerokość, bez dymka —
+                  {/* multibot: wypowiedź bota na całą szerokość, ale w dymku —
                       ten sam układ co w czacie 1:1 (patrz ChatView/Bubble). */}
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -147,7 +147,7 @@ export function RoomPanel() {
                       </button>
                       <span className="text-[11px] text-ink-secondary">{formatTime(entry.at)}</span>
                     </div>
-                    <div className="text-[14px] leading-relaxed text-ink">
+                    <div className="rounded-2xl rounded-tl-md bg-card px-3.5 py-2 text-[14px] leading-relaxed text-ink">
                       <ChatMarkdown text={formatPeerEnvelope(entry.text)} />
                     </div>
                   </div>
