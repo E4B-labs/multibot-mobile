@@ -182,14 +182,14 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
                   {entryBot && (
                     <MausAvatar color={entryBot.color} avatarUrl={entryBot.avatarUrl} shape={entryBot.mascotShape} state={stateForBot(entryBot)} size={28} animated={false} />
                   )}
-                  {/* multibot: wypowiedź bota na całą szerokość, bez dymka —
+                  {/* multibot: wypowiedź bota na całą szerokość, ale w dymku —
                       ten sam układ co w czacie 1:1 (patrz ChatView/Bubble). */}
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex flex-wrap items-baseline gap-2">
                       <span className="text-[13px] font-semibold text-ink">{nameOf(e.from)}</span>
                       <span className="text-[11px] text-ink-secondary">{formatTime(e.at)}</span>
                     </div>
-                    <div className="text-[14px] leading-relaxed text-ink">
+                    <div className="rounded-2xl bg-card px-3.5 py-2 text-[14px] leading-relaxed text-ink">
                       <ChatMarkdown text={e.text} />
                     </div>
                   </div>

@@ -148,15 +148,13 @@ function Bubble({
     >
       <div
         className={cn(
-          // multibot: odpowiedź bota idzie na całą szerokość kolumny (styl
-          // ChatGPT) — bez tła i bez dymka; margines robi padding listy
-          // wiadomości. Dymek zostaje tylko dla użytkownika, po prawej.
-          // Wcześniejsze `max-w-[70%]` na bocie zostawiało na telefonie
-          // pusty pas po prawej stronie ekranu.
-          "text-[15px] leading-relaxed",
+          // multibot: dymek bota zostaje (tło, zaokrąglenia, padding), ale
+          // idzie na całą szerokość kolumny — wcześniejsze `max-w-[70%]`
+          // zostawiało na telefonie pusty pas po prawej stronie ekranu.
+          "rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
           user
-            ? "max-w-[70%] whitespace-pre-wrap rounded-2xl bg-bubble-user px-4 py-2.5 text-ink"
-            : "w-full min-w-0 py-1 text-ink",
+            ? "max-w-[70%] whitespace-pre-wrap bg-bubble-user text-ink"
+            : "w-full min-w-0 bg-card text-ink",
           message.pending && "opacity-60",
         )}
       >
@@ -315,9 +313,9 @@ function ScreenFrame({ png, mime }: { png: string; mime?: string }) {
 function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
-      {/* multibot: ta sama szerokość i ten sam brak dymka co w `Bubble` —
+      {/* multibot: ta sama szerokość i ten sam dymek co w `Bubble` —
           inaczej tekst przeskakiwałby po zakończeniu strumienia. */}
-      <div className="w-full min-w-0 py-1 text-[15px] leading-relaxed text-ink">
+      <div className="w-full min-w-0 rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
         <ChatMarkdown text={text} streaming />
         <span className="ml-0.5 inline-block h-[14px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
       </div>
