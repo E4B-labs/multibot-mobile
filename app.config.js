@@ -4,16 +4,19 @@
 // `google-services.json` NIE leży w repozytorium (jest w `.gitignore`). Na EAS
 // wjeżdża jako zmienna projektu `GOOGLE_SERVICES_JSON` typu `file`: builder
 // zapisuje plik POZA katalogiem projektu i podstawia do zmiennej BEZWZGLĘDNĄ
-// ŚCIEŻKĘ do niego (nie zawartość). Dlatego `googleServicesFile` musi wskazywać
-// na `process.env.GOOGLE_SERVICES_JSON`, a nie na ścieżkę w repo.
+// ŚCIEŻKĘ do niego (nie zawartość). Dlatego `googleServicesFile` bierze się
+// wyłącznie ze zmiennej.
 //
-// Fallback na wartość z `app.json` (`./google-services.json`) jest dla pracy
-// lokalnej: gdy ktoś robi `expo prebuild` u siebie, kładzie plik w korzeniu i
-// zmienna nie jest ustawiona.
+// Bez zmiennej pole zostaje `undefined` — i tak ma być. Zmienna żyje tylko w
+// środowisku `production` (patrz `eas.json`), więc profile `preview` i
+// `development` jej nie dostają. Gdyby stała tu ścieżka w rodzaju
+// `./google-services.json`, ich `prebuild` szukałby pliku, którego nie ma w
+// repozytorium, i padał. `undefined` to dokładnie stan sprzed tej zmiany:
+// build wychodzi bez konfiguracji Firebase, czyli bez pushu, ale wychodzi.
 module.exports = ({ config }) => ({
   ...config,
   android: {
     ...config.android,
-    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? config.android.googleServicesFile,
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON,
   },
 });

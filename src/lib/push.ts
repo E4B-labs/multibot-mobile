@@ -14,7 +14,6 @@
 // wychodzi natychmiast. To tutaj przestaje działać cały łańcuch.
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
 
 import { hostAuthHeaders, type Host } from "./host-logic";
 import { getHostToken } from "./hosts";
@@ -27,12 +26,40 @@ export function setVisibleBot(botId: string | null): void {
   visibleBotId = botId;
 }
 
-// Na Androidzie 13+ systemowe okno z prośbą o zgodę NIE POJAWI SIĘ, dopóki nie
-// istnieje choć jeden kanał powiadomień — a tworzenie kanału jest asynchroniczne.
-// `configurePushNotifications` i rejestracja tokenu siedzą w OSOBNYCH efektach
-// `App.tsx`, więc bez tej bariery `requestPermissionsAsync` potrafi wystartować
-// przed powstaniem kanału: zgoda nie zostaje udzielona i token nie powstaje.
+// Kanał zakłada się RAZ, a każdy, kto potrzebuje go mieć gotowym, czeka na tę
+// samą obietnicę. `configurePushNotifications` i rejestracja tokenu siedzą w
+// OSOBNYCH efektach `App.tsx`, więc bez wspólnej bariery kolejność zależy od
+// tego, który efekt zdąży pierwszy.
+//
+// Uwaga na rozpowszechnioną wersję tego uzasadnienia: „na Androidzie 13+ okno
+// zgody nie pojawi się bez kanału" dotyczy aplikacji celujących w API ≤ 32.
+// Expo SDK 54 celuje w 35/36, gdzie `requestPermissionsAsync` pokazuje okno
+// samo z siebie. Bariera zostaje po to, żeby kanał istniał ZANIM przyjdzie
+// pierwsze powiadomienie — inaczej trafia w kanał zapasowy z cudzymi
+// ustawieniami dźwięku i wagi.
 let channelReady: Promise<void> | null = null;
+
+// Android bierze dźwięk i wagę wyłącznie z kanału, a nie z ładunku pushu.
+// Bez kanału `default` (tak nazywa go Expo, gdy serwer nie poda `channelId`)
+// powiadomienia wchodzą ciche i bez wyskakującego banera.
+function ensureNotificationChannel(): Promise<void> | null {
+  if (Platform.OS !== "android") return null;
+  channelReady ??= Notifications.setNotificationChannelAsync("default", {
+    name: "MultiBot",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "default",
+    vibrationPattern: [0, 250, 250, 250],
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    // Nieudane założenie kanału nie może wywrócić rejestracji: bez kanału
+    // powiadomienia będą ciche, ale token wciąż warto zdobyć.
+  }).then(
+    () => undefined,
+    (e: unknown) => {
+      console.warn("push: nie udało się założyć kanału powiadomień", e);
+    },
+  );
+  return channelReady;
+}
 
 // Without this, foreground/background notifications arrive but never render an
 // alert, so the user would get a silent push they can't act on.
@@ -52,39 +79,26 @@ export function configurePushNotifications(): void {
       };
     },
   });
-  // Android bierze dźwięk i wagę wyłącznie z kanału, a nie z ładunku pushu.
-  // Bez kanału `default` (tak nazywa go Expo, gdy serwer nie poda `channelId`)
-  // powiadomienia wchodzą ciche i bez wyskakującego banera.
-  if (Platform.OS === "android") {
-    channelReady = Notifications.setNotificationChannelAsync("default", {
-      name: "MultiBot",
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: "default",
-      vibrationPattern: [0, 250, 250, 250],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    }).then(() => undefined, () => undefined);
-  }
+  void ensureNotificationChannel();
 }
-
-// `getExpoPushTokenAsync` bez `projectId` sam go szuka w konfiguracji i RZUCA
-// ("No 'projectId' found"), gdy go nie znajdzie. Rzut wpada niżej w `catch`,
-// więc awaria wygląda jak zwykła odmowa uprawnień: brak tokenu, zero śladu w
-// logach i push, który po cichu nigdy nie działa. Podajemy go więc wprost.
-const PROJECT_ID: string | undefined =
-  Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
 // Asks the OS for permission and returns the Expo push token, or null when the
 // user declines or the platform refuses. Call once at first launch.
 export async function requestPushPermission(): Promise<string | null> {
   try {
-    if (channelReady) await channelReady;
+    // Wołamy przez `ensureNotificationChannel`, a nie przez samo
+    // `await channelReady`: rejestracja potrafi ruszyć zanim
+    // `configurePushNotifications` zdąży się wykonać, a wtedy `channelReady`
+    // jest jeszcze `null` i czekanie na nie przepuszcza wszystko dalej.
+    await ensureNotificationChannel();
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== "granted") return null;
-    const { data } = await Notifications.getExpoPushTokenAsync(
-      PROJECT_ID ? { projectId: PROJECT_ID } : undefined,
-    );
+    const { data } = await Notifications.getExpoPushTokenAsync();
     return data;
-  } catch {
+  } catch (e) {
+    // Cichy `return null` sprawiał, że awaria tokenu wyglądała identycznie jak
+    // odmowa uprawnień — push nie działał i nie zostawiał po sobie śladu.
+    console.warn("push: nie udało się pobrać tokenu Expo", e);
     return null;
   }
 }
