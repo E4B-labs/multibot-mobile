@@ -148,8 +148,15 @@ function Bubble({
     >
       <div
         className={cn(
-          "max-w-[70%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
-          user ? "whitespace-pre-wrap bg-bubble-user text-ink" : "bg-card text-ink",
+          // multibot: odpowiedź bota idzie na całą szerokość kolumny (styl
+          // ChatGPT) — bez tła i bez dymka; margines robi padding listy
+          // wiadomości. Dymek zostaje tylko dla użytkownika, po prawej.
+          // Wcześniejsze `max-w-[70%]` na bocie zostawiało na telefonie
+          // pusty pas po prawej stronie ekranu.
+          "text-[15px] leading-relaxed",
+          user
+            ? "max-w-[70%] whitespace-pre-wrap rounded-2xl bg-bubble-user px-4 py-2.5 text-ink"
+            : "w-full min-w-0 py-1 text-ink",
           message.pending && "opacity-60",
         )}
       >
@@ -308,7 +315,9 @@ function ScreenFrame({ png, mime }: { png: string; mime?: string }) {
 function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
-      <div className="max-w-[70%] rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+      {/* multibot: ta sama szerokość i ten sam brak dymka co w `Bubble` —
+          inaczej tekst przeskakiwałby po zakończeniu strumienia. */}
+      <div className="w-full min-w-0 py-1 text-[15px] leading-relaxed text-ink">
         <ChatMarkdown text={text} streaming />
         <span className="ml-0.5 inline-block h-[14px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
       </div>
@@ -583,7 +592,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                 {/* SKILL.md stays outside and above its message, on sender side. */}
                 {!!m.attachments?.some((f) => f.name.toLowerCase() === "skill.md") && (
                   <div className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
-                    <div className="mb-2 flex w-full max-w-[70%] flex-col gap-2">
+                    <div className={cn("mb-2 flex w-full flex-col gap-2", m.role === "user" && "max-w-[70%]")}>
                       {m.attachments
                         .filter((f) => f.name.toLowerCase() === "skill.md")
                         .map((f) => (
