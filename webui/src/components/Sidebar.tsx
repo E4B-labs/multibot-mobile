@@ -28,7 +28,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { busyMascotMotion, type MausMotion, type MausState } from "@/lib/mascot";
+import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
@@ -54,18 +54,10 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
   return email ? email[0]!.toUpperCase() : "R";
 }
 
-/**
- * Awatar w wierszu bota w szufladzie: bot, ktory nie pracuje, stoi calkiem
- * nieruchomo (neutralny stan "idle", zero beatow, `animated:false` -> `paused`
- * w CursorAvatar). Animacja tylko na czas `busy`.
- */
-export function sidebarAvatarProps(
-  bot: Bot,
-): { state: MausState; motion: MausMotion; animated: boolean; motionKey: number } {
-  if (!bot.busy) return { state: "idle", motion: "none", animated: false, motionKey: 0 };
-  const busy = busyMascotMotion(bot.id);
-  return { state: busy.state, motion: busy.motion, animated: true, motionKey: 1 };
-}
+/** Awatar w wierszu bota w szufladzie — helper mieszka w `@/lib/mascot`, bo
+ * pasek nad rozmowa trzyma sie tej samej zasady. Reeksport, zeby importy
+ * nie ruszaly. */
+export { sidebarAvatarProps };
 
 function preview(bot: Bot): string {
   if (bot.busy) return "Working…";
