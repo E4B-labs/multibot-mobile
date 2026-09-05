@@ -6,6 +6,7 @@ import * as Notifications from "expo-notifications";
 import type { Host } from "./src/lib/host-logic";
 import { normalizeHostUrl } from "./src/lib/host-logic";
 import { deleteHost, listHosts } from "./src/lib/hosts";
+import { installLatestRelease } from "./src/lib/mobile-release";
 import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
@@ -85,12 +86,29 @@ export default function App() {
       if (host) setRoute({ name: "webview", host, botId: target.botId });
     };
 
+    // Powiadomienie o braku FCM niesie `action: "install-apk"` — jedyne, co
+    // użytkownikowi zostaje na starym APK, to zainstalować nowy, więc
+    // stuknięcie ma go pobrać, a nie otwierać czat.
+    const handleResponse = (notification: Notifications.Notification) => {
+      const data = notification.request.content.data as Record<string, unknown> | undefined;
+      // `data` w pushu ustawia SERWER, a `install-apk` pobiera i uruchamia
+      // instalator paczki — zdalne powiadomienie nie może tego odpalić.
+      // Warunek jest odwrócony (blokujemy `push`, a nie wpuszczamy `null`),
+      // żeby zmiana kształtu triggera lokalnego nie zabiła całej ścieżki.
+      const remote = (notification.request.trigger as { type?: string } | null)?.type === "push";
+      if (!remote && data?.action === "install-apk") {
+        void installLatestRelease().catch(() => undefined);
+        return;
+      }
+      openFromTarget(extractBotTarget(data));
+    };
+
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      openFromTarget(extractBotTarget(response.notification.request.content.data));
+      handleResponse(response.notification);
     });
 
     void Notifications.getLastNotificationResponseAsync().then((last) => {
-      if (last) openFromTarget(extractBotTarget(last.notification.request.content.data));
+      if (last) handleResponse(last.notification);
     });
 
     return () => sub.remove();
