@@ -73,6 +73,16 @@ export function isNewerMobileRelease(release: MobileRelease | null): release is 
   return Boolean(release && release.versionCode > currentBuildVersion());
 }
 
+/**
+ * Pobiera manifest i instaluje APK, jeśli w nim stoi nowszy build. Jedno
+ * wejście dla „chcę nową wersję" — woła je stuknięcie w powiadomienie o braku
+ * pushu (`App.tsx`). Cicho nic nie robi, gdy nowszego APK nie ma.
+ */
+export async function installLatestRelease(): Promise<void> {
+  const release = await fetchMobileRelease();
+  if (isNewerMobileRelease(release)) await installAndroidRelease(release);
+}
+
 export async function installAndroidRelease(release: MobileRelease): Promise<void> {
   if (Platform.OS !== "android") throw new Error("APK installation is available on Android only.");
   const cacheDirectory = FileSystem.cacheDirectory;

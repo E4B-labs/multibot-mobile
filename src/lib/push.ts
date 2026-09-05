@@ -14,9 +14,12 @@
 // wychodzi natychmiast. To tutaj przestaje działać cały łańcuch.
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
 
 import { hostAuthHeaders, type Host } from "./host-logic";
 import { getHostToken } from "./hosts";
+import { currentBuildVersion, fetchMobileRelease } from "./mobile-release";
+import { pushUnavailableNotice } from "./push-notice";
 
 // Bot otwarty na ekranie w tej chwili. Powiadomienie o NIM byłoby szumem —
 // użytkownik i tak patrzy na tę rozmowę. Ustawiane z powłoki (WebView melduje
@@ -83,16 +86,34 @@ export function configurePushNotifications(): void {
 }
 
 // Awaria tokenu Expo jest z zewnątrz nieodróżnialna od ciszy: aplikacja działa
-// dalej, tylko powiadomienia nigdy nie przychodzą. Raz na uruchomienie
-// pokazujemy lokalne powiadomienie, żeby brak konfiguracji FCM był widoczny.
+// dalej, tylko powiadomienia nigdy nie przychodzą. Pokazujemy lokalne
+// powiadomienie, żeby brak konfiguracji FCM był widoczny.
+//
+// RAZ NA INSTALACJĘ, nie raz na uruchomienie: stary wariant (`let` w module)
+// resetował się przy każdym starcie aplikacji, więc telefon na starym APK
+// dostawał to samo powiadomienie codziennie. Zapamiętany jest NUMER BUILDU,
+// który już ostrzegał — po instalacji nowego APK, gdyby push wciąż nie wstawał,
+// ostrzeżenie przyjdzie jeszcze raz (i tylko raz).
+const NOTIFIED_BUILD_KEY = "mb_push_unavailable_build";
 let pushFailureNotified = false;
-function notifyPushUnavailable(): void {
+async function notifyPushUnavailable(): Promise<void> {
   if (pushFailureNotified) return;
   pushFailureNotified = true;
-  void Notifications.scheduleNotificationAsync({
-    content: { title: "MultiBot", body: "MultiBot — push niedostępny: brak FCM" },
-    trigger: null,
-  }).catch(() => undefined);
+  const build = String(currentBuildVersion());
+  try {
+    if ((await SecureStore.getItemAsync(NOTIFIED_BUILD_KEY)) === build) return;
+    // Manifest mówi, czy jest co instalować. Nieosiągalny manifest to nie
+    // powód, żeby zmilczeć awarię — wtedy leci sam komunikat diagnostyczny.
+    const release = await fetchMobileRelease().catch(() => null);
+    await Notifications.scheduleNotificationAsync({
+      content: pushUnavailableNotice(release, currentBuildVersion()),
+      trigger: null,
+    });
+    await SecureStore.setItemAsync(NOTIFIED_BUILD_KEY, build);
+  } catch {
+    // Brak kanału, odmowa uprawnień, SecureStore bez dostępu — powiadomienie
+    // diagnostyczne nie może wywrócić rejestracji tokenu.
+  }
 }
 
 // Asks the OS for permission and returns the Expo push token, or null when the
@@ -112,7 +133,7 @@ export async function requestPushPermission(): Promise<string | null> {
     // Cichy `return null` sprawiał, że awaria tokenu wyglądała identycznie jak
     // odmowa uprawnień — push nie działał i nie zostawiał po sobie śladu.
     console.warn("push: nie udało się pobrać tokenu Expo", e);
-    notifyPushUnavailable();
+    void notifyPushUnavailable();
     return null;
   }
 }
