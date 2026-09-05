@@ -136,9 +136,14 @@ export interface ConfigStatus {
   opencode?: { configured: boolean };
   composio: { configured: boolean; apiKeyConfigured?: boolean };
   box: { configured: boolean };
-  /** Bot-wide execution policy stored on the connected host. */
+  /** harness text-to-speech key — SpeakButton speaks through the harness when it
+   *  is set, and through the engine's edge-tts when it is not */
+  voice?: { configured: boolean };
+  /** strefa czasowa bota; pusty ciąg albo brak = wykryj z systemu */
   timeZone?: string;
   autoVerify?: AutoVerifySettings;
+  /** kolejność sekcji sidebaru — wspólna dla desktopu i telefonu */
+  sectionOrder?: string[];
   /** who's using the app — collected in onboarding, shown in the sidebar */
   profile?: { name: string; email: string };
 }
@@ -164,6 +169,8 @@ export interface EngineGroup {
   id: string;
   name: string;
   bot_ids: string[];
+  /** sekcja sidebaru — grupa siedzi w sekcji tak samo jak bot */
+  section?: string;
   messages?: Array<{ id: string; from: "you" | string; text: string; at: number }>;
 }
 
@@ -172,28 +179,16 @@ export interface Room {
   id: string;
   name: string;
   task: string;
+  /** Participating bots, originator first; three or more is normal. */
   bot_ids: string[];
+  createdAt: number;
+  /** Bot that opened the room and gets the closing report. */
+  ownerBotId: string;
   transcript: Array<{ id: string; from: string; text: string; at: number }>;
   status: "running" | "done" | "failed";
+  activeBotId?: string | null;
   /** Group chat this room mirrors, when it is a group conversation. */
   groupId?: string;
-}
-
-/** Durable asynchronous 1:1 agent mailbox. */
-export interface MailThread {
-  id: string;
-  bot_ids: [string, string];
-  messages: Array<{
-    id: string;
-    from: string;
-    to: string;
-    text: string;
-    at: number;
-    status: "queued" | "delivered" | "failed";
-    replyToId?: string;
-  }>;
-  createdAt: number;
-  updatedAt: number;
 }
 
 export interface FleetEnvironmentBot {
@@ -242,9 +237,10 @@ interface AppState {
   groupOpen: EngineGroup | null;
   // multibot: otwarty read-only pokój współpracy botów (zastępuje widok czatu)
   roomOpen: Room | null;
-  /** Durable agent mail view. */
-  mailOpen: boolean;
-  mailThreads: MailThread[];
+  /** "Bot rooms" list view — every bot-to-bot conversation in one place. */
+  roomsOpen: boolean;
+  /** Messages one room may carry before its budget is spent (server config). */
+  roomBudget: number;
   /** multibot: znane pokoje współpracy (ostatnie N) — z nich wskaźnik
    *  „boty rozmawiają między sobą" wybiera aktywnego partnera dla czatu. */
   rooms: Room[];
@@ -315,14 +311,11 @@ type Action =
   | { type: "toggleGroup"; group: EngineGroup | null }
   // multibot: otwarcie read-only pokoju współpracy / zamknięcie (null)
   | { type: "toggleRoom"; room: Room | null }
+  | { type: "toggleRooms"; open?: boolean }
   /** multibot: pełna lista pokoi z GET /api/rooms (hydratacja po starcie) */
-  | { type: "roomsSet"; rooms: Room[] }
+  | { type: "roomsSet"; rooms: Room[]; budget?: number }
   /** multibot: jeden pokój z kanału {kind:"room"} — wstaw lub odśwież */
   | { type: "roomUpsert"; room: Room }
-  | { type: "toggleMail"; open?: boolean }
-  | { type: "mailSet"; threads: MailThread[] }
-  | { type: "mailUpsert"; thread: MailThread }
-  | { type: "mailDeleted"; threadId: string }
   | {
       type: "updateBot";
       botId: string;
@@ -411,7 +404,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       // Otwierany bot: czyść unread, ale ZOSTAW firstUnreadId — separator "NEW"
       // ma być widoczny właśnie po otwarciu czatu (pokazuje granicę nowych).
       const entered = updateBot(
-        withMascotMotion({ ...state, selectedId: action.id, groupOpen: null, roomOpen: null, mailOpen: false }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, groupOpen: null, roomOpen: null, roomsOpen: false }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
@@ -586,7 +579,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
         groupOpen: open ? null : state.groupOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     case "togglePlugins":
@@ -594,7 +587,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         ...state,
         pluginsOpen: action.open ?? !state.pluginsOpen,
         pluginsConnector: action.connector,
-        mailOpen: action.open ? false : state.mailOpen,
+        roomsOpen: action.open ? false : state.roomsOpen,
       };
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
@@ -606,7 +599,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     case "toggleAppSettings": {
@@ -621,7 +614,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
         groupOpen: open ? null : state.groupOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     // multibot: F6 — panel rutyn wypycha pozostałych lokatorów prawego slotu
@@ -636,7 +629,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
         groupOpen: open ? null : state.groupOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     // multibot: F8 — panele pamięci i skilli, ta sama zasada wzajemnego wykluczania
@@ -651,7 +644,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
         groupOpen: open ? null : state.groupOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     case "toggleSkills": {
@@ -666,7 +659,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         appSettingsOpen: open ? false : state.appSettingsOpen,
         routinesOpen: open ? false : state.routinesOpen,
         groupOpen: open ? null : state.groupOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     // multibot: team map — globalny overlay niezależny od prawego slotu
@@ -683,6 +676,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     case "setSkills":
@@ -699,7 +693,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     // multibot: read-only bot collaboration room replaces the chat view.
@@ -714,13 +708,17 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         routinesOpen: open ? false : state.routinesOpen,
         memoryOpen: open ? false : state.memoryOpen,
         skillsOpen: open ? false : state.skillsOpen,
-        mailOpen: open ? false : state.mailOpen,
+        roomsOpen: open ? false : state.roomsOpen,
       };
     }
     // multibot: hydratacja listy pokoi — nadmiar obcinamy, bo wskaźnik rozmów
     // czyta tylko "running", a done/failed potrzebne są chwilę (animacja wyjścia).
     case "roomsSet":
-      return { ...state, rooms: action.rooms.slice(-MAX_KNOWN_ROOMS) };
+      return {
+        ...state,
+        rooms: action.rooms.slice(-MAX_KNOWN_ROOMS),
+        roomBudget: action.budget ?? state.roomBudget,
+      };
     case "roomUpsert": {
       const others = state.rooms.filter((room) => room.id !== action.room.id);
       return {
@@ -728,11 +726,11 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         rooms: [...others, action.room].slice(-MAX_KNOWN_ROOMS),
       };
     }
-    case "toggleMail": {
-      const open = action.open ?? !state.mailOpen;
+    case "toggleRooms": {
+      const open = action.open ?? !state.roomsOpen;
       return {
         ...state,
-        mailOpen: open,
+        roomsOpen: open,
         roomOpen: open ? null : state.roomOpen,
         groupOpen: open ? null : state.groupOpen,
         settingsOpen: open ? false : state.settingsOpen,
@@ -743,14 +741,6 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         skillsOpen: open ? false : state.skillsOpen,
       };
     }
-    case "mailSet":
-      return { ...state, mailThreads: action.threads.slice().sort((a, b) => b.updatedAt - a.updatedAt) };
-    case "mailUpsert": {
-      const others = state.mailThreads.filter((thread) => thread.id !== action.thread.id);
-      return { ...state, mailThreads: [action.thread, ...others].sort((a, b) => b.updatedAt - a.updatedAt) };
-    }
-    case "mailDeleted":
-      return { ...state, mailThreads: state.mailThreads.filter((thread) => thread.id !== action.threadId) };
     case "updateBot": {
       const mascotChanged =
         Object.prototype.hasOwnProperty.call(action.patch, "color") ||
@@ -814,8 +804,8 @@ const initialState: AppState = {
   skillFocus: null,
   groupOpen: null,
   roomOpen: null,
-  mailOpen: false,
-  mailThreads: [],
+  roomsOpen: false,
+  roomBudget: 24,
   rooms: [],
   streaming: {},
   runtime: {},
@@ -1079,10 +1069,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // multibot: znane pokoje współpracy — bez tego wskaźnik rozmów botów
       // zobaczyłby aktywność dopiero po pierwszej ramce SSE, nie po odświeżeniu.
       api("/api/rooms")
-        .then(({ rooms }) => alive && rawDispatch({ type: "roomsSet", rooms: Array.isArray(rooms) ? rooms : [] }))
-        .catch(() => {});
-      api("/api/mail")
-        .then(({ threads }) => alive && rawDispatch({ type: "mailSet", threads: Array.isArray(threads) ? threads : [] }))
+        .then(({ rooms, budget }) => alive && rawDispatch({ type: "roomsSet", rooms: Array.isArray(rooms) ? rooms : [], budget }))
         .catch(() => {});
     };
     loadAll();
@@ -1133,12 +1120,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (open?.id === room.id) rawDispatch({ type: "toggleRoom", room });
           break;
         }
-        case "mail":
-          if (frame.thread) rawDispatch({ type: "mailUpsert", thread: frame.thread as MailThread });
-          break;
-        case "mail.deleted":
-          if (frame.threadId) rawDispatch({ type: "mailDeleted", threadId: frame.threadId });
-          break;
         case "message.patch":
           rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message });
           break;
@@ -1164,6 +1145,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "start" });
           } else if (event.type === "item.started" && event.itemType === "reasoning") {
             rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "reasoning" });
+          } else if (event.type === "item.started" && event.itemType === "tool") {
+            // multibot: bot odpala narzędzie — pasek pokazuje „working" (bez
+            // pierścieni). Pierścienie zostają wyłącznie na zimny start.
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "tool" });
           } else if (event.type === "content.delta" && event.streamKind === "reasoning_text") {
             rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "reasoning" });
           } else if (event.type === "content.delta" && event.streamKind === "assistant_text") {

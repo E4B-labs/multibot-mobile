@@ -7,6 +7,7 @@ import {
   Bot as BotIcon,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   ClipboardCopy,
   Copy,
   Crown,
@@ -39,6 +40,8 @@ import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
 import { groupAvatarSplit, groupRowTitle } from "@/lib/groupRow";
+// multibot: kolejność sekcji i podział wierszy — czysta logika, testowana osobno
+import { moveSectionTo, orderSections, sectionRows } from "@/lib/sidebarSections";
 
 /** Full name → initials, email → first letter, unset → "?". */
 function profileInitials(profile?: { name?: string; email?: string }): string {
@@ -202,25 +205,38 @@ function BotContextMenu({
 
 // Desktopowe sekcje botów zachowują się na telefonie jak lekkie nagłówki listy:
 // tap zwija/rozwija sekcję, bez dokładania kolejnego poziomu nawigacji.
+//
+// Kolejność sekcji przestawia się MENU (długie przytrzymanie nagłówka), a nie
+// przeciąganiem jak na komputerze: HTML5 drag-and-drop w Android WebView łapie
+// gest dopiero po długim przytrzymaniu, a do tego czasu palec już przewinął
+// listę — wychodziło z tego albo przewijanie, które nagle staje, albo sekcja,
+// która nie chce się złapać. Atrybutów `draggable` tu więc nie ma.
 function SectionDivider({
   name,
   collapsed,
   onToggle,
+  onMenu,
   polish,
 }: {
   name: string;
   collapsed: boolean;
   onToggle: () => void;
+  onMenu: (menu: { name: string; x: number; y: number }) => void;
   polish: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu({ name, x: e.clientX, y: e.clientY });
+      }}
+      style={{ WebkitTouchCallout: "none" }}
       aria-expanded={!collapsed}
       aria-label={collapsed ? polish ? `Rozwiń sekcję ${name}` : `Expand section ${name}` : polish ? `Zwiń sekcję ${name}` : `Collapse section ${name}`}
       title={collapsed ? polish ? "Rozwiń sekcję" : "Expand section" : polish ? "Zwiń sekcję" : "Collapse section"}
-      className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 pb-1 pt-3 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      className="flex min-h-10 w-full select-none items-center gap-2 rounded-lg px-3 pb-1 pt-3 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
     >
       {collapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
       <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em]">{name}</span>
@@ -229,20 +245,93 @@ function SectionDivider({
   );
 }
 
-/** Mobile popover for assigning a bot to an existing or new section. */
+/** Menu nagłówka sekcji: przestawienie w górę/w dół. Ten sam mechanizm co menu
+ *  bota i grupy — długie przytrzymanie (`contextmenu`), portal do <body> i
+ *  warstwa `z-[90]` nad szufladą, która ma `transform` i własny kontekst
+ *  nakładania. To jedyna droga do zmiany kolejności sekcji na telefonie. */
+function SectionMenu({
+  menu,
+  canUp,
+  canDown,
+  onMove,
+  onClose,
+  polish,
+}: {
+  menu: { name: string; x: number; y: number };
+  canUp: boolean;
+  canDown: boolean;
+  onMove: (delta: -1 | 1) => void;
+  onClose: () => void;
+  polish: boolean;
+}) {
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      // Jak w `BotContextMenu`: to menu otwiera `contextmenu` wysłany PO
+      // `mousedown` tego samego przytrzymania, więc prawy przycisk go nie zamyka.
+      if (e.button === 2) return;
+      if (!(e.target as HTMLElement).closest("[data-section-menu]")) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onClose);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [onClose]);
+
+  const top = Math.min(menu.y, window.innerHeight - 120);
+  const left = Math.min(menu.x, window.innerWidth - 216);
+  const item = (icon: React.ReactNode, label: string, enabled: boolean, delta: -1 | 1) => (
+    <button
+      disabled={!enabled}
+      onClick={() => {
+        onMove(delta);
+        onClose();
+      }}
+      className={cn(
+        "flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-ink",
+        enabled ? "hover:bg-raised/70" : "cursor-default opacity-40",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
+  return createPortal(
+    <div
+      data-section-menu
+      style={{ top, left }}
+      className="fixed z-[90] w-[204px] select-none overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
+    >
+      {item(<ChevronUp size={16} className="text-ink-secondary" />, polish ? "Przenieś wyżej" : "Move up", canUp, -1)}
+      {item(<ChevronDown size={16} className="text-ink-secondary" />, polish ? "Przenieś niżej" : "Move down", canDown, 1)}
+    </div>,
+    document.body,
+  );
+}
+
+/** Mobile popover for assigning a bot OR a group to an existing or new section.
+ *  Grupa mieszka w sekcji tak samo jak bot (`section` na obu), więc wybór sekcji
+ *  jest jeden — różni się tylko to, co robi `onAssign`. */
 function SectionPicker({
-  botId,
+  current,
+  names,
   anchor,
+  onAssign,
   onClose,
 }: {
-  botId: string;
+  current: string | null;
+  names: string[];
   anchor: { x: number; y: number };
+  onAssign: (section: string | null) => void;
   onClose: () => void;
 }) {
-  const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [draft, setDraft] = useState("");
-  const bot = state.bots.find((item) => item.id === botId);
 
   useEffect(() => {
     const onDown = (event: MouseEvent) => {
@@ -260,12 +349,10 @@ function SectionPicker({
     };
   }, [onClose]);
 
-  if (!bot) return null;
   const top = Math.max(8, Math.min(anchor.y, window.innerHeight - 300));
   const left = Math.max(8, Math.min(anchor.x, window.innerWidth - 244));
-  const names = [...new Set(state.bots.map((item) => item.section?.trim()).filter((value): value is string => Boolean(value)))];
   const assign = (section: string | null) => {
-    dispatch({ type: "updateBot", botId, patch: { section } });
+    onAssign(section);
     onClose();
   };
 
@@ -287,7 +374,7 @@ function SectionPicker({
               onClick={() => assign(name)}
               className={cn(
                 "rounded-full border border-hairline/50 px-2 py-1 text-[12px]",
-                bot.section === name ? "bg-accent text-white" : "text-ink hover:bg-raised",
+                current === name ? "bg-accent text-white" : "text-ink hover:bg-raised",
               )}
             >
               {name}
@@ -320,7 +407,7 @@ function SectionPicker({
           ✓
         </button>
       </form>
-      {bot.section && (
+      {current && (
         <button
           type="button"
           onClick={() => assign(null)}
@@ -456,7 +543,15 @@ interface GroupMenuState {
 // skorupa nie podepnie `onJsConfirm` — a `src/screens/WebViewScreen.tsx` tego
 // nie robi. `confirm()` zwróciłby po cichu `false` i „Usuń grupę" byłoby
 // przyciskiem, który nic nie robi.
-function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: () => void }) {
+function GroupContextMenu({
+  menu,
+  onMoveToSection,
+  onClose,
+}: {
+  menu: GroupMenuState;
+  onMoveToSection: (group: EngineGroup) => void;
+  onClose: () => void;
+}) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [confirming, setConfirming] = useState(false);
@@ -512,7 +607,7 @@ function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: ()
     }
   };
 
-  const top = Math.min(menu.y, window.innerHeight - 140);
+  const top = Math.min(menu.y, window.innerHeight - 200);
   const left = Math.min(menu.x, window.innerWidth - 240);
 
   return createPortal(
@@ -521,6 +616,22 @@ function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: ()
       style={{ top, left }}
       className="fixed z-[90] w-[228px] select-none overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
     >
+      {/* Sekcję grupy da się na komputerze zmienić tylko przeciągnięciem wiersza
+          na nagłówek — na telefonie ten gest nie istnieje, więc idzie menu. */}
+      <button
+        onClick={() => onMoveToSection(menu.group)}
+        className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-ink hover:bg-raised/70"
+      >
+        <FolderPlus size={16} className="text-ink-secondary" />
+        {menu.group.section
+          ? polish
+            ? "Zmień sekcję"
+            : "Change section"
+          : polish
+            ? "Przenieś do sekcji"
+            : "Move to section"}
+      </button>
+      <div className="mx-2 my-1 border-t border-hairline/40" />
       <button
         onClick={() => void remove()}
         disabled={busy}
@@ -539,6 +650,29 @@ function GroupContextMenu({ menu, onClose }: { menu: GroupMenuState; onClose: ()
     </div>,
     document.body,
   );
+}
+
+// multibot: F9-FE — lista grup. Jeden GET przy montowaniu i ponowny przy
+// każdym `workspaceVersion`, czyli po zdarzeniu `group` ze strumienia oraz po
+// własnym `workspaceChanged` z `resource: "groups"` (oba trafiają w ten sam
+// licznik — `state/store.tsx`). Zero pollingu, tak jak na komputerze.
+// `null` = jeszcze nie wiadomo (silnik offline albo pierwszy GET w locie);
+// pusta tablica = wiadomo, że grup nie ma.
+function useEngineGroups(workspaceVersion: unknown) {
+  const [groups, setGroups] = useState<EngineGroup[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    authFetch("/api/groups")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((gs: EngineGroup[]) => alive && setGroups(gs))
+      // Brak silnika to nie awaria interfejsu — grup ma wtedy po prostu nie
+      // być, a nie wyrzucać błąd na cały ekran.
+      .catch(() => alive && setGroups([]));
+    return () => {
+      alive = false;
+    };
+  }, [workspaceVersion]);
+  return [groups, setGroups] as const;
 }
 
 // Wiersz grupy trzyma styl `BotRow` (`rounded-2xl pl-2 pr-3`, 8 px wcięcia
@@ -649,16 +783,21 @@ function GroupRow({
 // dołu ekranu, z zaokrąglonym górnym brzegiem i odsunięciem od paska nawigacji.
 function GroupCreateSheet({
   bots,
+  sections,
   onClose,
   onCreated,
 }: {
   bots: Bot[];
+  sections: string[];
   onClose: () => void;
   onCreated: (group: EngineGroup) => void;
 }) {
   const { dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [name, setName] = useState("");
+  // Sekcja jest częścią tworzenia grupy, bo grupa stoi na liście dokładnie tam,
+  // gdzie bot — puste pole znaczy „obszar bez sekcji".
+  const [section, setSection] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -683,7 +822,7 @@ function GroupCreateSheet({
       const res = await authFetch("/api/groups", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), bot_ids }),
+        body: JSON.stringify({ name: name.trim(), bot_ids, section: section.trim() }),
       });
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) {
@@ -731,6 +870,20 @@ function GroupCreateSheet({
             placeholder={polish ? "Nazwa grupy" : "Group name"}
             className="h-12 w-full rounded-xl border border-hairline/40 bg-inset px-3 text-[15px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
           />
+          <input
+            list="mb-group-sections"
+            maxLength={60}
+            value={section}
+            onChange={(e) => setSection(e.target.value)}
+            placeholder={polish ? "Sekcja (opcjonalnie)" : "Section (optional)"}
+            aria-label={polish ? "Sekcja grupy" : "Group section"}
+            className="mt-2 h-12 w-full rounded-xl border border-hairline/40 bg-inset px-3 text-[15px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
+          />
+          <datalist id="mb-group-sections">
+            {sections.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
         </div>
 
         <div className="mt-2 flex-1 overflow-y-auto px-2 py-1">
@@ -789,21 +942,19 @@ export function Sidebar() {
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [groupCreateOpen, setGroupCreateOpen] = useState(false);
   const [scoutOpen, setScoutOpen] = useState(false);
-  // `null` = jeszcze nie wiadomo (silnik offline albo pierwszy GET w locie).
-  // Pusta tablica = wiadomo, że grup nie ma — to dwa różne stany i sekcja
-  // rysuje się dopiero przy drugim.
-  const [groups, setGroups] = useState<EngineGroup[] | null>(null);
+  const [groups, setGroups] = useEngineGroups(state.workspaceVersion);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("All");
-  // multibot: zwijana sekcja grup (port PC 23cc789) — tapnięcie nagłówka
-  // „Grupy" chowa/rozwija listę grup; stan lokalny, jak u PC.
-  const [groupsCollapsed, setGroupsCollapsed] = useState(false);
   const [hiddenBotsCollapsed, setHiddenBotsCollapsed] = useState(true);
-  const [sectionPicker, setSectionPicker] = useState<{ botId: string; x: number; y: number } | null>(null);
+  // Wybór sekcji obsługuje i bota, i grupę — obie rzeczy stoją na liście tak
+  // samo, więc popover jest jeden, a `kind` mówi tylko, co zapisać.
+  const [sectionPicker, setSectionPicker] = useState<
+    { kind: "bot" | "group"; id: string; x: number; y: number } | null
+  >(null);
+  const [sectionMenu, setSectionMenu] = useState<{ name: string; x: number; y: number } | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
-  const toggleGroups = () => setGroupsCollapsed((c) => !c);
   const toggleSection = (name: string) => {
     setCollapsedSections((current) => {
       const next = new Set(current);
@@ -859,23 +1010,6 @@ export function Sidebar() {
     };
   }, [hasLocalBot]);
 
-  // multibot: F9-FE — lista grup. Jeden GET przy montowaniu i ponowny przy
-  // każdym `workspaceVersion`, czyli po zdarzeniu `group` ze strumienia oraz po
-  // własnym `workspaceChanged` z `resource: "groups"` (oba trafiają w ten sam
-  // licznik — `state/store.tsx`). Zero pollingu, tak jak na komputerze.
-  useEffect(() => {
-    let alive = true;
-    authFetch("/api/groups")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((gs: EngineGroup[]) => alive && setGroups(gs))
-      // Brak silnika to nie awaria interfejsu — sekcja ma wtedy po prostu
-      // zniknąć, a nie wyrzucić błąd na cały ekran.
-      .catch(() => alive && setGroups([]));
-    return () => {
-      alive = false;
-    };
-  }, [state.workspaceVersion]);
-
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
@@ -894,21 +1028,6 @@ export function Sidebar() {
           b.description.toLowerCase().includes(q),
       )
     : baseBots;
-  const unsectionedBots = filteredBots.filter((bot) => !bot.section?.trim());
-  const sectionedBots = (() => {
-    const result: Array<{ name: string; bots: Bot[] }> = [];
-    for (const bot of filteredBots) {
-      const name = bot.section?.trim();
-      if (!name) continue;
-      let section = result.find((item) => item.name === name);
-      if (!section) {
-        section = { name, bots: [] };
-        result.push(section);
-      }
-      section.bots.push(bot);
-    }
-    return result;
-  })();
   const filteredPinned = q
     ? pinnedBots.filter(
         (b) =>
@@ -930,10 +1049,68 @@ export function Sidebar() {
     ? (groups ?? []).filter((g) => (g.name || g.id).toLowerCase().includes(q))
     : (groups ?? []);
 
+  // multibot: sekcje trzymają boty i grupy razem — osobnej listy „GRUPY" już
+  // nie ma, grupa stoi tam, gdzie wskazuje jej `section`. Kolejność sekcji jest
+  // po stronie serwera (`/api/config`), więc telefon i komputer układają listę
+  // tak samo, a nowe sekcje dopisują się na końcu.
+  const savedOrder = state.config?.sectionOrder ?? [];
+  const rows = sectionRows(filteredBots, filteredGroups, savedOrder);
+  const unsectionedBots = rows.unsectioned.bots;
+  const sectionedBots = rows.sections;
+  const sectionNames = sectionedBots.map((section) => section.name);
+  // Do popovera „przenieś do sekcji" bierzemy WSZYSTKIE nazwy, także z botów
+  // przypiętych, ukrytych i odfiltrowanych szukajką — inaczej sekcja znikałaby
+  // z wyboru tylko dlatego, że akurat nic z niej nie widać na liście.
+  const allSectionNames = orderSections(
+    [...state.bots.map((b) => b.section), ...(groups ?? []).map((g) => g.section)],
+    savedOrder,
+  );
+
+  const saveOrder = (next: string[]) => {
+    void authFetch("/api/config", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      // Zapis PODMIENIA całą listę, więc doklejamy nazwy, których ta sesja nie
+      // rysuje (sekcja z samymi przypiętymi/ukrytymi botami, sekcja grup zanim
+      // `/api/groups` odpowie). Bez tego każde przestawienie kasowałoby je ze
+      // wspólnej kolejności — i komputer zobaczyłby inny układ.
+      body: JSON.stringify({ sectionOrder: [...next, ...savedOrder.filter((name) => !next.includes(name))] }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((config) => config && dispatch({ type: "configStatus", config }))
+      .catch(() => {});
+  };
+  const moveSection = (name: string, index: number) => saveOrder(moveSectionTo(sectionNames, name, index));
+
+  // multibot: przeniesienie grupy do sekcji — PATCH po stronie przelotki,
+  // silnik o sekcjach nie wie. Błąd nie idzie `window.alert`-em: Android
+  // WebView nie pokazuje natywnych okienek JS, dopóki skorupa nie podepnie
+  // `onJsAlert` (`src/screens/WebViewScreen.tsx` tego nie robi), więc alert
+  // przepadłby po cichu. Wiersz po prostu zostaje tam, gdzie był.
+  const moveGroupToSection = async (groupId: string, section: string) => {
+    try {
+      const res = await authFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ section }),
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) return;
+      const updated = (body.group ?? body) as EngineGroup;
+      if (updated?.id) setGroups((gs) => (gs ?? []).map((x) => (x.id === groupId ? updated : x)));
+    } catch {
+      // jak wyżej — cicho, wiersz zostaje na starym miejscu
+    }
+  };
+
   // Powtórne przytrzymanie tej samej grupy zamyka jej menu — ta sama poprawka
   // co przy botach (`openBotMenu`).
   const openGroupMenu = (next: GroupMenuState) =>
     setGroupMenu((prev) => (prev?.group.id === next.group.id ? null : next));
+
+  // …i to samo dla nagłówka sekcji.
+  const openSectionMenu = (next: { name: string; x: number; y: number }) =>
+    setSectionMenu((prev) => (prev?.name === next.name ? null : next));
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -1167,12 +1344,18 @@ export function Sidebar() {
             {unsectionedBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={openBotMenu} />
             ))}
+            {/* Grupa jest zwykłym wierszem listy, nie osobną zwijaną sekcją:
+                stoi tam, gdzie wskazuje jej `section`, dokładnie jak bot. */}
+            {rows.unsectioned.groups.map((g) => (
+              <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
+            ))}
             {sectionedBots.map((section) => (
               <div key={section.name}>
                 <SectionDivider
                   name={section.name}
                   collapsed={collapsedSections.has(section.name)}
                   onToggle={() => toggleSection(section.name)}
+                  onMenu={openSectionMenu}
                   polish={polish}
                 />
                 {!collapsedSections.has(section.name) && (
@@ -1180,40 +1363,14 @@ export function Sidebar() {
                     {section.bots.map((bot) => (
                       <BotRow key={bot.id} bot={bot} onMenu={openBotMenu} />
                     ))}
+                    {section.groups.map((g) => (
+                      <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
+                    ))}
                   </div>
                 )}
               </div>
             ))}
           </div>
-
-          {/* Grupy pod botami: to lista wtórna wobec rozmów 1:1 i nie ma jej,
-              dopóki użytkownik sam grupy nie założy — nad listą botów
-              odsuwałaby w dół to, po co drawer się otwiera. Nagłówek jest
-              przyciskiem (port PC 23cc789): tapnięcie zwija/rozwija listę. */}
-          {filteredGroups.length > 0 && (
-            <div className="mt-3 flex flex-col gap-0.5">
-              <button
-                type="button"
-                onClick={toggleGroups}
-                aria-expanded={!groupsCollapsed}
-                aria-label={groupsCollapsed ? polish ? "Rozwiń sekcję Grupy" : "Expand section Groups" : polish ? "Zwiń sekcję Grupy" : "Collapse section Groups"}
-                title={groupsCollapsed ? polish ? "Rozwiń sekcję" : "Expand section" : polish ? "Zwiń sekcję" : "Collapse section"}
-                className="flex w-full items-center gap-1.5 rounded-lg px-3 pb-1 pt-1 text-left text-ink-secondary hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-              >
-                {groupsCollapsed ? <ChevronRight size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
-                <span className="text-[12px] font-medium uppercase tracking-wide">
-                  {polish ? "Grupy" : "Groups"}
-                </span>
-              </button>
-              {!groupsCollapsed && (
-                <div className="flex flex-col gap-0.5">
-                  {filteredGroups.map((g) => (
-                    <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {filteredHidden.length > 0 && (
             <div className="mt-3 flex flex-col gap-0.5 border-t border-white/10 pt-1">
@@ -1255,16 +1412,56 @@ export function Sidebar() {
             menu={menu}
             onClose={() => setMenu(null)}
             onMoveToSection={(botId) => {
-              setSectionPicker({ botId, x: menu.x, y: menu.y });
+              setSectionPicker({ kind: "bot", id: botId, x: menu.x, y: menu.y });
               setMenu(null);
             }}
           />
         )}
-        {sectionPicker && <SectionPicker botId={sectionPicker.botId} anchor={sectionPicker} onClose={() => setSectionPicker(null)} />}
-        {groupMenu && <GroupContextMenu menu={groupMenu} onClose={() => setGroupMenu(null)} />}
+        {sectionPicker && (
+          <SectionPicker
+            current={
+              (sectionPicker.kind === "bot"
+                ? state.bots.find((b) => b.id === sectionPicker.id)?.section
+                : (groups ?? []).find((g) => g.id === sectionPicker.id)?.section) ?? null
+            }
+            names={allSectionNames}
+            anchor={sectionPicker}
+            onAssign={(section) => {
+              if (sectionPicker.kind === "bot") {
+                dispatch({ type: "updateBot", botId: sectionPicker.id, patch: { section } });
+              } else {
+                // Grupa nie ma „braku sekcji" jako `null` — przelotka czyta
+                // pusty ciąg, tak samo jak przy tworzeniu.
+                void moveGroupToSection(sectionPicker.id, section ?? "");
+              }
+            }}
+            onClose={() => setSectionPicker(null)}
+          />
+        )}
+        {groupMenu && (
+          <GroupContextMenu
+            menu={groupMenu}
+            onMoveToSection={(group) => {
+              setSectionPicker({ kind: "group", id: group.id, x: groupMenu.x, y: groupMenu.y });
+              setGroupMenu(null);
+            }}
+            onClose={() => setGroupMenu(null)}
+          />
+        )}
+        {sectionMenu && (
+          <SectionMenu
+            menu={sectionMenu}
+            canUp={sectionNames.indexOf(sectionMenu.name) > 0}
+            canDown={sectionNames.indexOf(sectionMenu.name) < sectionNames.length - 1}
+            onMove={(delta) => moveSection(sectionMenu.name, sectionNames.indexOf(sectionMenu.name) + delta)}
+            onClose={() => setSectionMenu(null)}
+            polish={polish}
+          />
+        )}
         {groupCreateOpen && (
           <GroupCreateSheet
             bots={visibleBots}
+            sections={allSectionNames}
             onClose={() => setGroupCreateOpen(false)}
             // Świeżą grupę dopisujemy lokalnie, żeby pojawiła się od razu:
             // strumień `group` przychodzi z opóźnieniem, a przy wyłączonym

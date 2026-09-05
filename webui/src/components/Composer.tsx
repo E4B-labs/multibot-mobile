@@ -1,7 +1,7 @@
 import { track } from "@/lib/analytics";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, SlidersHorizontal, Square, Wand2, Wrench, X, Zap } from "lucide-react";
-import { useStore, type Bot } from "@/state/store";
+import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, Shield, SlidersHorizontal, Square, Wand2, Wrench, X, Zap } from "lucide-react";
+import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { MausAvatar } from "./Avatar";
@@ -19,6 +19,111 @@ import {
 } from "@/lib/nativeBridge";
 
 
+type ComposerAccess = "read-only" | "approval" | "full";
+
+const ACCESS_LABELS: Record<ComposerAccess, { pl: string; en: string }> = {
+  "read-only": { pl: "Tylko odczyt", en: "Read Only" },
+  approval: { pl: "Pytaj o zgodę", en: "Ask for approval" },
+  full: { pl: "Pełny dostęp", en: "Full Access" },
+};
+
+function normalizeAccess(value: unknown): ComposerAccess {
+  return value === "read-only" || value === "full" ? value : "approval";
+}
+
+function ComposerAccessPill({ bot, collapsed }: { bot: Bot; collapsed: boolean }) {
+  const polish = useLanguage() === "pl";
+  const [access, setAccess] = useState<ComposerAccess>("approval");
+  const [ready, setReady] = useState(false);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    api(`/api/bots/${bot.id}/access`)
+      .then((value: { access?: string }) => {
+        if (!active) return;
+        setAccess(normalizeAccess(value.access));
+        setReady(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [bot.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const choose = (next: ComposerAccess) => {
+    setOpen(false);
+    if (next === access) return;
+    const previous = access;
+    setAccess(next);
+    api(`/api/bots/${bot.id}/access`, { method: "PATCH", body: JSON.stringify({ access: next }) })
+      .then((value: { access?: string }) => setAccess(normalizeAccess(value.access)))
+      .catch(() => setAccess(previous));
+  };
+
+  if (!ready) return null;
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={cn(
+          "flex items-center rounded-full text-[11px] font-medium",
+          composerPillShape(collapsed),
+          open ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised hover:text-ink",
+        )}
+        title={`${polish ? "Dostęp" : "Access"}: ${polish ? ACCESS_LABELS[access].pl : ACCESS_LABELS[access].en}`}
+        aria-label={`${polish ? "Dostęp" : "Access"}: ${polish ? ACCESS_LABELS[access].pl : ACCESS_LABELS[access].en}`}
+      >
+        <Shield size={14} />
+        {/* multibot: podpis chowa `collapsed`, nie osobna bramka `lg:`. Przy
+            dwóch warunkach naraz poniżej 1024 px wychodziła pigułka bez
+            podpisu, ale wciąż z `px-2` — 30 px obok 32-pikselowych kwadratów
+            sąsiadów. Jeden warunek = jeden kształt. */}
+        {!collapsed && <span>{polish ? ACCESS_LABELS[access].pl : ACCESS_LABELS[access].en}</span>}
+      </button>
+      {open && (
+        <div role="menu" className="absolute bottom-full right-0 z-30 mb-2 min-w-44 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl">
+          {(Object.keys(ACCESS_LABELS) as ComposerAccess[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="menuitemradio"
+              aria-checked={access === item}
+              onClick={() => choose(item)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[12px] text-ink",
+                access === item ? "bg-raised" : "hover:bg-raised/60",
+              )}
+            >
+              {polish ? ACCESS_LABELS[item].pl : ACCESS_LABELS[item].en}
+              {access === item && <span className="text-accent">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** The active @mention query at the caret: the text between an `@` that
  * starts a word and the caret. null = no mention being typed. */
@@ -146,6 +251,38 @@ export function fastModeAvailable(driverKind: string | undefined, model: string)
   return driverKind === "codex" && model !== "gpt-5.4-mini";
 }
 
+/** multibot: czy z prawej stoi otwarty panel boczny, czyli czy kolumna czatu
+ * jest zwężona. Wtedy pigułki composera (rozumowanie, tryb szybki, dostęp)
+ * zwijają się do samej ikony — podpis mówi `title` i `aria-label`.
+ *
+ * Liczą się WYŁĄCZNIE panele będące `<aside>` obok czatu (App.tsx): ustawienia
+ * bota, inspektor, komputer, rutyny, skille. `pluginsOpen` i `teamMapOpen` to
+ * nakładki na całą powłokę (`absolute inset-0`), a grupa, pokój, poczta
+ * i ustawienia aplikacji renderują się ZAMIAST ChatView — pod żadnym z nich
+ * composera nie widać, więc nie mają czego zwijać. */
+export function sidePanelOpen(panels: {
+  settingsOpen: boolean;
+  inspectorOpen: boolean;
+  computerOpen: boolean;
+  routinesOpen: boolean;
+  skillsOpen: boolean;
+}): boolean {
+  return (
+    panels.settingsOpen ||
+    panels.inspectorOpen ||
+    panels.computerOpen ||
+    panels.routinesOpen ||
+    panels.skillsOpen
+  );
+}
+
+/** Pigułka composera: pełna (ikona + podpis) albo zwinięta do kwadratu 32 px.
+ * Ten sam obrys co przyciski mikrofonu i załącznika, więc zwinięty rząd jest
+ * równy, a odstępy między ikonami nie rozjeżdżają się o wewnętrzny padding. */
+export function composerPillShape(collapsed: boolean): string {
+  return collapsed ? "size-8 justify-center px-0" : "h-8 gap-1 px-2";
+}
+
 export function reasoningLevels(model: string) {
   // Claude Code does not expose adaptive effort for Haiku; leave provider
   // default intact instead of sending an unsupported value.
@@ -153,15 +290,23 @@ export function reasoningLevels(model: string) {
   return supportsMaxReasoning(model) ? REASONING_LEVELS : REASONING_LEVELS.filter((level) => level.id !== "max");
 }
 
+/** `onSend` przejmuje wysyłkę (czat grupowy: jedna wiadomość do całej grupy,
+ * nie do `bot`). Bez niego composer wysyła do `bot` jak dotąd. `bot` zostaje w
+ * obu trybach, bo to on karmi pasek maskotki i model picker. Zwrócone `false`
+ * znaczy „nie przyjęte" — tekst ZOSTAJE w polu, bo cicho skasowana wiadomość
+ * jest gorsza niż brak wysyłki. Załączników tu nie ma: grupa nie ma jednego
+ * właściciela pliku, więc spinacz w tym trybie znika zamiast gubić plik. */
 export function Composer({
   bot,
   replyToId,
   onClearReply,
+  onSend,
 }: {
   bot: Bot;
   /** multibot: flat reply — id wiadomości z paska cytatu nad inputem */
   replyToId?: string;
   onClearReply?: () => void;
+  onSend?: (text: string) => boolean;
 }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
@@ -180,7 +325,7 @@ export function Composer({
   // multibot: pasek nad composerem — JEDYNY animowany bot w aplikacji. Stan
   // wybiera czysta `stripMascotState`; `null` znaczy „pasek pusty".
   const runtime = state.runtime[bot.threadId] ?? null;
-  // Wiersze zależne od czasu (loading po 3 s, celebrate gaśnie po 1 s) nie mają
+  // Wiersze zależne od czasu (loading po 10 s, celebrate gaśnie po 1 s) nie mają
   // własnego eventu, więc przy żywej turze przeliczamy je co pół sekundy.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -507,7 +652,13 @@ export function Composer({
     });
   };
 
+  // multibot: otwarty panel boczny zwęża kolumnę czatu — pigułki idą wtedy
+  // na same ikony (patrz sidePanelOpen).
+  const pillsCollapsed = sidePanelOpen(state);
   const availableReasoning = reasoningLevels(bot.modelSelection.model);
+  const reasoningLabel =
+    availableReasoning.find((item) => item.id === reasoning)?.label ?? (polish ? "Domyślny" : "Default");
+  const reasoningTitle = `${polish ? "Rozumowanie" : "Reasoning"}: ${reasoningLabel}`;
   const fastAvailable = fastModeAvailable(
     state.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId)?.driverKind,
     bot.modelSelection.model,
@@ -648,7 +799,9 @@ export function Composer({
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? `Upload failed (HTTP ${response.status})`);
         return String((await response.json()).id);
       }));
-      dispatch({
+      if (onSend) {
+        if (!onSend(text.trim())) return;
+      } else dispatch({
         type: "send",
         botId: bot.id,
         text: text.trim(),
@@ -658,7 +811,7 @@ export function Composer({
       });
       track("message_sent", { driver: bot.modelSelection?.instanceId });
       onClearReply?.();
-setText("");
+      setText("");
       if (inputRef.current) inputRef.current.style.height = "auto";
       for (const item of attachments) if (item.preview) URL.revokeObjectURL(item.preview);
       previewUrls.current.clear();
@@ -744,14 +897,14 @@ setText("");
         {/* Pasek: maksymalnie jeden bot, animowany, i tylko gdy ma co pokazać. */}
         {strip && (
           <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none" title={botDisplayName(bot, polish ? "pl" : "en")}>
+            {/* multibot: od 0.3.33 `stripMascotState` zwraca sam `BlobState`
+                — ruch niesie już silnik maskotki, nie osobne `motion`. */}
             <MausAvatar
               color={bot.color}
               avatarUrl={bot.avatarUrl}
               shape={bot.mascotShape}
-              state={strip.state}
+              state={strip}
               size={44}
-              motion={strip.motion}
-              motionKey={strip.motion === "none" ? 0 : 1}
               animated
             />
           </div>
@@ -870,7 +1023,10 @@ setText("");
             ))}
           </div>
         )}
-        <div className="relative flex min-h-12 items-center gap-2 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5">
+        <div className="relative flex min-h-12 items-center gap-1.5 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5">
+        {/* Czat grupowy nie ma jednego wlasciciela pliku, a `onSend` niesie sam
+            tekst - lepiej nie pokazywac spinacza niz zzerac zalacznik. */}
+        {!onSend && (
         <button
           type="button"
           data-attach-toggle
@@ -884,6 +1040,7 @@ setText("");
         >
           <Plus size={20} />
         </button>
+        )}
         <textarea
           ref={inputRef}
           rows={1}
@@ -957,12 +1114,23 @@ setText("");
           <button
             onClick={() => setReasoningOpen((open) => !open)}
             aria-expanded={reasoningOpen}
-            aria-label={polish ? "Poziom rozumowania" : "Reasoning effort"}
-            className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"
-            title={`${polish ? "Rozumowanie" : "Reasoning"}: ${availableReasoning.find((item) => item.id === reasoning)?.label ?? (polish ? "Domyślny" : "Default")}`}
+            // multibot: poziom MUSI siedzieć w `aria-label`, nie tylko w `title`.
+            // aria-label wygrywa nazwę dostępną i spycha `title` do roli opisu,
+            // którego duża część czytników nie czyta — a przy zwiniętej pigułce
+            // to jedyne miejsce, z którego da się poznać ustawiony poziom.
+            aria-label={reasoningTitle}
+            className={cn(
+              "flex shrink-0 items-center rounded-full text-[11px] font-medium text-ink-secondary hover:bg-raised hover:text-ink",
+              composerPillShape(pillsCollapsed),
+            )}
+            title={reasoningTitle}
           >
             <Brain size={15} />
-            <span>{availableReasoning.find((item) => item.id === reasoning)?.label ?? (polish ? "Domyślny" : "Default")}</span>
+            {/* multibot: przy otwartym panelu bocznym kolumna czatu robi się
+                wąska i podpis poziomu wypychał resztę wiersza — zostaje sama
+                ikona, a poziom mówi dymek i etykieta dla czytników
+                (Kacper 29.08, rozszerzone na wszystkie panele boczne). */}
+            {!pillsCollapsed && <span>{reasoningLabel}</span>}
           </button>
           {reasoningOpen && (
             <div className="absolute bottom-full right-0 z-30 mb-2 min-w-32 overflow-hidden rounded-xl border border-hairline/40 bg-card p-1 shadow-xl">
@@ -991,7 +1159,8 @@ setText("");
             aria-pressed={bot.fastMode === true}
             aria-label={polish ? "Tryb szybki" : "Fast mode"}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium",
+              "flex shrink-0 items-center rounded-full text-[11px] font-medium",
+              composerPillShape(pillsCollapsed),
               bot.fastMode ? "bg-raised text-accent" : "text-ink-secondary hover:bg-raised hover:text-ink",
             )}
             title={
@@ -1001,9 +1170,11 @@ setText("");
             }
           >
             <Zap size={15} />
-            {!state.settingsOpen && <span>{polish ? "Szybko" : "Fast"}</span>}
+            {!pillsCollapsed && <span>{polish ? "Szybko" : "Fast"}</span>}
           </button>
         )}
+        {/* multibot: szybki przełącznik dostępu bota, obok poziomu rozumowania */}
+        <ComposerAccessPill bot={bot} collapsed={pillsCollapsed} />
         {bot.busy ? (
           <button
             onClick={() => dispatch({ type: "interrupt", botId: bot.id })}

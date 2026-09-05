@@ -27,8 +27,18 @@ function bot(id: string, over: Partial<Bot> = {}): Bot {
   };
 }
 
-function room(id: string, botIds: string[], status: Room["status"] = "running"): Room {
-  return { id, name: id, task: "task", bot_ids: botIds, transcript: [], status };
+function room(id: string, botIds: string[], status: Room["status"] = "running", activeBotId?: string | null): Room {
+  return {
+    id,
+    name: id,
+    task: "task",
+    bot_ids: botIds,
+    transcript: [],
+    status,
+    createdAt: 0,
+    ownerBotId: botIds[0] ?? "",
+    ...(activeBotId !== undefined ? { activeBotId } : {}),
+  };
 }
 
 describe("selectActivePeerChat", () => {

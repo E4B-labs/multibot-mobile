@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { authFetch, getAuthToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
+import { TeachCard } from "./SkillsPanel";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -435,6 +436,16 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             </div>
           )}
 
+          <TeachCard
+            botId={bot.id}
+            engineBotId={`mb-${bot.threadId}`}
+            onSkillCreated={() => {}}
+            polish={polish}
+            computerReady={computerState === "ready"}
+            notReadyLabel={computerStateLabel(computerState, polish)}
+            onStartControl={acquireControl}
+            onStopControl={releaseControl}
+          />
         </div>
       </aside>
 
