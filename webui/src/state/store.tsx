@@ -175,6 +175,8 @@ export interface Room {
   bot_ids: string[];
   transcript: Array<{ id: string; from: string; text: string; at: number }>;
   status: "running" | "done" | "failed";
+  /** Group chat this room mirrors, when it is a group conversation. */
+  groupId?: string;
 }
 
 /** Durable asynchronous 1:1 agent mailbox. */
