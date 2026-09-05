@@ -82,6 +82,19 @@ export function configurePushNotifications(): void {
   void ensureNotificationChannel();
 }
 
+// Awaria tokenu Expo jest z zewnątrz nieodróżnialna od ciszy: aplikacja działa
+// dalej, tylko powiadomienia nigdy nie przychodzą. Raz na uruchomienie
+// pokazujemy lokalne powiadomienie, żeby brak konfiguracji FCM był widoczny.
+let pushFailureNotified = false;
+function notifyPushUnavailable(): void {
+  if (pushFailureNotified) return;
+  pushFailureNotified = true;
+  void Notifications.scheduleNotificationAsync({
+    content: { title: "MultiBot", body: "MultiBot — push niedostępny: brak FCM" },
+    trigger: null,
+  }).catch(() => undefined);
+}
+
 // Asks the OS for permission and returns the Expo push token, or null when the
 // user declines or the platform refuses. Call once at first launch.
 export async function requestPushPermission(): Promise<string | null> {
@@ -99,6 +112,7 @@ export async function requestPushPermission(): Promise<string | null> {
     // Cichy `return null` sprawiał, że awaria tokenu wyglądała identycznie jak
     // odmowa uprawnień — push nie działał i nie zostawiał po sobie śladu.
     console.warn("push: nie udało się pobrać tokenu Expo", e);
+    notifyPushUnavailable();
     return null;
   }
 }
