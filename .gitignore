@@ -7,6 +7,11 @@ web-build/
 *.tsbuildinfo
 .DS_Store
 
+# Konfiguracja Firebase/FCM. Na EAS wjeżdża zmienną projektu
+# `GOOGLE_SERVICES_JSON` (typ `file`, widoczność `secret`) — patrz
+# `app.config.js`. Trzymamy ją poza repozytorium.
+google-services.json
+
 # Katalogi natywne generuje `prebuild` — u nas na serwerze EAS, nie lokalnie.
 # MUSZĄ tu być: `@expo/fingerprint` pomija katalog natywny tylko wtedy, gdy jest
 # ignorowany przez gita. Bez tego odcisk policzony lokalnie (bez `android/`) nie
