@@ -192,6 +192,20 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                         : (railInstance.snapshot.version ?? "ready")
                       : (railInstance.snapshot.reason ?? "unavailable")}
                   </div>
+                  {/* Bez CLI cały wiersz jest martwy, a instalator siedzi w
+                      Ustawieniach aplikacji — daj skrót zamiast ślepej szarości. */}
+                  {railInstance.snapshot.state !== "available" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        dispatch({ type: "toggleAppSettings", open: true });
+                      }}
+                      className="mt-1 text-[11px] text-accent hover:underline"
+                    >
+                      {polish ? "Zainstaluj w Ustawieniach aplikacji" : "Install in App Settings"}
+                    </button>
+                  )}
                 </div>
                 <div className="shrink-0 px-2 pb-2 pt-1">
                   <div className="relative">
