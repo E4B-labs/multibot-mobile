@@ -33,7 +33,7 @@ import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
-import { useLanguage } from "@/lib/language";
+import { getLanguage, useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
@@ -67,6 +67,14 @@ function preview(bot: Bot): string {
   if (last.kind === "options" && last.card) return last.card.title;
   if (last.kind === "activity" && last.tool) return last.tool.name;
   if (last.kind === "screen") return "Screen frame";
+  // A bot↔bot exchange is a chip with no text of its own; without this the
+  // sidebar row goes blank for the whole length of the conversation.
+  if (last.kind === "room" && last.room) {
+    const pl = getLanguage() === "pl";
+    return last.room.event === "replied"
+      ? (pl ? "Kolega odpisał" : "A colleague replied")
+      : (pl ? "Napisał do kolegi" : "Texted a colleague");
+  }
   return last.text ?? "";
 }
 
