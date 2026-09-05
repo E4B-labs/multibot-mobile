@@ -1,4 +1,4 @@
-// multibot: F8 — skille silnika w prawym slocie (400px, jak Routines).
+// multibot: F8 — skille bota w prawym slocie (400px, jak Routines).
 // Provider-neutral skills. Harness stores them per bot and injects enabled
 // instructions into every provider turn.
 import { useEffect, useRef, useState } from "react";
@@ -23,7 +23,7 @@ import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 
 // Lokalny helper jak w RoutinesPanel, plus `status` na błędzie: teach/start
-// odróżnia "brak przeglądarki" (404) od "silnik padł" po kodzie, nie po treści.
+// odróżnia "brak otwartej karty" (404) od realnej awarii po kodzie, nie po treści.
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
@@ -36,7 +36,7 @@ async function api(path: string, init?: RequestInit): Promise<any> {
   return body;
 }
 
-/** Mirror of engine `skills._record()` (engine/server/skills.py). */
+/** Kształt wiersza z GET /api/bots/{id}/skills. */
 interface Skill {
   name: string;
   command?: string;
@@ -137,7 +137,6 @@ type TeachState =
 // zamiast duplikować tamtą logikę.
 export function TeachCard({
   botId,
-  engineBotId,
   onSkillCreated,
   polish,
   computerReady,
@@ -145,9 +144,8 @@ export function TeachCard({
   onStartControl,
   onStopControl,
 }: {
-  /** Bot harnessu — syntezę robi JEGO provider, nie Hermes silnika. */
+  /** Bot harnessu — nagrywa i syntezuje harness, jeden i ten sam identyfikator. */
   botId: string;
-  engineBotId: string;
   onSkillCreated: () => void;
   polish: boolean;
   computerReady: boolean;
@@ -164,11 +162,15 @@ export function TeachCard({
     setTeach({ phase: "starting" });
     setError(null);
     onStartControl(); // H6.3 — użytkownik zaraz zacznie klikać, potrzebuje sterowania
-    api(`/api/engine/bots/${engineBotId}/teach/start`, { method: "POST" })
+    api(`/api/bots/${botId}/teach/start`, { method: "POST" })
       .then(({ recording_id }: { recording_id: string }) =>
         setTeach({ phase: "recording", recordingId: recording_id }),
       )
       .catch((e: unknown) => {
+        // Oddaj lease, którego `onStartControl` wziął w nadziei na nagranie —
+        // bez tego nieudany start zostawiał użytkownika ze sterowaniem, a
+        // agenta w kolejce, przy karcie z powrotem na „Rozpocznij nagrywanie".
+        onStopControl();
         if ((e as { status?: number }).status === 404) {
           setTeach({ phase: "idle", noBrowser: true });
         } else {
@@ -182,7 +184,7 @@ export function TeachCard({
     setTeach({ phase: "stopping", recordingId });
     setError(null);
     onStopControl(); // demonstracja skończona — oddaj sterowanie z powrotem
-    api(`/api/engine/bots/${engineBotId}/teach/stop`, {
+    api(`/api/bots/${botId}/teach/stop`, {
       method: "POST",
       body: JSON.stringify({ recording_id: recordingId }),
     })
@@ -196,11 +198,9 @@ export function TeachCard({
   const removeStep = (index: number) =>
     setTeach((t) => (t.phase === "stopped" ? { ...t, steps: t.steps.filter((_, i) => i !== index) } : t));
 
-  // Nagrywa silnik (CDP), ale skilla pisze bot swoim providerem — trasa
-  // harnessu, nie `/api/engine/.../teach/synthesize`, która wołała CLI Hermesa
-  // i na telefonie kończyła się „No inference provider configured". Botom
-  // prowadzonym przez silnik harness i tak przekaże żądanie dalej — stąd
-  // `recording_id` jedzie z nami.
+  // Nagrywa harness (CDP), skilla pisze bot swoim providerem. `steps` jedzie
+  // z UI, bo użytkownik mógł usunąć krok przed syntezą; `recording_id` tylko
+  // dla śladu w logach — trasa syntezy nagrania już nie czyta.
   const synthesize = (recordingId: string, steps: string[]) => {
     setTeach({ phase: "synthesizing" });
     setError(null);

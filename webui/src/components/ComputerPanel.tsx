@@ -11,7 +11,7 @@
 // continues either way (agent can always watch, never blocked from reading).
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Hand, Loader2, Maximize2, MousePointer2, Settings, X } from "lucide-react";
+import { AlertTriangle, GraduationCap, Hand, Loader2, Maximize2, MousePointer2, Settings, Square, X } from "lucide-react";
 import { useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch, getAuthToken } from "@/lib/auth";
@@ -224,6 +224,17 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     setRemoteCursorHidden(screenRef.current?.contentDocument, owner === "agent");
   }, [owner, computerState, fullscreen]);
 
+  // K5: faza nagrywania skilla leci z TeachCard (karta pod ekranem) jako
+  // zdarzenie, żeby czerwona ramka i pasek nagrywania mogły siedzieć NA ekranie
+  // komputera, a nie tylko w karcie.
+  const [teachPhase, setTeachPhase] = useState<string>("idle");
+  useEffect(() => {
+    const onPhase = (e: Event) => setTeachPhase(((e as CustomEvent).detail as { phase: string }).phase);
+    window.addEventListener("mb:teach:phase", onPhase);
+    return () => window.removeEventListener("mb:teach:phase", onPhase);
+  }, []);
+  const teachRecording = teachPhase === "recording" || teachPhase === "stopping";
+
   const acquireControl = () => {
     setControlPending(true);
     api(`/api/bots/${bot.id}/computer/control/acquire`, { method: "POST" })
@@ -265,6 +276,45 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         <Hand size={16} />
       ) : (
         <MousePointer2 size={16} />
+      )}
+    </button>
+  );
+  // multibot: nagrywanie startuje z ikony przy „Przejmij sterowanie", a stan
+  // trzyma TeachCard pod ekranem — stąd zdarzenie zamiast wspólnego reduktora.
+  // Ta sama ikona zatrzymuje, więc jeden guzik zamiast dwóch obok siebie.
+  //
+  // Czynny WYŁĄCZNIE w `idle` (start) i `recording` (stop): karta ignoruje start
+  // w każdej innej fazie, więc w `stopped`, `synthesizing` i `done` guzik
+  // wyglądał na aktywny i nie robił nic.
+  const teachButton = computerState === "ready" && (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent(teachRecording ? "mb:teach:stop" : "mb:teach:start"))
+      }
+      disabled={teachPhase !== "idle" && teachPhase !== "recording"}
+      title={
+        teachRecording
+          ? polish ? "Zatrzymaj nagrywanie" : "Stop recording"
+          : polish ? "Naucz umiejętności — nagraj demonstrację" : "Teach a skill — record a demonstration"
+      }
+      aria-label={
+        teachRecording
+          ? polish ? "Zatrzymaj nagrywanie" : "Stop recording"
+          : polish ? "Naucz umiejętności" : "Teach a skill"
+      }
+      aria-pressed={teachRecording}
+      className={cn(
+        "rounded-lg p-2 disabled:opacity-50",
+        teachRecording ? "bg-danger text-white" : "bg-raised text-ink-secondary hover:bg-raised-hover hover:text-ink",
+      )}
+    >
+      {teachPhase === "starting" || teachPhase === "stopping" ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : teachRecording ? (
+        <Square size={16} />
+      ) : (
+        <GraduationCap size={16} />
       )}
     </button>
   );
@@ -359,6 +409,9 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             Osobna warstwa, nie obramowanie kontenera: `pointer-events-none`
             przepuszcza kliknięcia do ekranu, a ramka nie zabiera iframe'owi
             pikseli, więc obraz nie skacze przy starcie nagrywania. */}
+        {teachRecording && (
+          <div className="pointer-events-none absolute inset-0 z-20 border-2 border-danger" />
+        )}
       </div>
     ) : (
       <div className="flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
@@ -432,13 +485,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
           {controlButton && (
             <div className="mt-3 flex items-center justify-end gap-2">
+              {teachButton}
               {controlButton}
             </div>
           )}
 
           <TeachCard
             botId={bot.id}
-            engineBotId={`mb-${bot.threadId}`}
             onSkillCreated={() => {}}
             polish={polish}
             computerReady={computerState === "ready"}
@@ -466,6 +519,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               <span className="text-[15px] font-semibold text-ink">{polish ? "Ekran bota" : "Bot screen"}</span>
             )}
             <div className="flex items-center gap-2">
+              {teachButton}
               {controlButton}
               <button
                 onClick={() => setFullscreen(false)}

@@ -32,14 +32,13 @@ function Field({
 const inputCls =
   "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none focus:border-hairline";
 
-// multibot: F10 — licznik zużycia tokenów silnika, karta pod EngineAutonomy.
+// multibot: F10 — licznik zużycia tokenów, karta pod EngineAutonomy.
 // Jeden GET przy otwarciu panelu (mount; karta keyowana bot.id jak F4), zero
 // pollingu:
-//   GET /api/engine/bots/mb-<threadId>/usage — {prompt_tokens, completion_tokens,
-//     total_tokens, turns} (engine/server/usage.py).
-// 404 = bot silnika jeszcze nie istnieje (wstaje leniwie przy pierwszej
-// wiadomości) = zero użycia, nie błąd; 502/503/błąd sieci = "Engine offline". Kosztu nie
-// pokazujemy — silnik zlicza wyłącznie tokeny.
+//   GET /api/bots/<id>/usage — {prompt_tokens, completion_tokens,
+//     total_tokens, turns}.
+// 404 = bot nie ma jeszcze historii = zero użycia, nie błąd; błąd sieci =
+// "Usługa offline". Kosztu nie pokazujemy — liczone są wyłącznie tokeny.
 interface EngineUsageOut {
   prompt_tokens: number;
   completion_tokens: number;

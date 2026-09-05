@@ -24,7 +24,7 @@ import { ComputerHandoffCard } from "./ComputerHandoffCard";
 import { ConnectCard } from "./ConnectCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { Composer } from "./Composer";
-// multibot: TTS głośniczek przy wiadomościach bota (tylko driver silnika)
+// multibot: TTS głośniczek przy wiadomościach bota (tylko z kluczem TTS)
 import { SpeakButton } from "./SpeakButton";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";

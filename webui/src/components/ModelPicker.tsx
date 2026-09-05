@@ -16,11 +16,6 @@ function instanceModelLabel(instance: InstanceInfo | undefined, model: string): 
   return modelLabel(model, instance?.models.options.find((o) => o.id === model)?.label);
 }
 
-// The Python/Hermes sidecar is runtime infrastructure, not a user-facing
-// provider. Custom engine instances remain visible because they are explicit
-// model endpoints configured by the user.
-const publicInstances = (instances: InstanceInfo[]) => instances.filter((instance) => instance.instanceId !== "local");
-
 const matchesModel = (option: { id: string; label: string }, query: string) => {
   if (!query) return true;
   const haystack = `${option.label} ${option.id}`.toLocaleLowerCase();
@@ -39,14 +34,12 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
 
   const selection = bot.modelSelection;
   const active = state.instances.find((i) => i.instanceId === selection.instanceId);
-  const visibleInstances = publicInstances(state.instances);
+  const visibleInstances = state.instances;
   const railInstance =
     visibleInstances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ?? visibleInstances[0];
-  const activeLabel = active?.instanceId === "local"
-    ? `Automatic · ${instanceModelLabel(active, selection.model)}`
-    : active
-      ? `${active.displayName} · ${instanceModelLabel(active, selection.model)}`
-      : instanceModelLabel(active, selection.model);
+  const activeLabel = active
+    ? `${active.displayName} · ${instanceModelLabel(active, selection.model)}`
+    : instanceModelLabel(active, selection.model);
   const opencodeKeyMissing = state.config?.opencode?.configured !== true;
   const normalizedModelQuery = modelQuery.trim().toLocaleLowerCase();
   const filteredOptions = railInstance?.models.options.filter((option) => matchesModel(option, normalizedModelQuery)) ?? [];
@@ -141,7 +134,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
         className="flex items-center gap-1.5 rounded-full border border-hairline/40 bg-raised/60 py-2.5 pl-2 pr-2.5 text-[14px] text-ink hover:bg-raised sm:py-1"
         title={activeLabel || selection.model}
       >
-        {active && active.instanceId !== "local" && <ProviderMark driverKind={active.driverKind} size={18} />}
+        {active && <ProviderMark driverKind={active.driverKind} size={18} />}
         {/* Na wąskim ekranie nazwa modelu wypychała pigułkę poza nagłówek —
             zostaje sam znak dostawcy, pełna nazwa wraca od `sm`. */}
         <span className="hidden max-w-[190px] truncate sm:inline">
