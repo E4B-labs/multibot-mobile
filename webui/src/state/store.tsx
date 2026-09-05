@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MascotShape } from "@/lib/mascotShapes";
-import type { MausColor, MausMotion } from "@/lib/mascot";
+import type { MausColor, MausMotion, RuntimeKind, RuntimePhase } from "@/lib/mascot";
 import type { AutoVerifySettings } from "@/lib/autoVerifyTypes";
 import { MAUS_COLORS } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
@@ -21,6 +21,7 @@ import { botDisplayName } from "@/lib/botNames";
 import {
   botNotificationIcon,
   notify,
+  notifyFrame,
   readDesktopNotifications,
   shouldNotify,
   shouldNotifyRoomDone,
@@ -36,6 +37,9 @@ const SELECTED_BOT_KEY = "multibot.selectedBot";
 // 30 minut po ostatniej wiadomości; ten sufit to tylko bezpiecznik pamięci.
 const MAX_KNOWN_ROOMS = 40;
 
+/** Zamknięty zbiór konektorów kart `connect` — mirror server/store.ts. */
+export type ConnectorTarget = "composio" | "google-workspace" | "mcp" | "computer";
+
 export interface OptionCardData {
   title: string;
   subtitle: string;
@@ -45,8 +49,17 @@ export interface OptionCardData {
   /** Present when this card is a live provider ask (approval/question). */
   requestId?: string;
   /** multibot: `computer-handoff` — bot prosi człowieka o zrobienie czegoś na
-   *  jego komputerze (logowanie, 2FA, captcha). Brak = zwykła karta. */
-  kind?: "computer-handoff";
+   *  jego komputerze (logowanie, 2FA, captcha). `connect` — bot prosi o
+   *  podłączenie konektora i NIE czeka. Brak = zwykła karta. */
+  kind?: "computer-handoff" | "connect";
+  /** karty `connect`: konektor, który otwiera przycisk „Podłącz". */
+  connector?: ConnectorTarget;
+}
+
+/** Skill widziany przez czat: nazwa do podświetlenia + opis do popovera. */
+export interface SkillRefInfo {
+  name: string;
+  description?: string;
 }
 
 export interface Message {
@@ -58,7 +71,7 @@ export interface Message {
   secret?: { target: string; label: string; description: string; placeholder?: string; helpUrl?: string; requestKey: string; provided?: boolean; dismissed?: boolean };
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
-  event?: { type: "renamed" | "skill-created" | "routine-created" | "goal-progress"; value: string };
+  event?: { type: "renamed" | "skill-created" | "routine-created" | "reminder-created" | "goal-progress"; value: string };
   /** collaboration-room chip: "X texted Y" → opens the read-only room */
   room?: { id: string; name: string; bot_ids: string[]; ownerBotId: string; status: string };
   /** screen messages: a frame of the bot's computer (base64) */
@@ -205,6 +218,9 @@ interface AppState {
   selectedId: string;
   settingsOpen: boolean;
   pluginsOpen: boolean;
+  /** multibot: konektor, o który poprosił bot kartą „Podłącz" — panel wtyczek
+   *  otwiera się od razu na właściwej zakładce. */
+  pluginsConnector?: ConnectorTarget;
   computerOpen: boolean;
   appSettingsOpen: boolean;
   // multibot: F6 — panel rutyn silnika, ten sam prawy slot co settings/computer
@@ -215,8 +231,11 @@ interface AppState {
   // multibot: live team map (port z OpenMausBot)
   teamMapOpen: boolean;
   inspectorOpen: boolean;
-  /** multibot: nazwy skilli do podświetlania w treści wiadomości (skillRefs) */
-  skillNames: string[];
+  /** multibot: skille bieżącego bota — nazwy podświetlają się w treści
+   *  wiadomości (skillRefs), a opis wchodzi do popovera nad taką nazwą. */
+  skills: SkillRefInfo[];
+  /** multibot: skill, na którym panel skilli ma się otworzyć rozwinięty. */
+  skillFocus: string | null;
   // multibot: F9-FE — otwarty pokój grupowy (prawy slot); null = zamknięty
   groupOpen: EngineGroup | null;
   // multibot: otwarty read-only pokój współpracy botów (zastępuje widok czatu)
@@ -229,6 +248,11 @@ interface AppState {
   rooms: Room[];
   /** in-flight assistant text per threadId (content.delta fold) */
   streaming: Record<string, string>;
+  /** multibot: faza tury per threadId — serwer rozróżnia rozumowanie od
+   *  wyjścia (contracts `streamKind`), a pasek nad composerem rysuje z tego
+   *  „myśli" vs „pisze". Bez timerów sprzątających: wpis wygasa sam, bo
+   *  `stripMascotState` porównuje `at` z zegarem. */
+  runtime: Record<string, RuntimePhase>;
   /** latest live frame of a bot's computer, per botId */
   screens: Record<string, { png: string; mime: string }>;
   /** bots whose cloud computer is being provisioned */
@@ -262,6 +286,7 @@ type Action =
   | { type: "messageAdded"; threadId: string; message: Message }
   | { type: "messagePatched"; threadId: string; message: Message }
   | { type: "streamDelta"; threadId: string; delta: string }
+  | { type: "runtimeTick"; threadId: string; kind: RuntimeKind }
   | { type: "streamClear"; threadId: string }
   | { type: "screenFrame"; botId: string; png: string; mime: string }
   | { type: "provisioning"; botId: string; on: boolean }
@@ -271,19 +296,19 @@ type Action =
   | { type: "workspaceChanged"; botId: string; resource: string }
   | { type: "error"; message: string | null }
   | { type: "toggleSettings"; open?: boolean }
-  | { type: "togglePlugins"; open?: boolean }
+  | { type: "togglePlugins"; open?: boolean; connector?: ConnectorTarget }
   | { type: "toggleComputer"; open?: boolean }
   | { type: "toggleAppSettings"; open?: boolean }
   // multibot: F6 — otwarcie/zamknięcie panelu rutyn
   | { type: "toggleRoutines"; open?: boolean }
   // multibot: F8 — otwarcie/zamknięcie paneli pamięci i skilli
   | { type: "toggleMemory"; open?: boolean }
-  | { type: "toggleSkills"; open?: boolean }
+  | { type: "toggleSkills"; open?: boolean; skill?: string }
   // multibot: team map (port z OpenMausBot)
   | { type: "toggleTeamMap"; open?: boolean }
   | { type: "toggleInspector"; open?: boolean }
   /** multibot: nazwy skilli do podświetlania w treści wiadomości */
-  | { type: "setSkillNames"; names: string[] }
+  | { type: "setSkills"; skills: SkillRefInfo[] }
   // multibot: F9-FE — otwarcie pokoju grupowego (group) / zamknięcie (null)
   | { type: "toggleGroup"; group: EngineGroup | null }
   // multibot: otwarcie read-only pokoju współpracy / zamknięcie (null)
@@ -508,6 +533,11 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         messages: sortMessages(b.messages.map((m) => (m.id === message.id ? message : m))),
       }));
     }
+    case "runtimeTick":
+      return {
+        ...state,
+        runtime: { ...state.runtime, [action.threadId]: { at: Date.now(), kind: action.kind } },
+      };
     case "streamDelta":
       return {
         ...state,
@@ -558,7 +588,12 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       };
     }
     case "togglePlugins":
-      return { ...state, pluginsOpen: action.open ?? !state.pluginsOpen, mailOpen: action.open ? false : state.mailOpen };
+      return {
+        ...state,
+        pluginsOpen: action.open ?? !state.pluginsOpen,
+        pluginsConnector: action.connector,
+        mailOpen: action.open ? false : state.mailOpen,
+      };
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {
@@ -622,6 +657,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       return {
         ...state,
         skillsOpen: open,
+        skillFocus: open ? action.skill ?? null : null,
         memoryOpen: open ? false : state.memoryOpen,
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
@@ -647,8 +683,8 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
         skillsOpen: open ? false : state.skillsOpen,
       };
     }
-    case "setSkillNames":
-      return { ...state, skillNames: action.names };
+    case "setSkills":
+      return { ...state, skills: action.skills };
     // multibot: F9-FE — pokój grupowy w prawym slocie, ta sama zasada wykluczania
     case "toggleGroup": {
       const open = action.group !== null;
@@ -772,13 +808,15 @@ const initialState: AppState = {
   skillsOpen: false,
   teamMapOpen: false,
   inspectorOpen: false,
-  skillNames: [],
+  skills: [],
+  skillFocus: null,
   groupOpen: null,
   roomOpen: null,
   mailOpen: false,
   mailThreads: [],
   rooms: [],
   streaming: {},
+  runtime: {},
   screens: {},
   provisioning: {},
   connected: false,
@@ -1070,6 +1108,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "workspace":
           rawDispatch({ type: "workspaceChanged", botId: frame.botId, resource: frame.resource });
           break;
+        // multibot: bot poprosił o banerkę wprost (przypomnienie, notify_user)
+        case "notify": {
+          const payload = notifyFrame(frame, { enabled: readDesktopNotifications() });
+          if (payload) {
+            const bot = stateRef.current.bots.find((b) => b.id === payload.botId);
+            notify({ ...payload, icon: bot ? botNotificationIcon(MAUS_COLORS[bot.color]) : undefined });
+          }
+          break;
+        }
         case "group":
           rawDispatch({ type: "workspaceChanged", botId: "", resource: "groups" });
           break;
@@ -1109,9 +1156,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         case "runtime": {
           const event = frame.event;
-          if (event.type === "content.delta" && event.streamKind === "assistant_text") {
+          // multibot: pasek nad composerem odróżnia „myśli" od „pisze", więc
+          // reasoning nie jest już wyrzucany — obie ścieżki zapisują fazę tury.
+          if (event.type === "turn.started") {
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "start" });
+          } else if (event.type === "item.started" && event.itemType === "reasoning") {
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "reasoning" });
+          } else if (event.type === "content.delta" && event.streamKind === "reasoning_text") {
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "reasoning" });
+          } else if (event.type === "content.delta" && event.streamKind === "assistant_text") {
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "text" });
             rawDispatch({ type: "streamDelta", threadId: event.threadId, delta: event.delta });
           } else if (event.type === "turn.completed") {
+            rawDispatch({ type: "runtimeTick", threadId: event.threadId, kind: "done" });
             rawDispatch({ type: "streamClear", threadId: event.threadId });
           }
           break;

@@ -223,7 +223,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-app px-4 py-4 pt-[calc(var(--safe-top)+1rem)] pb-[calc(var(--safe-bottom)+1rem)] sm:py-6 sm:pt-[calc(var(--safe-top)+1.5rem)] sm:pb-[calc(var(--safe-bottom)+1.5rem)]">
       <div role="dialog" aria-modal="true" aria-label={polish ? "Konfiguracja MultiBota" : "Multibot setup"} className="flex w-full max-w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-5 sm:p-8">
         {entry === "choice" && <div className="flex flex-col">
-          <MausAvatar color="green" state="happy" size={72} />
+          <MausAvatar color="green" state="happy" size={72} animated={false} />
           <h1 className="mt-4 text-[20px] font-semibold text-ink">MultiBot</h1>
           <p className="mt-1.5 text-[14px] text-ink-secondary">{polish ? "Zacznij od jednej z dwóch rzeczy." : "Start with one of two things."}</p>
           <button onClick={() => setEntry("server")} className="mt-6 rounded-xl bg-raised p-4 text-left text-ink hover:bg-raised-hover"><div className="font-semibold">{polish ? "Skonfiguruj serwer" : "Set up a server"}</div><div className="mt-1 text-[12.5px] text-ink-secondary">{isMobileClient ? polish ? "Skonfiguruj hosta, do którego jest podłączony telefon." : "Configure the host this phone is connected to." : polish ? "To urządzenie będzie serwerem. Tutaj mieszkają boty i ich pamięć." : "This device will be the server. Bots and their memory live here."}</div></button>
@@ -238,7 +238,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>}
 
         {entry === "server" && step === 0 && <div className="flex flex-col">
-          <MausAvatar color="green" state="happy" size={72} />
+          <MausAvatar color="green" state="happy" size={72} animated={false} />
           <h1 className="mt-4 text-[20px] font-semibold text-ink">{polish ? "Skonfiguruj urządzenie" : "Set up this device"}</h1>
           <div className="mt-4 rounded-xl bg-card p-3.5 text-[12.5px] leading-relaxed text-ink-secondary">
             <div>{polish ? "1. Uruchom MultiBota na komputerze albo telefonie, który ma być serwerem." : "1. Run MultiBot on the computer or phone that will be the server."}</div>
