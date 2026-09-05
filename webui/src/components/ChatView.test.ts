@@ -10,7 +10,7 @@ const chat = readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
 describe("awatar w nagłówku czatu", () => {
   it("liczy propsy tym samym helperem co szuflada", () => {
     expect(chat).toContain("sidebarAvatarProps(bot)");
-    expect(chat).toContain("{...headerAvatar}");
+    expect(chat).toContain("animated={headerAvatar.animated}");
   });
 
   it("nie odtwarza jednorazowego beatu ze store'u", () => {

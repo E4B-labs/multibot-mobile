@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useCallback, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, CalendarClock, Crosshair, FileIcon, Loader2, Square, Upload, Wand2 } from "lucide-react";
+import { ArrowDown, Bell, CalendarClock, Crosshair, FileIcon, Loader2, Square, Upload, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";// multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
-import { SkillPill } from "./SkillPill";
+import { SkillRef } from "./SkillRef";
 import { AttachmentCard } from "./AttachmentCard";
 // multibot: lightbox załączników-obrazków (port z OpenMausBot #436)
 import { AttachmentPreviewDialog } from "./AttachmentPreview";
@@ -21,6 +21,7 @@ import { sidebarAvatarProps, stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard } from "./OptionCard";
 import { ComputerHandoffCard } from "./ComputerHandoffCard";
+import { ConnectCard } from "./ConnectCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { Composer } from "./Composer";
 // multibot: TTS głośniczek przy wiadomościach bota (tylko driver silnika)
@@ -220,26 +221,33 @@ function SessionSeparator({ at, polish }: { at: number; polish: boolean }) {
 function EventPill({ message, polish }: { message: Message; polish: boolean }) {
   const { dispatch } = useStore();
   if (!message.event) return null;
+  // przypomnienie jest rutyną z jednorazową datą, więc prowadzi w to samo miejsce
+  const routineEvent = message.event.type === "routine-created" || message.event.type === "reminder-created";
   const labels = polish
-    ? { renamed: "Zmieniono nazwę na", "skill-created": "Utworzono umiejętność", "routine-created": "Utworzono rutynę", "goal-progress": "Cel" }
-    : { renamed: "Renamed to", "skill-created": "Created skill", "routine-created": "Created routine", "goal-progress": "Goal" };
+    ? { renamed: "Zmieniono nazwę na", "skill-created": "Utworzono umiejętność", "routine-created": "Utworzono rutynę", "reminder-created": "Przypomnienie", "goal-progress": "Cel" }
+    : { renamed: "Renamed to", "skill-created": "Created skill", "routine-created": "Created routine", "reminder-created": "Reminder", "goal-progress": "Goal" };
   // multibot: wspólna pigułka zamiast własnego markupu — patrz EventChip.tsx.
   // Rutyna dostaje ikonę zegara, zmiana nazwy zostaje czystym tekstem.
-  // skill-created → centered SkillPill (czarno-amber, klikalny) jak na screenie 561×110
+  // skill-created → wyśrodkowany SkillRef: ta sama nazwa, ten sam kolor i ten
+  // sam popover co skill wspomniany w zdaniu.
   if (message.event.type === "skill-created") {
     return (
       <div className="flex w-full justify-center py-1">
-        <SkillPill name={message.event.value} />
+        <SkillRef name={message.event.value} block />
       </div>
     );
   }
   return (
     <EventChip
-      icon={message.event.type === "routine-created" ? <CalendarClock size={13} /> : message.event.type === "goal-progress" ? <Crosshair size={13} /> : undefined}
+      icon={
+        message.event.type === "routine-created" ? <CalendarClock size={13} />
+          : message.event.type === "reminder-created" ? <Bell size={13} />
+            : message.event.type === "goal-progress" ? <Crosshair size={13} /> : undefined
+      }
       label={labels[message.event.type]}
       value={message.event.value}
-      onClick={message.event.type === "routine-created" ? () => dispatch({ type: "toggleRoutines", open: true }) : undefined}
-      title={message.event.type === "routine-created" ? "Otwórz rutyny / Open routines" : undefined}
+      onClick={routineEvent ? () => dispatch({ type: "toggleRoutines", open: true }) : undefined}
+      title={routineEvent ? "Otwórz rutyny / Open routines" : undefined}
     />
   );
 }
@@ -343,9 +351,9 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
-  // multibot: awatar w pasku nad rozmowa trzyma sie tej samej zasady co
-  // szuflada — bot, ktory nie pracuje, stoi nieruchomo (`animated:false`),
-  // bez jednorazowych beatow z magazynu. Ten sam helper, jedno zrodlo.
+  // multibot: awatar w naglowku czatu trzyma sie tej samej zasady co pasek
+  // boczny i wiersz grupy — stoi nieruchomo ZAWSZE, takze gdy bot pracuje.
+  // Jedyny animowany bot w aplikacji siedzi na pasku nad composerem.
   const headerAvatar = sidebarAvatarProps(bot);
 
   // Scroll pinning: follow the bottom while the user hasn't scrolled away.
@@ -402,13 +410,17 @@ export function ChatView({ bot }: { bot: Bot }) {
     let active = true;
     authFetch(`/api/bots/${bot.id}/skills`)
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((skills: Array<{ name?: unknown }>) => {
+      .then((skills: Array<{ name?: unknown; description?: unknown }>) => {
         if (active) dispatch({
-          type: "setSkillNames",
-          names: skills.flatMap((skill) => typeof skill.name === "string" ? [skill.name] : []),
+          type: "setSkills",
+          skills: skills.flatMap((skill) =>
+            typeof skill.name === "string"
+              ? [{ name: skill.name, description: typeof skill.description === "string" ? skill.description : undefined }]
+              : [],
+          ),
         });
       })
-      .catch(() => active && dispatch({ type: "setSkillNames", names: [] }));
+      .catch(() => active && dispatch({ type: "setSkills", skills: [] }));
     return () => { active = false; };
   }, [bot.id, latestSkillEvent, dispatch]);
   useEffect(() => {
@@ -469,7 +481,10 @@ export function ChatView({ bot }: { bot: Bot }) {
               color={bot.color} avatarUrl={bot.avatarUrl}
               shape={bot.mascotShape}
               size={44}
-              {...headerAvatar}
+              state={headerAvatar.state}
+              motion={headerAvatar.motion}
+              motionKey={headerAvatar.motionKey}
+              animated={headerAvatar.animated}
             />
             {/* Nazwa i model w kolumnie, obie ucinane wielokropkiem: na wąskim
                 ekranie nachodziły na pigułkę modelu po prawej. */}
@@ -548,7 +563,9 @@ export function ChatView({ bot }: { bot: Bot }) {
                 // (miniatura ekranu + przejmij/gotowe/pomiń), reszta kart bez zmian
                 child = m.card?.kind === "computer-handoff"
                   ? <ComputerHandoffCard key={m.id} botId={bot.id} message={m} />
-                  : <OptionCard key={m.id} botId={bot.id} message={m} />;
+                  : m.card?.kind === "connect"
+                    ? <ConnectCard key={m.id} botId={bot.id} message={m} polish={polish} />
+                    : <OptionCard key={m.id} botId={bot.id} message={m} />;
                 break;
               // multibot: wywołania narzędzi lecą dalej do stanu (Sidebar pokazuje
               // last.tool.name jako status), ale w czacie są niewidoczne —

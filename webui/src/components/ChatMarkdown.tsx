@@ -7,10 +7,11 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Wand2 } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useLanguage } from "@/lib/language";
 import { normalizeState } from "@/lib/mascot";
 import { MausAvatar } from "./Avatar";
+import { SkillRef } from "./SkillRef";
 import { useStore } from "@/state/store";
 // multibot (2.4): wzmianki jako chip — logika wtyczki w osobnym, testowanym pliku.
 import { mentionPlugins } from "@/lib/mentions";
@@ -100,9 +101,9 @@ function CodeBlock({ code, lang, streaming }: { code: string; lang: string; stre
 }
 
 function ChatMarkdownComponent({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const bots = useMemo<MentionBot[]>(() => state.bots, [state.bots]);
-  const skillNames = state.skillNames;
+  const skillNames = useMemo(() => state.skills.map((skill) => skill.name), [state.skills]);
   const remarkPlugins = useMemo<any[]>(
     () => withSkillRefPlugins([...mentionPlugins(remarkGfm, bots), remarkBrackets], skillNames) as any[],
     [bots, skillNames],
@@ -120,15 +121,9 @@ function ChatMarkdownComponent({ text, streaming = false }: { text: string; stre
               const skillRef = node?.properties?.dataSkillRef ?? node?.properties?.["data-skill-ref"];
               if (typeof skillRef === "string") {
                 return (
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: "toggleSkills", open: true })}
-                    className="inline-flex h-6 translate-y-px items-center gap-1.5 rounded-full bg-[#111] px-2.5 align-middle text-[12.5px] font-semibold text-[#ffb700] hover:brightness-110"
-                    title={skillRef}
-                  >
-                    <Wand2 size={11} className="shrink-0 text-[#ffb700]" />
+                  <SkillRef name={skillRef}>
                     {children}
-                  </button>
+                  </SkillRef>
                 );
               }
               return <span>{children}</span>;

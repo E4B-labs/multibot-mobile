@@ -29,8 +29,8 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `164e6f1` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-08-27). Po kolejnej synchronizacji
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `30694c58` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.31). Po kolejnej synchronizacji
 // podmień ten hash na świeży, inaczej trzystronne scalanie liczy różnice od
 // złej bazy i znowu wywali przeróbki mobilne.
 
