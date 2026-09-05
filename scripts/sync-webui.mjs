@@ -29,10 +29,17 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `311e1b54` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.31, pokoje grupowe po SSE). Po kolejnej synchronizacji
-// podmień ten hash na świeży, inaczej trzystronne scalanie liczy różnice od
-// złej bazy i znowu wywali przeróbki mobilne.
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `a0bb1e0a` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.34: silnik maskotki
+// BlobAvatar + stan `working`, sekcje sidebaru z `sectionOrder`, poczta agentów
+// zastąpiona panelem pokoi, przebudowa czatu grupowego, hotfix twarzy na
+// nieruchomych awatarach). Poprzednia baza: `311e1b54` (0.3.31).
+// Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
+// scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
+//
+// Ta synchronizacja NIE szła tym skryptem: każdy plik przez `git merge-file`
+// (OURS = telefon, BASE = 311e1b54, THEIRS = a0bb1e0a), pliki z `PHONE_OWNED`
+// ręcznie. Skryptu nadal się nie uruchamia.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";

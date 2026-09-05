@@ -19,7 +19,7 @@ import {
   type MausMotion,
   type MausState,
 } from "@/lib/mascot";
-import { EXPRESSION_COUNT } from "@/components/CursorAvatar";
+import { EXPRESSION_COUNT } from "@/components/BlobAvatar";
 import "./styles.css";
 import "./mascot-preview.css";
 
@@ -49,8 +49,7 @@ const MOTION_SCENARIOS: Record<Exclude<MausMotion, "none">, string> = {
   blink: "New reply",
   surprise: "Unread update",
   failure: "Action failed",
-  sending: "Sending request",
-  "thinking-dots": "Thinking (dots)",
+  sending: "Sending message",
 };
 
 const MOTION_COLORS: MausColor[] = [

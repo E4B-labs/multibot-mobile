@@ -21,8 +21,9 @@ import { RoutinesPanel } from "@/components/RoutinesPanel";
 import { SkillsPanel } from "@/components/SkillsPanel";
 // multibot: F9-FE — pokój grupowy silnika
 import { GroupPanel } from "@/components/GroupPanel";
+import { GroupMembersPanel } from "@/components/GroupMembersPanel";
 import { RoomPanel } from "@/components/RoomPanel";
-import { MailPanel } from "@/components/MailPanel";
+import { RoomsPanel } from "@/components/RoomsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 // multibot: Cmd/Ctrl+K paleta komend
 import { CmdK } from "@/components/CmdK";
@@ -174,8 +175,8 @@ function Shell() {
       <CmdK />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
-      {state.mailOpen ? (
-        <MailPanel />
+      {state.roomsOpen ? (
+        <RoomsPanel />
       ) : state.roomOpen ? (
         <RoomPanel />
       ) : state.groupOpen ? (
@@ -195,7 +196,12 @@ function Shell() {
           )}
         </main>
       )}
-      {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
+      {/* multibot (telefon): na desktopie skład grupy stoi obok czatu, tutaj CSS
+          rozciąga każdy aside na cały bezpieczny obszar — gdyby renderował się
+          zawsze, przykryłby czat grupy, czyli całą funkcję z PR #59. Dlatego
+          siedzi w tym samym slocie co ustawienia bota i otwiera go nagłówek. */}
+      {state.settingsOpen && state.groupOpen && !state.routinesOpen && <GroupMembersPanel group={state.groupOpen} />}
+      {state.settingsOpen && !state.groupOpen && bot && <SettingsPanel bot={bot} />}
       {state.inspectorOpen && bot && <InspectorPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {/* multibot: routines are harness-owned and available for every driver. */}

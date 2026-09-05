@@ -7,15 +7,15 @@
 // Po sekwencji panel renderuje się dokładnie tak jak przedtem — bez opakowań
 // na litery i bez klas animacji, żeby stan końcowy był identyczny.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CalendarClock, Mail, MoreVertical, Monitor, ScanSearch, Search, Users, Wand2 } from "lucide-react";
+import { CalendarClock, MessagesSquare, Monitor, MoreVertical, ScanSearch, Search, Users, Wand2 } from "lucide-react";
 import { useStore } from "@/state/store";
 import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/cn";
 import { motionIsReduced } from "@/lib/motion";
 
-/** Kolejność pozycji. Lista jest jawna, żeby po schowaniu ikon żadna funkcja
- * nie wyparowała. */
-export const CHAT_HEADER_ACTIONS = ["computer", "routines", "skills", "find", "inspector", "mail", "team"] as const;
+/** Kolejność jak na telefonie. Lista jest jawna, żeby po schowaniu ikon żadna
+ * funkcja nie wyparowała — pilnuje tego ChatHeaderMenu.test.ts. */
+export const CHAT_HEADER_ACTIONS = ["computer", "routines", "skills", "find", "inspector", "rooms", "team"] as const;
 export type ChatHeaderAction = (typeof CHAT_HEADER_ACTIONS)[number];
 
 /** Czasy faz. Te same liczby stoją w klatkach CSS (webui/src/styles.css:
@@ -124,15 +124,15 @@ export function ChatHeaderMenu({ onToggleFind }: { onToggleFind: () => void }) {
       label: polish ? "Inspector runtime" : "Runtime inspector",
       run: () => dispatch({ type: "toggleInspector" }),
     },
+    rooms: {
+      icon: MessagesSquare,
+      label: polish ? "Rozmowy botów" : "Bot rooms",
+      run: () => dispatch({ type: "toggleRooms", open: true }),
+    },
     team: {
       icon: Users,
       label: polish ? "Mapa zespołu" : "Team map",
       run: () => dispatch({ type: "toggleTeamMap", open: true }),
-    },
-    mail: {
-      icon: Mail,
-      label: polish ? "Mail agentów" : "Agent mail",
-      run: () => dispatch({ type: "toggleMail", open: true }),
     },
   };
 
