@@ -78,7 +78,20 @@ export function isNewerMobileRelease(release: MobileRelease | null): release is 
  * wejście dla „chcę nową wersję" — woła je stuknięcie w powiadomienie o braku
  * pushu (`App.tsx`). Cicho nic nie robi, gdy nowszego APK nie ma.
  */
-export async function installLatestRelease(): Promise<void> {
+// Zimny start po stuknięciu w powiadomienie dostarcza tę samą odpowiedź DWA
+// razy (listener i `getLastNotificationResponseAsync`). Dwa równoległe
+// pobrania piszą do tej samej ścieżki `MultiBot-<code>.apk`, a `deleteAsync`
+// jednego trafia w środek pobierania drugiego — instalator dostaje ucięty plik.
+let installing: Promise<void> | null = null;
+
+export function installLatestRelease(): Promise<void> {
+  installing ??= runInstall().finally(() => {
+    installing = null;
+  });
+  return installing;
+}
+
+async function runInstall(): Promise<void> {
   const release = await fetchMobileRelease();
   if (isNewerMobileRelease(release)) await installAndroidRelease(release);
 }

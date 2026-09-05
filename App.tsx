@@ -91,7 +91,12 @@ export default function App() {
     // stuknięcie ma go pobrać, a nie otwierać czat.
     const handleResponse = (notification: Notifications.Notification) => {
       const data = notification.request.content.data as Record<string, unknown> | undefined;
-      if (data?.action === "install-apk") {
+      // `data` w pushu ustawia SERWER, a `install-apk` pobiera i uruchamia
+      // instalator paczki — zdalne powiadomienie nie może tego odpalić.
+      // Warunek jest odwrócony (blokujemy `push`, a nie wpuszczamy `null`),
+      // żeby zmiana kształtu triggera lokalnego nie zabiła całej ścieżki.
+      const remote = (notification.request.trigger as { type?: string } | null)?.type === "push";
+      if (!remote && data?.action === "install-apk") {
         void installLatestRelease().catch(() => undefined);
         return;
       }

@@ -35,15 +35,17 @@ test("ostrzeżenie idzie raz na instalację, nie raz na uruchomienie", () => {
   const push = readFileSync("src/lib/push.ts", "utf8");
   // Numer buildu w trwałym magazynie: `let` w module ginął przy restarcie.
   assert.match(push, /NOTIFIED_BUILD_KEY = "mb_push_unavailable_build"/);
-  assert.match(push, /SecureStore\.getItemAsync\(NOTIFIED_BUILD_KEY\)\) === build\) return;/);
+  assert.match(push, /SecureStore\.getItemAsync\(NOTIFIED_BUILD_KEY\)\.catch\(\(\) => null\)\) === build\) return;/);
   assert.match(push, /SecureStore\.setItemAsync\(NOTIFIED_BUILD_KEY, build\)/);
   assert.match(push, /content: pushUnavailableNotice\(release, currentBuildVersion\(\)\)/);
 });
 
 test("stuknięcie w powiadomienie odpala instalację APK", () => {
   const app = readFileSync("App.tsx", "utf8");
-  assert.match(app, /data\?\.action === "install-apk"/);
+  assert.match(app, /if \(!remote && data\?\.action === "install-apk"\)/);
   assert.match(app, /void installLatestRelease\(\)/);
+  // `data` w pushu pisze serwer — zdalne powiadomienie nie odpala instalatora.
+  assert.match(app, /const remote = \(notification\.request\.trigger as \{ type\?: string \} \| null\)\?\.type === "push";/);
   // Zimny start (aplikacja ubita) idzie tą samą ścieżką co listener.
   assert.match(app, /getLastNotificationResponseAsync\(\)\.then\(\(last\) => \{\s*if \(last\) handleResponse\(last\.notification\);/);
 });

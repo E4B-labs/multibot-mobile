@@ -99,9 +99,11 @@ let pushFailureNotified = false;
 async function notifyPushUnavailable(): Promise<void> {
   if (pushFailureNotified) return;
   pushFailureNotified = true;
-  const build = String(currentBuildVersion());
   try {
-    if ((await SecureStore.getItemAsync(NOTIFIED_BUILD_KEY)) === build) return;
+    const build = String(currentBuildVersion());
+    // Sam ODCZYT łapiemy osobno: keystore po przywróceniu kopii zapasowej
+    // potrafi rzucić przy deszyfrowaniu, a to nie może uciszyć ostrzeżenia.
+    if ((await SecureStore.getItemAsync(NOTIFIED_BUILD_KEY).catch(() => null)) === build) return;
     // Manifest mówi, czy jest co instalować. Nieosiągalny manifest to nie
     // powód, żeby zmilczeć awarię — wtedy leci sam komunikat diagnostyczny.
     const release = await fetchMobileRelease().catch(() => null);
@@ -109,7 +111,7 @@ async function notifyPushUnavailable(): Promise<void> {
       content: pushUnavailableNotice(release, currentBuildVersion()),
       trigger: null,
     });
-    await SecureStore.setItemAsync(NOTIFIED_BUILD_KEY, build);
+    await SecureStore.setItemAsync(NOTIFIED_BUILD_KEY, build).catch(() => undefined);
   } catch {
     // Brak kanału, odmowa uprawnień, SecureStore bez dostępu — powiadomienie
     // diagnostyczne nie może wywrócić rejestracji tokenu.
