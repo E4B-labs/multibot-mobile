@@ -239,8 +239,6 @@ interface AppState {
   roomOpen: Room | null;
   /** "Bot rooms" list view — every bot-to-bot conversation in one place. */
   roomsOpen: boolean;
-  /** Messages one room may carry before its budget is spent (server config). */
-  roomBudget: number;
   /** multibot: znane pokoje współpracy (ostatnie N) — z nich wskaźnik
    *  „boty rozmawiają między sobą" wybiera aktywnego partnera dla czatu. */
   rooms: Room[];
@@ -313,7 +311,7 @@ type Action =
   | { type: "toggleRoom"; room: Room | null }
   | { type: "toggleRooms"; open?: boolean }
   /** multibot: pełna lista pokoi z GET /api/rooms (hydratacja po starcie) */
-  | { type: "roomsSet"; rooms: Room[]; budget?: number }
+  | { type: "roomsSet"; rooms: Room[] }
   /** multibot: jeden pokój z kanału {kind:"room"} — wstaw lub odśwież */
   | { type: "roomUpsert"; room: Room }
   | {
@@ -717,7 +715,6 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
       return {
         ...state,
         rooms: action.rooms.slice(-MAX_KNOWN_ROOMS),
-        roomBudget: action.budget ?? state.roomBudget,
       };
     case "roomUpsert": {
       const others = state.rooms.filter((room) => room.id !== action.room.id);
@@ -805,7 +802,6 @@ const initialState: AppState = {
   groupOpen: null,
   roomOpen: null,
   roomsOpen: false,
-  roomBudget: 24,
   rooms: [],
   streaming: {},
   runtime: {},
@@ -1069,7 +1065,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // multibot: znane pokoje współpracy — bez tego wskaźnik rozmów botów
       // zobaczyłby aktywność dopiero po pierwszej ramce SSE, nie po odświeżeniu.
       api("/api/rooms")
-        .then(({ rooms, budget }) => alive && rawDispatch({ type: "roomsSet", rooms: Array.isArray(rooms) ? rooms : [], budget }))
+        .then(({ rooms }) => alive && rawDispatch({ type: "roomsSet", rooms: Array.isArray(rooms) ? rooms : [] }))
         .catch(() => {});
     };
     loadAll();

@@ -29,10 +29,10 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `ef79eb0c` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.38: niedostępny CLI
-// w ModelPickerze dostał skrót do instalatora w Ustawieniach aplikacji).
-// Poprzednia baza: `40887e83` (0.3.37).
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `6f8e61e6` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-09-06, wydanie 0.3.39: rozmowa bot↔bot
+// kończy się ciszą, nie limitem wiadomości — licznik bez budżetu).
+// Poprzednia baza: `ef79eb0c` (0.3.38), wcześniej `40887e83` (0.3.37).
 // Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
 // scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
 //
