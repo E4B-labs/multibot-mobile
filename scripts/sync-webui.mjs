@@ -29,9 +29,10 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `ace00bed` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.35: czip pokoju grupowego
-// nazywa grupę zamiast "X napisał(a) do Y" i otwiera czat grupy). Poprzednia baza: `a0bb1e0a` (0.3.34).
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `6827fc41` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-09-05, wydanie 0.3.36: silnik Pythona
+// wycięty z całego produktu, sterownik dla własnych endpointów OpenAI).
+// Poprzednia baza: `ace00bed` (0.3.35).
 // Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
 // scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
 //

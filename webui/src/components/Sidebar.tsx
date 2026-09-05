@@ -33,8 +33,6 @@ import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { SearchPalette, type SearchTab } from "./SearchPalette";
-// multibot: F11 — status silnika dla warunkowej kropki w stopce
-import { engineOnline } from "@/lib/engineStatus";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
@@ -656,7 +654,7 @@ function GroupContextMenu({
 // każdym `workspaceVersion`, czyli po zdarzeniu `group` ze strumienia oraz po
 // własnym `workspaceChanged` z `resource: "groups"` (oba trafiają w ten sam
 // licznik — `state/store.tsx`). Zero pollingu, tak jak na komputerze.
-// `null` = jeszcze nie wiadomo (silnik offline albo pierwszy GET w locie);
+// `null` = jeszcze nie wiadomo (harness nie odpowiedział albo pierwszy GET w locie);
 // pusta tablica = wiadomo, że grup nie ma.
 function useEngineGroups(workspaceVersion: unknown) {
   const [groups, setGroups] = useState<EngineGroup[] | null>(null);
@@ -985,30 +983,6 @@ export function Sidebar() {
   // "otwarte" i menu dało się zamknąć tylko kliknięciem gdzie indziej.
   const openBotMenu = (next: MenuState) =>
     setMenu((prev) => (prev?.botId === next.botId ? null : next));
-
-  // multibot: F11 — wskaźnik TYLKO gdy silnik offline a jakiś bot jeździ na
-  // engine (dla reszty userów silnik nie istnieje — nic nie pokazujemy i nic
-  // nie odpytujemy). Boty i instancje hydratują się async, więc efekt na
-  // [hasLocalBot] odpala się raz, gdy flaga stanie się prawdą — to jest to
-  // "jedno sprawdzenie przy mount aplikacji"; kolejne robi AppSettingsPanel
-  // przy otwarciu. Zero pollingu.
-  const hasLocalBot = state.bots.some(
-    (b) =>
-      state.instances.find((i) => i.instanceId === b.modelSelection.instanceId)?.driverKind ===
-      "slafy",
-  );
-  const [engineOffline, setEngineOffline] = useState(false);
-  useEffect(() => {
-    if (!hasLocalBot) {
-      setEngineOffline(false);
-      return;
-    }
-    let alive = true;
-    void engineOnline().then((ok) => alive && setEngineOffline(!ok));
-    return () => {
-      alive = false;
-    };
-  }, [hasLocalBot]);
 
   const visibleBots = state.bots
     .filter((b) => !b.hidden)
@@ -1394,18 +1368,6 @@ export function Sidebar() {
             </div>
           )}
         </div>
-
-        {engineOffline && (
-          <div className="flex items-center gap-3 px-3 pb-3 pt-2">
-            <div
-              title="Local service offline — custom-model bots can't run. Check App Settings."
-              className="flex items-center gap-2 text-[12px] text-ink-secondary"
-            >
-              <span className="size-1.5 shrink-0 rounded-full bg-raised-hover" />
-              Service offline
-            </div>
-          </div>
-        )}
 
         {menu && (
           <BotContextMenu
