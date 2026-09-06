@@ -62,23 +62,6 @@ export function joinErrorMessage(code: JoinErrorCode): string {
   return MESSAGES[code] ?? MESSAGES.failed;
 }
 
-/** Certificate fingerprints are hex; case and spacing must not decide trust. */
-export function sameFingerprint(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b) return false;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-/**
- * Trust on first use, exactly like SSH: an unknown server is pinned, a known one
- * must match, and a changed certificate stops the flow instead of quietly
- * accepting a different server (or a machine in the middle). Only the user can
- * clear a pin, by tapping "Trust new certificate".
- */
-export function tofuDecision(stored: string | null | undefined, probed: string): "trust" | "match" | "certificate_changed" {
-  if (!stored) return "trust";
-  return sameFingerprint(stored, probed) ? "match" : "certificate_changed";
-}
-
 export type JoinResponse =
   | { ok: true; joinGrant: string; hasUsers: boolean }
   | { ok: false; error: JoinErrorCode };

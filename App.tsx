@@ -70,8 +70,11 @@ export default function App() {
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
       };
-      await Promise.all(previous.map((h) => deleteHost(h.id)));
+      // Save first, delete after: a crash between the two leaves the user with
+      // two hosts, which is recoverable. The other order leaves them with none
+      // and a fresh sign-in to redo.
       await saveHost(host);
+      await Promise.all(previous.map((h) => deleteHost(h.id)));
       setHosts([host]);
       setRoute({ name: "webview", host, fragment: result.fragment });
       return { ok: true };
@@ -144,6 +147,16 @@ export default function App() {
   // Rejestracji tokenu push nie robi już powłoka: od 0.4.0 nie ma tokenu hosta
   // (sesję trzyma strona), więc `POST /api/devices/:id/push` woła interfejs
   // webowy — powłoka daje mu tylko token Expo mostem `push.request`.
+
+  // Stable, so AddHostScreen's effects don't re-run on every App render.
+  const firstRunDone = useCallback((host: Host, fragment?: string) => {
+    // Claim the first-run routing before refresh() resolves: its own `setRoute`
+    // would otherwise land second and drop the `#join=` fragment this host was
+    // just signed in with.
+    didInit.current = true;
+    refresh();
+    setRoute({ name: "webview", host, fragment });
+  }, [refresh]);
 
   const checkForUpdate = useCallback(async (showError = false) => {
     if (__DEV__ || !Updates.isEnabled) {
@@ -249,16 +262,7 @@ export default function App() {
           // Pierwsze uruchomienie (brak hosta w SecureStore): od razu ekran
           // dodawania. Po dodaniu hosta wchodzimy w WebView i już do niego
           // nie wracamy — stąd brak osobnego ekranu listy.
-          <AddHostScreen
-            onDone={(host, fragment) => {
-              // Claim the first-run routing before refresh() resolves: its own
-              // `setRoute` would otherwise land second and drop the `#join=`
-              // fragment this host was just signed in with.
-              didInit.current = true;
-              refresh();
-              setRoute({ name: "webview", host, fragment });
-            }}
-          />
+          <AddHostScreen onDone={firstRunDone} />
         )}
         {route.name === "webview" && (
           // The key forces a full remount when the shell swaps hosts (or hands

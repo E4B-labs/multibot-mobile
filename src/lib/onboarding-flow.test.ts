@@ -58,6 +58,22 @@ test("the shell hands the page a push token instead of registering itself", () =
   assert.ok(!push.includes("fetch("), "push.ts calls the host again");
 });
 
+test("privileged bridge messages need the per-mount nonce", () => {
+  assert.match(webview, /const PRIVILEGED = new Set\(\[[^\]]*"host\.join"[^\]]*"tls\.forget"[^\]]*"push\.request"/s);
+  assert.ok(webview.includes("PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce"));
+  assert.ok(webview.includes("injectedJavaScriptBeforeContentLoadedForMainFrameOnly"));
+  // A page that could navigate anywhere would carry the bridge with it.
+  assert.ok(!webview.includes('originWhitelist={["*"]}'));
+  assert.ok(webview.includes("originWhitelist={[`${host.url}/*`, host.url]}"));
+});
+
+test("dropping a certificate pin needs a native confirmation and the current host", () => {
+  assert.ok(webview.includes("Alert.alert("));
+  assert.ok(webview.includes("forgetServer(host.url)"));
+  // Never the URL the page asked for: that would let any frame unpin anything.
+  assert.ok(!webview.includes("forgetServer(msg.url)"));
+});
+
 test("nothing in the shell builds a plain http address for a host", () => {
   for (const file of ["src/lib/host-logic.ts", "src/lib/tls.ts", "src/screens/AddHostScreen.tsx"]) {
     assert.ok(!/["'`]http:\/\//.test(readFileSync(file, "utf8")), `${file} still builds an http:// address`);

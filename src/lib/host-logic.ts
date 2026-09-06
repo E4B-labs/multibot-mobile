@@ -24,6 +24,13 @@ export function hostAuthHeaders(token: string): Record<string, string> {
  * that isn't https. MultiBot servers have listened on https only since 0.4.0
  * (self-signed, pinned on first use), so a plaintext address is always a
  * mistake — accepting one would put the server password on the wire in clear. */
+// Parsed by hand rather than with `new URL`: React Native ships a WHATWG URL
+// polyfill that mangles IPv6 literals (`[2a00::1]` comes back without its
+// brackets, or with the port folded into the host), and this address is what
+// the certificate pin is keyed by — getting it subtly wrong means the pin never
+// matches and the phone can reach nothing.
+const HOST_URL = /^https:\/\/(\[[0-9a-f:.]+\]|[a-z0-9._~-]+)(?::(\d{1,5}))?$/i;
+
 export function normalizeHostUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Host address is required.");
@@ -31,36 +38,34 @@ export function normalizeHostUrl(raw: string): string {
   if (hasScheme && !/^https:\/\//i.test(trimmed)) {
     throw new Error("Host address must use https://");
   }
-  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
-  const normalized = candidate.replace(/\/+$/, "");
-  let parsed: URL;
-  try {
-    parsed = new URL(normalized);
-  } catch {
-    throw new Error("Enter a valid host address.");
-  }
-  if (parsed.protocol !== "https:") {
-    throw new Error("Host address must use https://");
-  }
-  // A bare word is a typo, not a host. Bracketed IPv6 (`[2a00::1]:8799`) and
-  // dotted IPv4 are addresses, so they stay.
-  if (parsed.hostname && !hasScheme && parsed.hostname !== "localhost" && !parsed.hostname.includes(".") && !/^\[?[\da-f:]+\]?$/i.test(parsed.hostname)) {
-    throw new Error("Enter a valid host address.");
-  }
-  if (!parsed.hostname || parsed.username || parsed.password) {
+  const normalized = (hasScheme ? trimmed : `https://${trimmed}`).replace(/\/+$/, "");
+  if (/[@\\?#\s]/.test(normalized.slice("https://".length))) {
     throw new Error("Host address cannot contain credentials.");
+  }
+  const match = HOST_URL.exec(normalized);
+  if (!match) throw new Error("Enter a valid host address.");
+  const [, host, port] = match;
+  if (port && Number(port) > 65535) throw new Error("Enter a valid host address.");
+  if (host.startsWith("[") && !host.includes(":")) {
+    // `[10.0.0.1]` is not an address — brackets mean IPv6, which always has a colon.
+    throw new Error("Enter a valid host address.");
+  }
+  // A bare word is a typo, not a host. Bracketed IPv6 and dotted IPv4 stay.
+  if (!hasScheme && !host.startsWith("[") && host !== "localhost" && !host.includes(".")) {
+    throw new Error("Enter a valid host address.");
   }
   return normalized;
 }
 
 /** Key a server's certificate fingerprint is pinned under. Must stay
- * byte-identical to the key the native side builds (modules/multibot-tls and
- * the WebView patch in plugins/with-tls-pinning.js): lowercase host without
- * IPv6 brackets, a colon, and the port with 443 as the default. */
+ * byte-identical to the key the native side builds (`MultibotTls.keyFor`, the
+ * ObjC helper, and the WebView patch in plugins/with-tls-pinning.js): lowercase
+ * host without IPv6 brackets, a colon, and the port with 443 as the default. */
 export function tlsKey(url: string): string {
-  const parsed = new URL(url);
-  const host = parsed.hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
-  return `${host}:${parsed.port || "443"}`;
+  const match = HOST_URL.exec(url.trim().replace(/\/+$/, ""));
+  if (!match) throw new Error("Enter a valid host address.");
+  const host = match[1].replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return `${host}:${match[2] || "443"}`;
 }
 
 /** Adds or replaces a host by id, most-recently-used first. */
@@ -153,6 +158,9 @@ export function buildBootstrap(opts: {
   /** Fragment the web UI reads on boot, e.g. `#join=<grant>` after a native
    * sign-in. Ignored when a notification tap already picked a bot. */
   fragment?: string;
+  /** Secret the page must echo back on privileged bridge messages. Injected into
+   * the main frame only, so an embedded frame never learns it. */
+  bridgeNonce?: string;
   statusBarHeight: number;
   appVersion: string;
 }): string {
@@ -161,8 +169,12 @@ export function buildBootstrap(opts: {
   const auth = opts.token
     ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(opts.token)});`
     : "";
+  const nonce = opts.bridgeNonce
+    ? `window.__MB_BRIDGE_NONCE__ = ${JSON.stringify(opts.bridgeNonce)};`
+    : "";
   return `try { document.documentElement.style.setProperty('--android-status-bar', '${opts.statusBarHeight}px'); } catch (e) {}
          try { ${auth} ${deep} } catch (e) {}
+         try { ${nonce} } catch (e) {}
          try { window.__APP_VERSION__ = ${JSON.stringify(opts.appVersion)}; } catch (e) {}
          true;`;
 }

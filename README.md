@@ -69,11 +69,21 @@ authority. The app therefore trusts a server the way SSH trusts a host: on the
 first sign-in it opens a bare TLS handshake (no HTTP request), records the
 SHA-256 of the certificate it is offered, and from then on accepts only that
 exact certificate — a changed one stops the sign-in with "certificate changed"
-until the user explicitly trusts the new one. The store lives natively
-(`modules/multibot-tls`) and is read by the WebView and by React Native's own
-`fetch` through the prebuild patches in `plugins/with-tls-pinning.js`, because
-neither offers a hook for this; a native build is required, an OTA update is
-not enough. Signing in also happens natively — React Native has no CORS, so the
+until the user explicitly trusts the new one. A pin is scoped to one `host:port`
+and nothing else. The store lives natively (`modules/multibot-tls`) and is read
+by the WebView and by React Native's own `fetch` through the prebuild patches in
+`plugins/with-tls-pinning.js`, because neither offers a hook for this; a native
+build is required, an OTA update is not enough. Prebuild fails loudly if a patch
+does not apply, and the app logs an error at start when the marker resource the
+plugin writes is missing.
+
+**Android is the verified target. iOS pinning is UNVERIFIED.** WKWebView routes
+the main navigation's server-trust challenge through the patched
+`didReceiveAuthenticationChallenge`, but subresource loads — XHR and WebSocket
+in particular — go through WebKit's networking process and may never reach that
+delegate. If they don't, an iPhone would load the page and then fail every API
+call. Nobody has run it on a device yet; see the `// ponytail:` note in
+`plugins/with-tls-pinning.js` for what to do if it turns out to be a problem. Signing in also happens natively — React Native has no CORS, so the
 shell can reach a server it is not loaded from: it trades the server name and
 password for a single-use join grant and hands the grant to the web UI in the
 `#join=` fragment. The server password is never stored. On Android the other
@@ -90,9 +100,17 @@ shells.
 
 | Page sends | Shell does | Shell replies |
 | --- | --- | --- |
-| `{type:"host.join", url, serverName, serverPassword}` | Resolves the address, pins the certificate, trades the credentials for a join grant, swaps hosts and reloads from the new origin | nothing on success (the page is gone); `{type:"host.join.result", ok:false, error, message}` on failure |
-| `{type:"tls.forget", url}` | Drops the pinned fingerprint so the next sign-in trusts the certificate on offer | none |
-| `{type:"push.request"}` | Asks the OS for notification permission and mints an Expo push token | `{type:"push.token", token, platform, deviceName}` — `token` is `null` when the user declined or the token could not be minted |
+| `{type:"host.join", nonce, url, serverName, serverPassword}` | Resolves the address, pins the certificate, trades the credentials for a join grant, swaps hosts and reloads from the new origin | nothing on success (the page is gone); `{type:"host.join.result", ok:false, error, message}` on failure |
+| `{type:"tls.forget", nonce}` | Asks the user, in a native dialog, whether to drop the pin for the host on screen | `{type:"tls.forget.result", ok}` once the user answers |
+| `{type:"push.request", nonce}` | Asks the OS for notification permission and mints an Expo push token | `{type:"push.token", token, platform, deviceName}` — `token` is `null` when the user declined or the token could not be minted |
+
+Every message in that table is privileged, so each one must carry
+`nonce: window.__MB_BRIDGE_NONCE__`. The shell injects that value into the main
+frame only and ignores privileged messages without it — anything the page embeds
+(the bot-computer noVNC view, for one) can call `postMessage` too, and swapping
+servers or dropping a certificate pin is not something a subframe gets to do.
+`tls.forget` additionally shows a native confirmation and only ever applies to
+the host currently on screen; the URL in the message is ignored.
 
 The shell no longer registers the push token itself: since 0.4.0 it holds no
 host credential, so the page calls `POST /api/devices/:id/push` with its own

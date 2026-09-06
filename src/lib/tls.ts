@@ -17,8 +17,12 @@ interface NativeTls {
   trust(key: string, fingerprint: string): "trusted" | "unchanged" | "certificate_changed";
   forget(key: string): void;
   pinned(key: string): string | null;
+  /** False when the prebuild patches are missing — the WebView trusts nothing. */
+  markerPresent(): boolean;
   /** Leaf certificate SHA-256 read off a bare TLS handshake — no HTTP request. */
   probeFingerprint(url: string, timeoutMs: number): Promise<string>;
+  /** SHA-256 of a file on disk, for checking a downloaded APK before installing. */
+  sha256File(path: string): Promise<string>;
 }
 
 // Absent in Expo Go and in any build made before this module existed. Every
@@ -30,6 +34,13 @@ const JOIN_TIMEOUT_MS = 15_000;
 
 export function tlsAvailable(): boolean {
   return native !== null;
+}
+
+/** SHA-256 of a downloaded file. Throws when the native module is absent, so a
+ * caller can never mistake "not checked" for "checked and fine". */
+export async function sha256File(path: string): Promise<string> {
+  if (!native) throw new Error("This build cannot verify downloads. Install the current APK.");
+  return native.sha256File(path);
 }
 
 export function pinnedFingerprint(url: string): string | null {
@@ -100,6 +111,15 @@ export async function joinHost(rawUrl: string, serverName: string, serverPasswor
   };
 }
 
+/** The native module rejects with a `code`. Matching on message text would
+ * break the moment a platform reworded a socket error. */
+const PROBE_CODES = new Set<JoinErrorCode>(["timeout", "unreachable", "not_multibot"]);
+
+function probeErrorCode(error: unknown): JoinErrorCode {
+  const code = (error as { code?: unknown })?.code;
+  return typeof code === "string" && PROBE_CODES.has(code as JoinErrorCode) ? (code as JoinErrorCode) : "unreachable";
+}
+
 /** Pins the certificate if it is new. Returns an error code when it can't. */
 async function trustServer(url: string): Promise<JoinErrorCode | null> {
   if (!native) return "unreachable";
@@ -107,7 +127,7 @@ async function trustServer(url: string): Promise<JoinErrorCode | null> {
   try {
     fingerprint = await native.probeFingerprint(url, PROBE_TIMEOUT_MS);
   } catch (error) {
-    return String((error as { message?: unknown })?.message ?? "").includes("timeout") ? "timeout" : "unreachable";
+    return probeErrorCode(error);
   }
   return native.trust(tlsKey(url), fingerprint) === "certificate_changed" ? "certificate_changed" : null;
 }
@@ -126,6 +146,8 @@ export async function probeLocalServer(): Promise<boolean> {
   } catch {
     return false;
   }
+  // Re-pinning without asking is safe here and nowhere else: the key is scoped
+  // to 127.0.0.1:8799, which no other machine can answer.
   const key = tlsKey(LOCAL_SERVER_URL);
   if (native.trust(key, fingerprint) === "certificate_changed") {
     native.forget(key);
