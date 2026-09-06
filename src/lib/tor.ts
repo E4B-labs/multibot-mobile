@@ -40,10 +40,6 @@ export const TOR_START_TIMEOUT_MS = 90_000;
  * path is stretched to this instead of the 8–15 s a LAN host gets. */
 export const ONION_TIMEOUT_MS = 90_000;
 
-export function torAvailable(): boolean {
-  return native !== null;
-}
-
 // The bootstrap in flight, so two screens asking at once wait on one tor. A
 // failure clears it so the next attempt really retries instead of replaying the
 // error, and a tor that has since died clears it too — otherwise a crashed
@@ -76,10 +72,4 @@ export async function setWebViewProxyFor(url: string): Promise<void> {
   }
   const { bridgePort } = await ensureTor();
   await native.setWebViewProxy(bridgePort);
-}
-
-export function torStatus(): { running: boolean; bootstrapped: boolean } {
-  if (!native) return { running: false, bootstrapped: false };
-  const status = native.status();
-  return { running: status.running, bootstrapped: status.bootstrapped };
 }
