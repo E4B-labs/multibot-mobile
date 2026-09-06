@@ -1,0 +1,42 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.multibot2.mobile'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.multibottor"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // The one thing we want from this AAR is `jni/<abi>/libtor.so`, which is a
+  // PIE executable as well as a JNI library ("The included libtor.so binaries
+  // can also be used directly as a tor daemon" — the project's own README).
+  // Since API 29 an app may not exec a file from its data directory, so a
+  // binary has to arrive as a packaged native library; this AAR is that
+  // packaging, maintained by the people who build tor for Android.
+  //
+  // `org.torproject.jni.TorService` comes along in the same AAR and is
+  // deliberately unused: it runs tor in-process through JNI with a hardcoded
+  // command line that pins DataDirectory, CacheDirectory and ControlSocket, so
+  // it cannot be given the client-only torrc MultibotTor writes. Its merged
+  // <service> entry is inert because nothing ever starts it, and its
+  // `System.loadLibrary("tor")` static block never runs for the same reason.
+  //
+  // Pinned at 0.4.9.6 (tor 0.4.9.6, OpenSSL 3.5.5) on purpose: it is the newest
+  // release whose aar-metadata `minCompileSdk` is 36, which is what Expo SDK 54
+  // compiles against. 0.4.9.6.2 and later demand compileSdk 37 and fail the AGP
+  // metadata check outright. Revisit when Expo's default compileSdk moves.
+  implementation 'info.guardianproject:tor-android:0.4.9.6'
+
+  // ProxyController/ProxyConfig. react-native-webview already puts this exact
+  // version in the app, but it declares it `implementation`, so it is not on
+  // our compile classpath and has to be named here too.
+  implementation 'androidx.webkit:webkit:1.14.0'
+}

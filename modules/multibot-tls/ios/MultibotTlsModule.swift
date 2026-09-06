@@ -57,7 +57,14 @@ public class MultibotTlsModule: Module {
 
     // Reads the leaf certificate straight off the TLS handshake and hangs up;
     // no HTTP request reaches a server that has not been trusted yet.
-    AsyncFunction("probeFingerprint") { (url: String, timeoutMs: Int, promise: Promise) in
+    // iOS has no embedded Tor (there is no supported way to ship and exec the
+    // binary), so the port is accepted and ignored — `MultibotTor` is absent
+    // here and every `.onion` address is refused in JavaScript before it gets
+    // this far. Keeping the signature identical is what lets one `tls.ts` serve
+    // both platforms.
+    Function("setTorSocksPort") { (_: Int) in }
+
+    AsyncFunction("probeFingerprint") { (url: String, timeoutMs: Int, _: Int, promise: Promise) in
       guard
         let parsed = URL(string: url),
         let host = parsed.host,

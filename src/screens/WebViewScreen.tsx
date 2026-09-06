@@ -6,11 +6,12 @@ import { WebView, type WebViewNavigation } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
+import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
 import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
-import { forgetServer } from "../lib/tls";
+import { forgetServer, prepareTor } from "../lib/tls";
+import { setWebViewProxyFor } from "../lib/tor";
 import { WEBUI_HTML } from "../webui-html";
 
 interface Props {
@@ -40,6 +41,13 @@ const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?
 // whether it was the network, the token, or the WebView.
 const LOAD_TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 8_000;
+
+// A `.onion` host is three relays away and its first request also waits for the
+// hidden-service rendezvous. Measured elsewhere at 0.3–0.7 s once warm, but the
+// first one after a cold bootstrap is seconds, not milliseconds — the LAN
+// budgets above would fail a perfectly healthy server.
+const ONION_LOAD_TIMEOUT_MS = 90_000;
+const ONION_PROBE_TIMEOUT_MS = 45_000;
 
 // Anything running in this WebView can call `postMessage`, including a frame the
 // page embeds (the bot-computer noVNC view is one). The privileged messages —
@@ -72,14 +80,14 @@ type AppUpdateState = {
   message?: string;
 };
 
-async function probeHost(url: string): Promise<string | null> {
+async function probeHost(url: string, timeoutMs: number): Promise<string | null> {
   // Certificate is already pinned by the time a host is saved, so a failure here
   // is the network or the server, never trust.
-  switch (await probeServer(url, PROBE_TIMEOUT_MS)) {
+  switch (await probeServer(url, timeoutMs)) {
     case "ok":
       return null;
     case "timeout":
-      return `Nie można połączyć z ${url} w ${PROBE_TIMEOUT_MS / 1000}s.`;
+      return `Nie można połączyć z ${url} w ${timeoutMs / 1000}s.`;
     case "not_multibot":
       return `${url} odpowiada, ale to nie jest serwer MultiBota.`;
     default:
@@ -116,14 +124,32 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
   const [expanded, setExpanded] = useState(true);
 
+  // Only `.onion` hosts touch Tor at all; everything else keeps the exact path
+  // it had before, including the proxy override being taken back off.
+  const onion = useMemo(() => isOnionHost(host.url), [host.url]);
+
   useEffect(() => {
     let cancelled = false;
     void getHostToken(host.id).then(async (token) => {
       if (cancelled) return;
+      // Tor before the probe, and the WebView proxy before the first load:
+      // without both, an onion address resolves to nothing. `setWebViewProxyFor`
+      // also CLEARS the override for a normal host, so switching back from an
+      // onion server cannot leave every LAN address routed into a dead proxy.
+      try {
+        await prepareTor(host.url);
+        await setWebViewProxyFor(host.url);
+      } catch (error) {
+        if (!cancelled) {
+          setFailed(error instanceof Error ? error.message : `Could not start Tor for ${host.url}.`);
+        }
+        return;
+      }
+      if (cancelled) return;
       // Brak zapisanego tokenu to poprawny host: serwer ma własne konta
       // (protokół 2), więc interfejs webowy pokaże swój ekran logowania
       // (login + hasło) i sam zapisze sesję w localStorage tego origin.
-      const problem = await probeHost(host.url);
+      const problem = await probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
       if (cancelled) return;
       if (problem) {
         setFailed(problem);
@@ -139,22 +165,26 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     return () => {
       cancelled = true;
     };
-  }, [host, botId, fragment, nonce]);
+    // ponytail: the override is not cleared on unmount — every mount sets or
+    // clears it before loading, and clearing here would race the next host's
+    // set. Revisit if a second WebView is ever mounted alongside this one.
+  }, [host, botId, fragment, nonce, onion]);
 
   // Spinner with a deadline: after LOAD_TIMEOUT_MS without onLoadEnd, say what
   // actually failed instead of spinning forever.
   useEffect(() => {
     if (loaded || failed) return;
+    const budget = onion ? ONION_LOAD_TIMEOUT_MS : LOAD_TIMEOUT_MS;
     const timer = setTimeout(
       () =>
         setFailed(
-          `${host.url} did not finish loading in ${LOAD_TIMEOUT_MS / 1000}s ` +
+          `${host.url} did not finish loading in ${budget / 1000}s ` +
             `(stopped at ${Math.round(progress * 100)}%).`,
         ),
-      LOAD_TIMEOUT_MS,
+      budget,
     );
     return () => clearTimeout(timer);
-  }, [loaded, failed, host.url, attempt, progress]);
+  }, [loaded, failed, host.url, attempt, progress, onion]);
 
   // Android hardware back: step out of the in-page history first, only leave to
   // the host list when the WebView itself can't go further.

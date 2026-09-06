@@ -57,6 +57,21 @@ export function normalizeHostUrl(raw: string): string {
   return normalized;
 }
 
+/** A v3 onion address: 56 characters of base32 (a-z and 2-7) plus `.onion`.
+ * Nothing else is accepted — a shorter or longer label is either a v2 address
+ * (dead since 2021) or a typo, and both would send the phone off to start Tor
+ * for an address that can never resolve. Case-insensitive because
+ * `normalizeHostUrl` keeps whatever the user typed. */
+const ONION_HOST = /^[a-z2-7]{56}\.onion$/i;
+
+/** True when this address can only be reached through Tor. Callers use it to
+ * decide whether to start the embedded Tor client and to stretch their
+ * timeouts; nothing else about a host changes. */
+export function isOnionHost(url: string): boolean {
+  const match = HOST_URL.exec(url.trim().replace(/\/+$/, ""));
+  return match !== null && ONION_HOST.test(match[1]);
+}
+
 /** Key a server's certificate fingerprint is pinned under. Must stay
  * byte-identical to the key the native side builds (`MultibotTls.keyFor`, the
  * ObjC helper, and the WebView patch in plugins/with-tls-pinning.js): lowercase
