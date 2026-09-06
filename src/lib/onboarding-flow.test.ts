@@ -46,6 +46,18 @@ test("the WebView bridge carries host.join both ways", () => {
   assert.ok(webview.includes('msg?.type === "tls.forget"'));
 });
 
+test("the shell hands the page a push token instead of registering itself", () => {
+  assert.ok(webview.includes('msg?.type === "push.request"'));
+  assert.ok(webview.includes('type: "push.token"'));
+  assert.ok(webview.includes("requestPushPermission"));
+  // Without a host token, host-authenticated registration would silently never
+  // run — the worst possible failure for notifications.
+  const push = readFileSync("src/lib/push.ts", "utf8");
+  assert.ok(!push.includes("ensurePushRegistered"), "dead host-token registration is back in push.ts");
+  assert.ok(!push.includes("hostAuthHeaders"), "push.ts authenticates to the host again");
+  assert.ok(!push.includes("fetch("), "push.ts calls the host again");
+});
+
 test("nothing in the shell builds a plain http address for a host", () => {
   for (const file of ["src/lib/host-logic.ts", "src/lib/tls.ts", "src/screens/AddHostScreen.tsx"]) {
     assert.ok(!/["'`]http:\/\//.test(readFileSync(file, "utf8")), `${file} still builds an http:// address`);

@@ -81,6 +81,23 @@ card, "Set up a server", installs Termux, copies the one-line installer to the
 clipboard, opens Termux and then watches `127.0.0.1:8799` until the server
 answers; iOS shows sign-in only.
 
+## WebView bridge
+
+The web UI runs inside the WebView and talks to the shell with
+`postMessage`; replies come back as a `message` event, the same shape a
+browser would deliver, so one page serves the Electron, browser and phone
+shells.
+
+| Page sends | Shell does | Shell replies |
+| --- | --- | --- |
+| `{type:"host.join", url, serverName, serverPassword}` | Resolves the address, pins the certificate, trades the credentials for a join grant, swaps hosts and reloads from the new origin | nothing on success (the page is gone); `{type:"host.join.result", ok:false, error, message}` on failure |
+| `{type:"tls.forget", url}` | Drops the pinned fingerprint so the next sign-in trusts the certificate on offer | none |
+| `{type:"push.request"}` | Asks the OS for notification permission and mints an Expo push token | `{type:"push.token", token, platform, deviceName}` — `token` is `null` when the user declined or the token could not be minted |
+
+The shell no longer registers the push token itself: since 0.4.0 it holds no
+host credential, so the page calls `POST /api/devices/:id/push` with its own
+session.
+
 ## Security
 
 The app stores the host address locally and sends the server password only to

@@ -9,6 +9,7 @@ import * as Updates from "expo-updates";
 import { buildBootstrap, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
 import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
+import { requestPushPermission } from "../lib/push";
 import { forgetServer } from "../lib/tls";
 import { WEBUI_HTML } from "../webui-html";
 
@@ -177,14 +178,31 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     );
   };
 
-  // Reply channel for `host.join`. The web UI listens for a `message` event, the
-  // same shape a browser gets from `postMessage`, so one page handles the
-  // Electron, browser and phone shells without a branch.
+  // Reply channel for `host.join` and `push.request`. The web UI listens for a
+  // `message` event, the same shape a browser gets from `postMessage`, so one
+  // page handles the Electron, browser and phone shells without a branch.
   const sendToPage = (payload: unknown) => {
     webRef.current?.injectJavaScript(
       `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(JSON.stringify(payload))} })); true;`,
     );
   };
+
+  // Only the OS can mint an Expo push token, and only the page holds a session
+  // to register it with — so the shell fetches the token (asking for permission
+  // if the user hasn't been asked yet) and the page POSTs it to
+  // /api/devices/:id/push itself. `token: null` means declined or unavailable;
+  // the page shows that instead of waiting for notifications that never come.
+  async function handlePushRequest() {
+    const token = await requestPushPermission();
+    sendToPage({
+      type: "push.token",
+      token,
+      platform: Platform.OS,
+      // ponytail: no real model name without expo-device; add it when the
+      // server's device list has to tell two of the same phone apart.
+      deviceName: Platform.OS === "ios" ? "iPhone" : "Android phone",
+    });
+  }
 
   async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown }) {
     if (typeof msg.url !== "string" || typeof msg.serverName !== "string" || typeof msg.serverPassword !== "string") {
@@ -344,6 +362,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
             if (msg?.type === "host.join") void handleJoinHost(msg);
+            if (msg?.type === "push.request") void handlePushRequest();
             // "Trust new certificate" from inside the web UI: drop the pin so
             // the next sign-in pins whatever the server presents now.
             if (msg?.type === "tls.forget" && typeof msg.url === "string") {

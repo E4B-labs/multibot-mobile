@@ -9,7 +9,7 @@ import { deleteHost, listHosts, saveHost } from "./src/lib/hosts";
 import type { JoinErrorCode } from "./src/lib/join";
 import { joinHost } from "./src/lib/tls";
 import { installLatestRelease } from "./src/lib/mobile-release";
-import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
+import { configurePushNotifications, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
 import WebViewScreen from "./src/screens/WebViewScreen";
 
@@ -141,22 +141,9 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Rejestracja tokenu push na hoście. Serwer wysyła powiadomienia wyłącznie
-  // na tokeny, które sam dostał trasą `POST /api/devices/:id/push` — bez tego
-  // kroku jego lista urządzeń zostaje pusta i telefon nie dostaje NIC, mimo że
-  // reszta łańcucha (wyzwalacz `needsAttention`, wysyłka do exp.host) działa.
-  // Ponawiamy przy każdym powrocie aplikacji na wierzch, bo pierwsza próba
-  // pada, kiedy telefon jest chwilowo poza siecią hosta (np. Tailscale jeszcze
-  // nie wstał), a wtedy jedna nieudana próba uciszyłaby powiadomienia na stałe.
-  useEffect(() => {
-    const host = hosts[0];
-    if (!host) return;
-    void ensurePushRegistered(host);
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void ensurePushRegistered(host);
-    });
-    return () => sub.remove();
-  }, [hosts]);
+  // Rejestracji tokenu push nie robi już powłoka: od 0.4.0 nie ma tokenu hosta
+  // (sesję trzyma strona), więc `POST /api/devices/:id/push` woła interfejs
+  // webowy — powłoka daje mu tylko token Expo mostem `push.request`.
 
   const checkForUpdate = useCallback(async (showError = false) => {
     if (__DEV__ || !Updates.isEnabled) {
