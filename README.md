@@ -9,10 +9,9 @@ on infrastructure chosen by the operator.
 
 ## Features
 
-- Connect to one or more MultiBot hosts
-- Native onboarding and host management
-- Secure local storage for host credentials
-- Camera-based pairing when enabled by the host
+- First run offers two choices: set up a server on this phone, or sign in to one
+- Native sign-in with the server's address, name and password
+- Trust-on-first-use pinning for the server's self-signed certificate
 - Native notifications and foreground registration
 - OTA JavaScript updates through Expo Updates
 - In-app discovery of signed native Android installers
@@ -62,10 +61,30 @@ Configure your own Expo/EAS project for new public distributions. Keep
 deployment identifiers and signing credentials outside source control. Never
 commit `google-services.json`, signing keys, push credentials, or tokens.
 
+## First run and TLS
+
+MultiBot servers listen on HTTPS only, with a certificate they generate
+themselves, so nothing about them is verifiable through a public certificate
+authority. The app therefore trusts a server the way SSH trusts a host: on the
+first sign-in it opens a bare TLS handshake (no HTTP request), records the
+SHA-256 of the certificate it is offered, and from then on accepts only that
+exact certificate — a changed one stops the sign-in with "certificate changed"
+until the user explicitly trusts the new one. The store lives natively
+(`modules/multibot-tls`) and is read by the WebView and by React Native's own
+`fetch` through the prebuild patches in `plugins/with-tls-pinning.js`, because
+neither offers a hook for this; a native build is required, an OTA update is
+not enough. Signing in also happens natively — React Native has no CORS, so the
+shell can reach a server it is not loaded from: it trades the server name and
+password for a single-use join grant and hands the grant to the web UI in the
+`#join=` fragment. The server password is never stored. On Android the other
+card, "Set up a server", installs Termux, copies the one-line installer to the
+clipboard, opens Termux and then watches `127.0.0.1:8799` until the server
+answers; iOS shows sign-in only.
+
 ## Security
 
-The app stores host credentials locally and sends them only to the configured
-host. Do not use unknown hosts or paste credentials into issue reports. Read
+The app stores the host address locally and sends the server password only to
+the host being signed in to, once. Do not use unknown hosts or paste credentials into issue reports. Read
 [`SECURITY.md`](SECURITY.md) before exposing a host outside a trusted network.
 
 ## Related projects

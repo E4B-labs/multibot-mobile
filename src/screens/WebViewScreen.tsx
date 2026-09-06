@@ -6,16 +6,23 @@ import { WebView, type WebViewNavigation } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, hostProbePath, isTailnetUrl, type Host } from "../lib/host-logic";
+import { buildBootstrap, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
+import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
+import { forgetServer } from "../lib/tls";
 import { WEBUI_HTML } from "../webui-html";
 
 interface Props {
   host: Host;
   botId?: string;
+  /** e.g. `#join=<grant>` — the web UI finishes the sign-in from the fragment. */
+  fragment?: string;
   onBack: () => void;
   /** Który bot jest właśnie na ekranie — powłoka wycisza jego powiadomienia. */
   onBotVisible?: (botId: string | null) => void;
+  /** Sign-in started from inside the web UI: the shell resolves the address and
+   * swaps hosts, because the page cannot reach another origin itself. */
+  onJoinHost?: (url: string, serverName: string, serverPassword: string) => Promise<{ ok: boolean; error?: JoinErrorCode }>;
 }
 
 // W Android WebView `env(safe-area-inset-top)` nie obejmuje paska stanu (tylko
@@ -40,32 +47,22 @@ type AppUpdateState = {
   message?: string;
 };
 
-async function probeHost(url: string, token: string | null): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${url}${hostProbePath(token)}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal: controller.signal,
-    });
-    if (token && response.status === 401) return "Serwer odpowiada, ale token jest nieprawidłowy.";
-    if (!response.ok) return `Serwer odpowiedział HTTP ${response.status}.`;
-    const body = (await response.json()) as { bots?: unknown };
-    // Bez tokenu pytamy o /api/auth/status — wystarczy, że to poprawny JSON;
-    // logowaniem zajmuje się ekran logowania interfejsu webowego.
-    if (token && !Array.isArray(body.bots)) return "Serwer odpowiedział w nieprawidłowym formacie.";
-    return null;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+async function probeHost(url: string): Promise<string | null> {
+  // Certificate is already pinned by the time a host is saved, so a failure here
+  // is the network or the server, never trust.
+  switch (await probeServer(url, PROBE_TIMEOUT_MS)) {
+    case "ok":
+      return null;
+    case "timeout":
       return `Nie można połączyć z ${url} w ${PROBE_TIMEOUT_MS / 1000}s.`;
-    }
-    return `Nie można połączyć z ${url}.`;
-  } finally {
-    clearTimeout(timer);
+    case "not_multibot":
+      return `${url} odpowiada, ale to nie jest serwer MultiBota.`;
+    default:
+      return `Nie można połączyć z ${url}.`;
   }
 }
 
-export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Props) {
+export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost }: Props) {
   const webRef = useRef<WebView>(null);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
@@ -95,7 +92,7 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // Brak zapisanego tokenu to poprawny host: serwer ma własne konta
       // (protokół 2), więc interfejs webowy pokaże swój ekran logowania
       // (login + hasło) i sam zapisze sesję w localStorage tego origin.
-      const problem = await probeHost(host.url, token);
+      const problem = await probeHost(host.url);
       if (cancelled) return;
       if (problem) {
         setFailed(problem);
@@ -104,14 +101,14 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
       // updatera.currentVersion() na desktopie).
       const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
-      setBootstrap(buildBootstrap({ token, botId, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
+      setBootstrap(buildBootstrap({ token, botId, fragment, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
     return () => {
       cancelled = true;
     };
-  }, [host, botId]);
+  }, [host, botId, fragment]);
 
   // Spinner with a deadline: after LOAD_TIMEOUT_MS without onLoadEnd, say what
   // actually failed instead of spinning forever.
@@ -179,6 +176,37 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
       `window.dispatchEvent(new CustomEvent("mb:native-photo-error", { detail: ${JSON.stringify({ requestId, purpose, message })} })); true;`,
     );
   };
+
+  // Reply channel for `host.join`. The web UI listens for a `message` event, the
+  // same shape a browser gets from `postMessage`, so one page handles the
+  // Electron, browser and phone shells without a branch.
+  const sendToPage = (payload: unknown) => {
+    webRef.current?.injectJavaScript(
+      `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(JSON.stringify(payload))} })); true;`,
+    );
+  };
+
+  async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown }) {
+    if (typeof msg.url !== "string" || typeof msg.serverName !== "string" || typeof msg.serverPassword !== "string") {
+      sendToPage({ type: "host.join.result", ok: false, error: "invalid_address" });
+      return;
+    }
+    if (!onJoinHost) {
+      sendToPage({ type: "host.join.result", ok: false, error: "failed" });
+      return;
+    }
+    const result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword);
+    // On success the shell swaps hosts and remounts this screen, so there is no
+    // page left to answer — only the failure needs a reply.
+    if (!result.ok) {
+      sendToPage({
+        type: "host.join.result",
+        ok: false,
+        error: result.error ?? "failed",
+        message: joinErrorMessage(result.error ?? "failed"),
+      });
+    }
+  }
 
   const sendUpdateState = (state: AppUpdateState) => {
     webRef.current?.injectJavaScript(
@@ -315,6 +343,16 @@ export default function WebViewScreen({ host, botId, onBack, onBotVisible }: Pro
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
+            if (msg?.type === "host.join") void handleJoinHost(msg);
+            // "Trust new certificate" from inside the web UI: drop the pin so
+            // the next sign-in pins whatever the server presents now.
+            if (msg?.type === "tls.forget" && typeof msg.url === "string") {
+              try {
+                forgetServer(msg.url);
+              } catch {
+                /* an address that doesn't parse has no pin to drop */
+              }
+            }
             if (msg?.type === "app.update.check" || msg?.type === "app.update.download" || msg?.type === "app.update.install") {
               void handleAppUpdate(msg.type.slice("app.update.".length));
             }

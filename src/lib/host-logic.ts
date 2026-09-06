@@ -20,15 +20,17 @@ export function hostAuthHeaders(token: string): Record<string, string> {
   };
 }
 
-/** Adds https for a bare host, strips trailing slashes, and validates http(s). */
+/** Adds https for a bare host, strips trailing slashes, and rejects anything
+ * that isn't https. MultiBot servers have listened on https only since 0.4.0
+ * (self-signed, pinned on first use), so a plaintext address is always a
+ * mistake — accepting one would put the server password on the wire in clear. */
 export function normalizeHostUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Host address is required.");
-  const explicitScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed);
-  if (explicitScheme && !/^https?:\/\//i.test(trimmed)) {
-    throw new Error("Host address must use http:// or https://");
+  const hasScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed);
+  if (hasScheme && !/^https:\/\//i.test(trimmed)) {
+    throw new Error("Host address must use https://");
   }
-  const hasScheme = /^https?:\/\//i.test(trimmed);
   const candidate = hasScheme ? trimmed : `https://${trimmed}`;
   const normalized = candidate.replace(/\/+$/, "");
   let parsed: URL;
@@ -37,16 +39,28 @@ export function normalizeHostUrl(raw: string): string {
   } catch {
     throw new Error("Enter a valid host address.");
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Host address must use http:// or https://");
+  if (parsed.protocol !== "https:") {
+    throw new Error("Host address must use https://");
   }
-  if (parsed.hostname && !hasScheme && parsed.hostname !== "localhost" && !parsed.hostname.includes(".") && !/^[\da-f:]+$/i.test(parsed.hostname)) {
+  // A bare word is a typo, not a host. Bracketed IPv6 (`[2a00::1]:8799`) and
+  // dotted IPv4 are addresses, so they stay.
+  if (parsed.hostname && !hasScheme && parsed.hostname !== "localhost" && !parsed.hostname.includes(".") && !/^\[?[\da-f:]+\]?$/i.test(parsed.hostname)) {
     throw new Error("Enter a valid host address.");
   }
   if (!parsed.hostname || parsed.username || parsed.password) {
     throw new Error("Host address cannot contain credentials.");
   }
   return normalized;
+}
+
+/** Key a server's certificate fingerprint is pinned under. Must stay
+ * byte-identical to the key the native side builds (modules/multibot-tls and
+ * the WebView patch in plugins/with-tls-pinning.js): lowercase host without
+ * IPv6 brackets, a colon, and the port with 443 as the default. */
+export function tlsKey(url: string): string {
+  const parsed = new URL(url);
+  const host = parsed.hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return `${host}:${parsed.port || "443"}`;
 }
 
 /** Adds or replaces a host by id, most-recently-used first. */
@@ -104,11 +118,24 @@ export function formatLastUsed(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
-/** Where to probe a host for reachability. With a saved token the authenticated
- * bot list answers; without one only the public auth status does — a tokenless
- * host is valid, the web UI signs in with username + password itself. */
-export function hostProbePath(token: string | null): string {
-  return token ? "/api/bots" : "/api/auth/status";
+/** Is a MultiBot server answering at this address? `GET /api/health` is public
+ * on every 0.4.0 server and says `{ app: "multibot" }`; anything else is some
+ * other web server. The certificate must already be pinned — this goes through
+ * the normal (pinned) client, not a trust-all probe. */
+export async function probeServer(url: string, timeoutMs = 8_000): Promise<"ok" | "not_multibot" | "timeout" | "unreachable"> {
+  // `AbortSignal.timeout` is missing from the React Native polyfill.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${url}/api/health`, { signal: controller.signal });
+    if (!response.ok) return "not_multibot";
+    const body = (await response.json()) as { app?: unknown };
+    return body?.app === "multibot" ? "ok" : "not_multibot";
+  } catch {
+    return controller.signal.aborted ? "timeout" : "unreachable";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** A 100.x address only resolves inside the tailnet, so the Tailscale hint is
@@ -123,10 +150,14 @@ export function isTailnetUrl(url: string): boolean {
 export function buildBootstrap(opts: {
   token?: string | null;
   botId?: string;
+  /** Fragment the web UI reads on boot, e.g. `#join=<grant>` after a native
+   * sign-in. Ignored when a notification tap already picked a bot. */
+  fragment?: string;
   statusBarHeight: number;
   appVersion: string;
 }): string {
-  const deep = opts.botId ? `location.hash = ${JSON.stringify(`#bot=${opts.botId}`)};` : "";
+  const hash = opts.botId ? `#bot=${opts.botId}` : opts.fragment || "";
+  const deep = hash ? `location.hash = ${JSON.stringify(hash)};` : "";
   const auth = opts.token
     ? `localStorage.setItem("multibot.auth.token", ${JSON.stringify(opts.token)});`
     : "";

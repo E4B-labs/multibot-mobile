@@ -4,8 +4,10 @@ import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
-import { normalizeHostUrl } from "./src/lib/host-logic";
-import { deleteHost, listHosts } from "./src/lib/hosts";
+import { newHostId, normalizeHostUrl } from "./src/lib/host-logic";
+import { deleteHost, listHosts, saveHost } from "./src/lib/hosts";
+import type { JoinErrorCode } from "./src/lib/join";
+import { joinHost } from "./src/lib/tls";
 import { installLatestRelease } from "./src/lib/mobile-release";
 import { configurePushNotifications, ensurePushRegistered, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
@@ -16,7 +18,7 @@ import WebViewScreen from "./src/screens/WebViewScreen";
 // in when a fourth screen or deep-link routing actually needs it.
 type Route =
   | { name: "firstrun" }
-  | { name: "webview"; host: Host; botId?: string };
+  | { name: "webview"; host: Host; botId?: string; fragment?: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "firstrun" });
@@ -51,6 +53,31 @@ export default function App() {
       setRoute({ name: "firstrun" });
     });
   }, []);
+
+  // Sign-in typed inside the web UI. React Native has no CORS, so the shell is
+  // the only side that can talk to a server it isn't loaded from: it resolves
+  // the address, pins the certificate, trades the credentials for a join grant,
+  // and only then swaps hosts and reloads the UI from the new origin.
+  const joinFromWebUi = useCallback(
+    async (rawUrl: string, serverName: string, serverPassword: string): Promise<{ ok: boolean; error?: JoinErrorCode }> => {
+      const result = await joinHost(rawUrl, serverName, serverPassword);
+      if (!result.ok || !result.url) return { ok: false, error: result.error ?? "failed" };
+      const previous = hostsRef.current;
+      const host: Host = {
+        id: newHostId(),
+        name: serverName.trim() || result.url,
+        url: result.url,
+        createdAt: Date.now(),
+        lastUsedAt: Date.now(),
+      };
+      await Promise.all(previous.map((h) => deleteHost(h.id)));
+      await saveHost(host);
+      setHosts([host]);
+      setRoute({ name: "webview", host, fragment: result.fragment });
+      return { ok: true };
+    },
+    [],
+  );
 
   useEffect(refresh, [refresh]);
 
@@ -236,15 +263,29 @@ export default function App() {
           // dodawania. Po dodaniu hosta wchodzimy w WebView i już do niego
           // nie wracamy — stąd brak osobnego ekranu listy.
           <AddHostScreen
-            onDone={(host) => {
+            onDone={(host, fragment) => {
+              // Claim the first-run routing before refresh() resolves: its own
+              // `setRoute` would otherwise land second and drop the `#join=`
+              // fragment this host was just signed in with.
+              didInit.current = true;
               refresh();
-              setRoute({ name: "webview", host });
+              setRoute({ name: "webview", host, fragment });
             }}
-            onCancel={() => {}}
           />
         )}
         {route.name === "webview" && (
-          <WebViewScreen host={route.host} botId={route.botId} onBack={() => changeHost(route.host.id)} onBotVisible={setVisibleBot} />
+          // The key forces a full remount when the shell swaps hosts (or hands
+          // the page a fresh `#join=` grant) — the WebView keeps the old origin
+          // otherwise.
+          <WebViewScreen
+            key={`${route.host.id}:${route.fragment ?? ""}`}
+            host={route.host}
+            botId={route.botId}
+            fragment={route.fragment}
+            onBack={() => changeHost(route.host.id)}
+            onBotVisible={setVisibleBot}
+            onJoinHost={joinFromWebUi}
+          />
         )}
       </SafeAreaView>
 

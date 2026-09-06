@@ -27,7 +27,8 @@ async function saveIndex(hosts: Host[]): Promise<void> {
 }
 
 /** Persists the host record and its token (SecureStore = Keychain/Keystore,
- * encrypted at rest — the working credential path today, see pair.ts). */
+ * encrypted at rest). Since 0.4.0 the web UI holds the session itself, so a
+ * host is normally saved without a token at all. */
 export async function saveHost(host: Host, token?: string | null, mode?: HostAuthMode | null): Promise<void> {
   const hosts = upsertHost(await listHosts(), host);
   await saveIndex(hosts);

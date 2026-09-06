@@ -4,15 +4,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBootstrap, hostProbePath, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, touchHost, upsertHost, type Host } from "./host-logic.ts";
-import { pairingCredential, parseQrPayload, type ClaimResult } from "./pair.ts";
+import { buildBootstrap, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
 
-test("normalizeHostUrl strips trailing slashes and validates scheme", () => {
+test("normalizeHostUrl strips trailing slashes and insists on https", () => {
   assert.equal(normalizeHostUrl("https://host.ts.net/"), "https://host.ts.net");
-  assert.equal(normalizeHostUrl(" http://127.0.0.1:8799// "), "http://127.0.0.1:8799");
+  assert.equal(normalizeHostUrl(" 127.0.0.1:8799// "), "https://127.0.0.1:8799");
+  // MultiBot has been https-only since 0.4.0; http would put the server
+  // password on the wire in the clear.
+  assert.throws(() => normalizeHostUrl("http://127.0.0.1:8799"), /https/);
   assert.throws(() => normalizeHostUrl("not-a-url"));
   assert.throws(() => normalizeHostUrl(""));
   assert.throws(() => normalizeHostUrl("ftp.example://example.com"));
+});
+
+test("normalizeHostUrl takes a bare IPv6 address with a port", () => {
+  assert.equal(normalizeHostUrl("[2a00:1:2::9]:8799"), "https://[2a00:1:2::9]:8799");
+  assert.equal(normalizeHostUrl("https://[2a00:1:2::9]:8799/"), "https://[2a00:1:2::9]:8799");
+});
+
+test("tlsKey matches the host:port the native store is keyed by", () => {
+  assert.equal(tlsKey("https://127.0.0.1:8799"), "127.0.0.1:8799");
+  assert.equal(tlsKey("https://Host.TS.net"), "host.ts.net:443");
+  assert.equal(tlsKey("https://[2A00:1:2::9]:8799"), "2a00:1:2::9:8799");
 });
 
 test("host bearer requests opt into protocol v2", () => {
@@ -100,37 +113,25 @@ test("formatLastUsed buckets recent and old timestamps", () => {
   assert.equal(formatLastUsed(now - 3 * 86_400_000), "3 days ago");
 });
 
-test("parseQrPayload accepts the PLAN-CLIENTS {url, code} shape", () => {
-  const result = parseQrPayload('{"url":"https://host.ts.net","code":"123456"}');
-  assert.deepEqual(result, { url: "https://host.ts.net", code: "123456" });
-});
-
-test("parseQrPayload accepts a bare URL and rejects garbage", () => {
-  assert.deepEqual(parseQrPayload("https://host.ts.net"), { url: "https://host.ts.net" });
-  assert.equal(parseQrPayload("not a url or json"), null);
-  assert.equal(parseQrPayload(""), null);
-  assert.equal(parseQrPayload("{}"), null);
-});
-
-test("pairing prefers a modern access token and falls back to the legacy token", () => {
-  const modern = pairingCredential({ token: "legacy", accessToken: "v2-access", authMode: "v2" });
-  assert.deepEqual(modern, { token: "v2-access", mode: "v2" });
-
-  const legacy: ClaimResult = { token: "legacy", authMode: "legacy" };
-  assert.deepEqual(pairingCredential(legacy), { token: "legacy", mode: "legacy" });
-});
-
 test("a host without a saved token opens the web sign-in instead of failing", () => {
   const anon = buildBootstrap({ token: null, statusBarHeight: 24, appVersion: "1.0.0" });
   assert.ok(!anon.includes("multibot.auth.token"));
   assert.ok(anon.includes("--android-status-bar"));
-  assert.equal(hostProbePath(null), "/api/auth/status");
 
-  // Legacy hosts keep the token bootstrap and the authenticated probe.
+  // Legacy hosts keep the token bootstrap.
   const legacy = buildBootstrap({ token: "t0k", botId: "b1", statusBarHeight: 0, appVersion: "1.0.0" });
   assert.ok(legacy.includes('localStorage.setItem("multibot.auth.token", "t0k")'));
   assert.ok(legacy.includes("#bot=b1"));
-  assert.equal(hostProbePath("t0k"), "/api/bots");
+});
+
+test("the join grant reaches the web UI through the fragment", () => {
+  const joining = buildBootstrap({ fragment: "#join=g-1", statusBarHeight: 0, appVersion: "1.0.0" });
+  assert.ok(joining.includes('location.hash = "#join=g-1"'));
+
+  // A notification tap wins: the user asked for that bot, not for a sign-in.
+  const both = buildBootstrap({ botId: "b1", fragment: "#join=g-1", statusBarHeight: 0, appVersion: "1.0.0" });
+  assert.ok(both.includes("#bot=b1"));
+  assert.ok(!both.includes("#join="));
 });
 
 test("the Tailscale hint is only for tailnet addresses", () => {
