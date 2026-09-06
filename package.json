@@ -1,15 +1,20 @@
 {
   "name": "multibot2-mobile",
-  "description": "MultiBot Mobile — pair with a host, then show its full web UI in a WebView.",
+  "description": "MultiBot Mobile — sign in to a host, then show its full web UI in a WebView.",
   "private": true,
   "version": "0.3.9",
   "main": "index.ts",
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/lib/logic.test.ts src/lib/onboarding-flow.test.ts src/lib/push-notice.test.ts",
+    "test": "node --experimental-strip-types --test src/lib/logic.test.ts src/lib/join-flow.test.ts src/lib/onboarding-flow.test.ts src/lib/push-notice.test.ts src/lib/tls-plugin.test.ts",
     "test:webui": "npm --prefix webui run test",
     "webui": "npm --prefix webui run build && node scripts/bundle-webui.mjs",
     "sync-webui": "node scripts/sync-webui.mjs"

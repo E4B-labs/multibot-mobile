@@ -4,7 +4,7 @@
     "slug": "multibot2-mobile",
     "scheme": "multibot",
     "version": "0.3.9",
-    "runtimeVersion": "1.4.0",
+    "runtimeVersion": "1.5.0",
     "platforms": [
       "android",
       "ios"
@@ -16,10 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.multibot2.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Scan a QR code to pair with your MultiBot host.",
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
-        }
+        "NSCameraUsageDescription": "Take a photo to attach it to a message."
       }
     },
     "android": {
@@ -27,7 +24,8 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -38,18 +36,19 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to scan a MultiBot pairing QR code."
+          "cameraPermission": "Allow $(PRODUCT_NAME) to take a photo for a message."
         }
       ],
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": false
           }
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/with-tls-pinning.js"
     ],
     "extra": {
       "eas": {

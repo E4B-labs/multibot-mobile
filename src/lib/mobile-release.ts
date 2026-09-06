@@ -97,13 +97,20 @@ async function runInstall(): Promise<void> {
 }
 
 export async function installAndroidRelease(release: MobileRelease): Promise<void> {
+  await downloadAndInstallApk(release.apkUrl, `MultiBot-${release.versionCode}.apk`);
+}
+
+/** Downloads an APK into the cache and hands it to the system installer.
+ * Shared by the self-update path and by "Set up a server", which installs
+ * Termux exactly the same way. REQUEST_INSTALL_PACKAGES is already granted. */
+export async function downloadAndInstallApk(url: string, fileName: string): Promise<void> {
   if (Platform.OS !== "android") throw new Error("APK installation is available on Android only.");
   const cacheDirectory = FileSystem.cacheDirectory;
   if (!cacheDirectory) throw new Error("Android cache directory unavailable.");
 
-  const apkUri = `${cacheDirectory}MultiBot-${release.versionCode}.apk`;
+  const apkUri = `${cacheDirectory}${fileName}`;
   await FileSystem.deleteAsync(apkUri, { idempotent: true });
-  const downloaded = await FileSystem.downloadAsync(release.apkUrl, apkUri, {
+  const downloaded = await FileSystem.downloadAsync(url, apkUri, {
     headers: { Accept: "application/vnd.android.package-archive" },
   });
   const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
@@ -112,4 +119,37 @@ export async function installAndroidRelease(release: MobileRelease): Promise<voi
     type: "application/vnd.android.package-archive",
     flags: 1,
   });
+}
+
+const TERMUX_RELEASE_API = "https://api.github.com/repos/termux/termux-app/releases/latest";
+
+export interface GithubAsset {
+  name?: unknown;
+  browser_download_url?: unknown;
+}
+
+/** The universal APK out of a GitHub release listing. Termux publishes one
+ * build per ABI plus a universal one; only the universal one is safe to pick
+ * without knowing this phone's architecture. */
+export function pickTermuxApk(assets: GithubAsset[] | undefined): string | null {
+  const match = (assets ?? []).find(
+    (asset) =>
+      typeof asset?.name === "string" &&
+      /^termux-app_.*universal\.apk$/i.test(asset.name) &&
+      isHttpsUrl(asset.browser_download_url, APK_HOSTS),
+  );
+  return match ? String(match.browser_download_url) : null;
+}
+
+/** Termux is not on Play, so the only way in is the APK from its own releases. */
+export async function installTermux(): Promise<void> {
+  const response = await fetch(TERMUX_RELEASE_API, {
+    cache: "no-store",
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!response.ok) throw new Error(`GitHub answered HTTP ${response.status}.`);
+  const body = (await response.json()) as { assets?: GithubAsset[] };
+  const apkUrl = pickTermuxApk(body?.assets);
+  if (!apkUrl) throw new Error("The latest Termux release has no universal APK.");
+  await downloadAndInstallApk(apkUrl, "Termux.apk");
 }
