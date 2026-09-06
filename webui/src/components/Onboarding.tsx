@@ -7,7 +7,7 @@ import { ArrowLeft, Copy, Eye, EyeOff, Loader2 } from "lucide-react";
 import { MausAvatar } from "./Avatar";
 import { authFetch, setSessionToken, setV2AuthToken, takeJoinGrant } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
-import { copyText, isReactNativeShell, joinLocalHarness, resolveHost } from "@/lib/shell";
+import { copyText, forgetCertificateViaShell, isReactNativeShell, joinLocalHarness, resolveHost } from "@/lib/shell";
 import type { SetupValues } from "@/types/ogb";
 
 const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
@@ -68,6 +68,14 @@ export function joinErrorField(code: string): JoinErrorField {
 
 /** The exact four lines "Copy all three" puts on the clipboard. Typed into
  * another device by hand as often as pasted, so the labels are part of it. */
+/** mobile: Electron forgets a pin through `ogb`, the phone through the bridge.
+ * `true` means the pin is gone and the sign-in is worth retrying. */
+async function forgetCertificate(address: string): Promise<boolean> {
+  const desktop = window.ogb?.forgetHostCertificate;
+  if (desktop) return (await desktop(address).catch(() => ({ ok: false }))).ok === true;
+  return forgetCertificateViaShell();
+}
+
 export function credentialsText(values: { serverName: string; address: string; serverPassword: string }): string {
   return `MultiBot server\nName: ${values.serverName}\nAddress: ${values.address}\nPassword: ${values.serverPassword}`;
 }
@@ -500,8 +508,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <input value={serverName} onChange={(event) => setServerName(event.target.value)} placeholder={polish ? "Nazwa serwera" : "Server name"} aria-label={polish ? "Nazwa serwera" : "Server name"} className={`mt-2 ${inputClass} ${field("name")}`} />
             <PasswordField value={serverPassword} onChange={setServerPassword} placeholder={polish ? "Hasło serwera" : "Server password"} autoComplete="off" label={polish ? "Hasło serwera" : "Server password"} invalid={Boolean(field("password"))} />
             {errorCode && <div role="alert" className="mt-2 text-[12px] text-danger">{joinErrorText(errorCode, polish)}</div>}
-            {errorCode === "certificate_changed" && window.ogb?.forgetHostCertificate && (
-              <button type="button" onClick={() => void window.ogb?.forgetHostCertificate?.(address.trim()).then(() => void signIn())} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
+            {/* mobile: `window.ogb` is Electron-only, so on the phone the same
+                button goes through the shell bridge instead — without this the
+                one way past "certificate changed" is missing on Android. */}
+            {errorCode === "certificate_changed" && (window.ogb?.forgetHostCertificate || isReactNativeShell()) && (
+              <button type="button" onClick={() => void forgetCertificate(address.trim()).then((ok) => { if (ok) void signIn(); })} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
                 {polish ? "Zaufaj nowemu certyfikatowi" : "Trust the new certificate"}
               </button>
             )}

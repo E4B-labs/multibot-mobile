@@ -235,6 +235,22 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+// mobile: dropping a pinned certificate. Desktop does this through
+// `window.ogb.forgetHostCertificate`; the phone has no `ogb`, so it asks the
+// shell, which shows a native confirmation the page cannot draw or dismiss and
+// applies it to the host on screen only (src/screens/WebViewScreen.tsx,
+// `confirmForget`). Kept on this side of the port so the next 3-way merge with
+// desktop keeps it.
+//
+//   webui → shell   {"type":"tls.forget"}
+//   shell → webui   {"type":"tls.forget.result","ok":true|false}
+export async function forgetCertificateViaShell(host: ShellHost | undefined = currentHost()): Promise<boolean> {
+  if (!host?.ReactNativeWebView) return false;
+  const answer = awaitShellMessage<{ ok?: boolean }>("tls.forget.result", host);
+  shellPost({ type: "tls.forget" }, host);
+  return (await answer)?.ok === true;
+}
+
 // ── push registration, mobile only ─────────────────────────────────────────
 // The mobile shell stopped registering push by itself (multibot-mobile PR #30):
 // it owns the OS permission prompt and the Expo token, the webui owns the
@@ -249,6 +265,15 @@ export async function copyText(text: string): Promise<boolean> {
 // Same reply channel as `host.join.result`.
 const DEVICE_ID_KEY = "multibot.device.id";
 
+/** `crypto.randomUUID` is secure-context only, and this screen lives on
+ * `http://192.168.…` in a WebView. `getRandomValues` is not, so it is the
+ * fallback rather than an install with no push at all. */
+function freshDeviceId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** One stable id per install, so re-registering replaces this device's row
  * instead of adding another. Empty when storage is unavailable — a churning id
  * would leave a new dead row on the server every launch, which is worse than
@@ -257,7 +282,7 @@ export function deviceId(storage: Pick<Storage, "getItem" | "setItem"> | undefin
   try {
     const stored = storage?.getItem(DEVICE_ID_KEY);
     if (stored) return stored;
-    const fresh = crypto.randomUUID();
+    const fresh = freshDeviceId();
     storage?.setItem(DEVICE_ID_KEY, fresh);
     return storage ? fresh : "";
   } catch {

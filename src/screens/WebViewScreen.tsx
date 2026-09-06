@@ -44,10 +44,22 @@ const PROBE_TIMEOUT_MS = 8_000;
 // Anything running in this WebView can call `postMessage`, including a frame the
 // page embeds (the bot-computer noVNC view is one). The privileged messages —
 // swapping servers, dropping a certificate pin, installing an update, minting a
-// push token — must come from the page the shell itself loaded, so the shell
-// injects a fresh secret into the MAIN FRAME ONLY and ignores any privileged
-// message that doesn't carry it back.
-const PRIVILEGED = new Set(["host.join", "tls.forget", "push.request", "app.update.check", "app.update.download", "app.update.install"]);
+// push token, opening the camera, reading the clipboard — must come from the
+// page the shell itself loaded, so the shell injects a fresh secret into the
+// MAIN FRAME ONLY and ignores any privileged message that doesn't carry it back.
+// The camera and clipboard belong on this list for the same reason as the rest:
+// the noVNC frame gets a `window.ReactNativeWebView` of its own, and without the
+// gate a page inside it could open the camera or pull the clipboard.
+const PRIVILEGED = new Set([
+  "host.join",
+  "tls.forget",
+  "push.request",
+  "app.update.check",
+  "app.update.download",
+  "app.update.install",
+  "native.camera.request",
+  "native.clipboard.image",
+]);
 
 function newBridgeNonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
@@ -80,8 +92,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
   const [bootstrap, setBootstrap] = useState<string | null>(null);
-  // One secret per mount, handed only to the main frame. A remount (host swap,
-  // retry) invalidates the old one.
+  // One secret per mount of THIS screen, handed only to the main frame. A retry
+  // (`key={attempt}` on the WebView below) deliberately reuses it: the injected
+  // bootstrap is state, and minting a new nonce here would let the remounted
+  // WebView load for a frame with the previous one still in `bootstrap`.
+  // Switching hosts remounts the screen, and that does mint a fresh secret.
   const nonce = useMemo(newBridgeNonce, []);
   const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -407,13 +422,16 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data);
+            // `bot.selected` is the one message that carries no authority — it
+            // only mutes a notification — so it is the only one handled above
+            // the gate. Everything else goes below it.
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
               setCameraReady(false);
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
-            if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
             if (msg?.type === "host.join") void handleJoinHost(msg);
             if (msg?.type === "push.request") void handlePushRequest();
             // "Trust new certificate" from inside the web UI. The URL is not

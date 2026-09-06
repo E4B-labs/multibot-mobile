@@ -26,6 +26,18 @@ export function clearAuthToken(): void {
   }
 }
 
+/** The mobile shell serves the page through `loadDataWithBaseURL`, and on some
+ * Android builds that document ends up with an opaque origin — `replaceState`
+ * then throws a SecurityError. Tidying the URL is a nicety; blowing up here
+ * would take the whole boot with it, before `createRoot` ever runs. */
+function stripFragment(rest: string): void {
+  try {
+    history.replaceState(null, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+  } catch {
+    /* opaque origin — the fragment stays, the app still boots */
+  }
+}
+
 export function bootstrapLocalAuthToken(): void {
   const fragment = new URLSearchParams(location.hash.slice(1));
   const token = fragment.get("access_token");
@@ -35,8 +47,7 @@ export function bootstrapLocalAuthToken(): void {
   // powłoki, a wymiecenie całego hasha kasowało go, zanim onboarding zdążył go
   // przeczytać.
   fragment.delete("access_token");
-  const rest = fragment.toString();
-  history.replaceState(null, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+  stripFragment(fragment.toString());
 }
 
 /** The desktop shell trades the server name and password for a grant natively
@@ -49,8 +60,7 @@ export function takeJoinGrant(): string {
   const grant = fragment.get("join") ?? "";
   if (!grant) return "";
   fragment.delete("join");
-  const rest = fragment.toString();
-  history.replaceState(null, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+  stripFragment(fragment.toString());
   return grant;
 }
 
@@ -135,7 +145,14 @@ function requireAuth(): void {
 
 function isRefreshRequest(input: RequestInfo | URL): boolean {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  return url.includes(REFRESH_PATH);
+  // Exact path: `includes` also matched anything that merely mentioned the
+  // route (a query string, a longer path), and a false positive here means a
+  // real 401 skips the refresh and signs the user out.
+  try {
+    return new URL(url, location.origin).pathname === REFRESH_PATH;
+  } catch {
+    return false;
+  }
 }
 
 function sendAuthed(input: RequestInfo | URL, init: RequestInit): Promise<Response> {

@@ -9,7 +9,9 @@ export function initAnalytics() {
   if (ready || !TOKEN) return;
   posthog.init(TOKEN, {
     api_host: "https://us.i.posthog.com",
-    autocapture: true,
+    // Onboarding puts the server password and the recovery code on screen as
+    // plain text; autocapture would ship the surrounding DOM with every click.
+    autocapture: false,
     capture_pageview: false,
     person_profiles: "identified_only",
     persistence: "localStorage",

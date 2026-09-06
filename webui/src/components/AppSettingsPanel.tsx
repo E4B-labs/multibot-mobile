@@ -103,8 +103,7 @@ function DiagnosticsRow() {
   );
 }
 
-/** Name + email, persisted to /api/config {profile} on blur. Prefilled from
- * the current config (the values are echoed back — they're not secrets). */
+/** v2 profile: username is immutable; display name labels messages. */
 function ProfileFields() {
   const { state } = useStore();
   const [name, setName] = useState(state.config?.profile?.name ?? "");
