@@ -8,6 +8,10 @@ declare global {
      * Electronem z lokalnym serwerem. */
     __MULTIBOT_REMOTE__?: true;
     ReactNativeWebView?: { postMessage(message: string): void };
+    /** Wstrzykiwane przez powłokę mobilną przy ładowaniu strony. Każda
+     * wiadomość do mostu wiezie tę wartość (`shellPost` w `src/lib/shell.ts`),
+     * a powłoka reaguje tylko na te, które ją mają. Nieobecne wszędzie indziej. */
+    __MB_BRIDGE_NONCE__?: string;
     ogb?: {
       screenFrame(): Promise<string | null>;
       speechStart(): Promise<void>;
@@ -24,10 +28,31 @@ declare global {
       permRequestMic(): Promise<boolean>;
       /** Opens System Settings on a privacy pane: mic|screen|speech. */
       permOpenSettings(pane: "mic" | "screen" | "speech"): Promise<void>;
-      /** Saves a remote host and switches the shell to it (onboarding
-       * "connect"). Optional — older shells don't expose it, so callers must
-       * feature-detect and fall back to a plain navigation. */
-      addRemoteHost?(url: string): Promise<void>;
+      /** Returns to local host, restoring local onboarding when it is pending.
+       * Reloads the window, so callers check `activeHostId()` first. */
+      useLocalHost?(): Promise<void>;
+      /** `"local"`, or the id of the saved remote host in use. */
+      activeHostId?(): Promise<string>;
+      /** Trades the server name + password for a short-lived join grant, saves
+       * the host and switches the window to it with `#join=<grant>`. The
+       * password never leaves the main process. */
+      joinHost?(url: string, serverName: string, serverPassword: string): Promise<HostJoinResult>;
+      /** Forgets this host's pinned certificate so the next connection trusts
+       * again from scratch — the only way past "server certificate changed",
+       * and deliberately a decision the user has to make. */
+      forgetHostCertificate?(url: string): Promise<{ ok: boolean; forgotten?: boolean; error?: string }>;
+      /** The three values a fresh server on THIS device printed for its owner,
+       * read out of `setup.json` by the main process — a browser tab cannot read
+       * a file, and the generated password lives nowhere else in the clear.
+       * `null` once a profile has claimed the server, or in an older shell. */
+      setupValues?(): Promise<SetupValues | null>;
+      /** Trades this device's own server name and password for a join grant
+       * against the LOCAL harness — the setup path, where `location.origin` is
+       * the wrong target (in remote mode it is a proxy for somebody else's
+       * server). Refused unless the active host is this device. */
+      setupJoin?(serverName: string, serverPassword: string): Promise<{ ok: boolean; joinGrant?: string; error?: string }>;
+      /** Opens the native host picker WITHOUT changing the active host. */
+      showHostPicker?(): Promise<void>;
       /** Unread-conversation count for the taskbar badge. Fire-and-forget;
        * absent in plain browsers, so callers must feature-detect. */
       setUnreadCount?(count: number): void;
@@ -38,6 +63,15 @@ declare global {
       /** Kliknięto banerkę należącą do bota — otwórz go. Zwraca odsubskrybowanie. */
       onNotificationClick?(cb: (botId: string) => void): () => void;
       exportDiagnostics?(): Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string }>;
+      /** Własne kontrolki okna — wystawiane tylko przez powłokę Electrona bez
+       * ramki systemowej. Telefon ich nie ma; deklaracja zostaje, bo
+       * `hasCustomWindowControls` w `lib/shell.ts` jest wspólnym kodem z
+       * desktopem i ma się scalać bez poprawek. */
+      window?: {
+        minimize(): void;
+        toggleMaximize(): void;
+        close(): void;
+      };
       /** In-app auto-update (packaged app only; dormant in dev). onState
        * fires immediately with the current state, then on transitions. */
       updater?: {
@@ -51,9 +85,48 @@ declare global {
   }
 }
 
+/** Every code is snake_case. Transport: `unreachable` | `timeout` |
+ * `not_multibot` | `invalid_address` | `certificate_changed` (a pinned
+ * certificate changed — see electron/tls-pin.mjs) | `forbidden` (called from a
+ * page that isn't ours — a screen served straight from the host joins
+ * same-origin instead). `joinHost` adds `insecure_address`: the server password
+ * is never sent in the clear to anything but loopback. */
+export type HostErrorCode =
+  | "unreachable"
+  | "timeout"
+  | "not_multibot"
+  | "invalid_address"
+  | "certificate_changed"
+  | "insecure_address"
+  | "forbidden";
+
+/** On failure `error` is one of the transport codes or a server code the shell
+ * allows through — `wrong_server_name`, `wrong_server_password`,
+ * `server_not_set_up`, `rate_limited` — so the form can point at the field at
+ * fault. Anything else the server says is reported as `not_multibot`; the join
+ * grant itself never comes back here, it rides the URL fragment. */
+export type HostJoinResult =
+  | { ok: true; hasUsers?: boolean }
+  | { ok: false; error: HostErrorCode | "wrong_server_name" | "wrong_server_password" | "server_not_set_up" | "rate_limited" };
+
 export interface UpdaterState {
   status: "idle" | "checking" | "available" | "downloading" | "downloaded" | "error";
   version?: string;
   percent?: number;
   message?: string;
 }
+
+/** Never carries the setup token: that is the file's proof of readership, not
+ * something a screen needs. Address and certificate come from the server's own
+ * `/api/setup/values`, so they are absent until it can answer. */
+export type SetupValues = {
+  serverName: string;
+  serverPassword: string;
+  address: string;
+  tlsFingerprint?: string;
+  /** How the address was found, and whether anything outside confirmed it —
+   * the setup screen says out loud what each kind can and cannot do. */
+  addressKind?: string;
+  addressVerified?: boolean;
+  portMapping?: { state?: string };
+};

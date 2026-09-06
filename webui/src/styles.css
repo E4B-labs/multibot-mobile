@@ -305,6 +305,26 @@ body {
   75% { transform: rotate(6deg); }
 }
 
+/* Tarcza admina: ptaszek dorysowuje się od nowa. 12 to długość obu odcinków
+   z zapasem — bez data-playing offset zostaje 0, więc ikona stoi kompletna. */
+.settings-shield-check { stroke-dasharray: 12; }
+[data-settings-tab-icon][data-playing] .settings-shield-check {
+  animation: settings-shield-check 3s ease-in-out both;
+}
+@keyframes settings-shield-check {
+  0% { stroke-dashoffset: 12; }
+  40%, 100% { stroke-dashoffset: 0; }
+}
+
+/* == multibot: rozwijanie menu „trzy kropki" w nagłówku czatu =============
+   Trzy fazy po sekundzie, sterowane z ChatHeaderMenu.tsx (UNROLL_MS, FLY_MS,
+   TYPE_MS). Czasy tutaj i tam muszą się zgadzać — pilnuje tego
+   ChatHeaderMenu.test.ts.
+
+   Zwój przycinamy clip-path, a nie skalą ani wysokością: panel ma od razu
+   docelowy rozmiar, więc nic pod nim nie skacze, a zaokrąglone rogi nie
+   rozjeżdżają się po drodze. Klasa żyje tylko w pierwszej fazie, bo
+   „inset(0 0 0 0)” przyciąłby potem kropki lecące spoza obrysu panelu. */
 /* ── multibot: menu „⋮" (ChatHeaderMenu) — trzyfazowa sekwencja na 1,7 s ─────
    Zwój 0,5 s, lot kropek 0,2 s, pisanie liter 1 s. Czas żyje też w stałych
    komponentu (UNROLL_MS/FLY_MS/TYPE_MS) — rozjazd widać jako przeskok w
