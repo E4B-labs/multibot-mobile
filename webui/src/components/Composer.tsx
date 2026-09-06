@@ -11,12 +11,12 @@ import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
 import { AttachmentCard } from "./AttachmentCard";
 import {
-  hasNativeWebView,
   nativeDataUrlToFile,
   onNativePhoto,
   requestNativeCamera,
   requestNativeClipboardImage,
 } from "@/lib/nativeBridge";
+import { isReactNativeShell } from "@/lib/shell";
 
 
 type ComposerAccess = "read-only" | "approval" | "full";
@@ -745,7 +745,7 @@ export function Composer({
   }, [addFiles]);
 
   useEffect(() => {
-    if (!hasNativeWebView()) return;
+    if (!isReactNativeShell()) return;
     const onBeforeInput = (event: Event) => {
       const input = event as InputEvent;
       // Android WebView often reports image paste without exposing a

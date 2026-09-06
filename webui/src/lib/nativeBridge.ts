@@ -7,25 +7,19 @@ export type NativePhoto = {
   fileName: string;
 };
 
-// Camera and clipboard sit on top of the ONE bridge in `@/lib/shell`. There is
-// deliberately no second `postMessage` here: the shell drops every privileged
-// message that arrives without `window.__MB_BRIDGE_NONCE__`, and a helper that
-// posted on its own would silently lose `app.update.*` (src/screens/
-// WebViewScreen.tsx, `PRIVILEGED`).
-import { isReactNativeShell, shellPost } from "@/lib/shell";
-
-export function hasNativeWebView(): boolean {
-  return isReactNativeShell();
-}
-
-export const postNativeMessage = shellPost;
+// Camera and clipboard, the two message types only the phone has. Everything
+// they send goes out through `shellPost` in `@/lib/shell` — there is no second
+// bridge helper here on purpose: the shell drops any privileged message
+// arriving without `window.__MB_BRIDGE_NONCE__` (src/screens/WebViewScreen.tsx,
+// `PRIVILEGED`), and a local `postMessage` would silently lose `app.update.*`.
+import { shellPost } from "@/lib/shell";
 
 export function requestNativeCamera(requestId: string, purpose: NativePhotoPurpose): boolean {
-  return postNativeMessage({ type: "native.camera.request", requestId, purpose });
+  return shellPost({ type: "native.camera.request", requestId, purpose });
 }
 
 export function requestNativeClipboardImage(requestId: string): boolean {
-  return postNativeMessage({ type: "native.clipboard.image", requestId, purpose: "attachment" });
+  return shellPost({ type: "native.clipboard.image", requestId, purpose: "attachment" });
 }
 
 export function onNativePhoto(listener: (photo: NativePhoto) => void): () => void {
