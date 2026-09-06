@@ -3,8 +3,8 @@
     "name": "MultiBot Mobile",
     "slug": "multibot2-mobile",
     "scheme": "multibot",
-    "version": "0.4.0",
-    "runtimeVersion": "1.5.0",
+    "version": "0.5.0",
+    "runtimeVersion": "1.6.0",
     "platforms": [
       "android",
       "ios"
@@ -43,7 +43,8 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": false
+            "usesCleartextTraffic": false,
+            "useLegacyPackaging": true
           }
         }
       ],

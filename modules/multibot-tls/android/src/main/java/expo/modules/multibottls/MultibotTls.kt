@@ -5,11 +5,18 @@ import android.util.Log
 import com.facebook.react.modules.network.OkHttpClientFactory
 import com.facebook.react.modules.network.OkHttpClientProvider
 import expo.modules.kotlin.exception.CodedException
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import java.io.File
+import java.io.IOException
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
 import java.net.Socket
+import java.net.SocketAddress
 import java.net.URI
+import java.net.UnknownHostException
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -98,12 +105,64 @@ object MultibotTls {
 
   private fun isIpLiteral(host: String): Boolean = host.contains(':') || IPV4.matches(host)
 
+  fun isOnion(host: String): Boolean = host.endsWith(".onion", ignoreCase = true)
+
+  /**
+   * Where the embedded Tor client's SOCKS5 listener is, or 0 when it is not
+   * running. Set from JavaScript once `MultibotTor.start()` has bootstrapped;
+   * the OkHttp factory below is installed long before that, so the port has to
+   * be read at request time rather than baked into the client.
+   */
+  @Volatile
+  var torSocksPort: Int = 0
+    private set
+
+  fun setTorSocksPort(port: Int) {
+    torSocksPort = if (port in 1..65535) port else 0
+  }
+
+  private fun socksProxy(port: Int): Proxy =
+    Proxy(Proxy.Type.SOCKS, InetSocketAddress(InetAddress.getLoopbackAddress(), port))
+
+  /**
+   * Sends `.onion` requests to Tor and leaves everything else alone. The JDK
+   * (and OkHttp) hand a SOCKS route an UNRESOLVED address, so the name is
+   * resolved by the exit of the circuit and never by the phone.
+   */
+  private object OnionProxySelector : ProxySelector() {
+    override fun select(uri: URI?): List<Proxy> {
+      val host = uri?.host ?: return listOf(Proxy.NO_PROXY)
+      val port = torSocksPort
+      if (port <= 0 || !isOnion(host)) return listOf(Proxy.NO_PROXY)
+      return listOf(socksProxy(port))
+    }
+
+    override fun connectFailed(uri: URI?, address: SocketAddress?, failure: IOException?) {
+      Log.w(TAG, "could not reach $uri through $address", failure)
+    }
+  }
+
+  /**
+   * Fails closed on `.onion`: the system resolver must never see one, whether
+   * Tor is down, the proxy selector was bypassed, or a redirect walked us onto
+   * an onion host by surprise. A working onion request takes the SOCKS route
+   * above and never asks this at all.
+   */
+  private object NoOnionDns : Dns {
+    override fun lookup(hostname: String): List<InetAddress> {
+      if (isOnion(hostname)) {
+        throw UnknownHostException("$hostname can only be reached through Tor.")
+      }
+      return Dns.SYSTEM.lookup(hostname)
+    }
+  }
+
   /**
    * Opens a TLS socket, reads the leaf certificate and hangs up. No HTTP request
    * is sent, so this learns a fingerprint without handing anything to a server
    * that has not been trusted yet.
    */
-  fun probeFingerprint(url: String, timeoutMs: Int): String {
+  fun probeFingerprint(url: String, timeoutMs: Int, socksPort: Int): String {
     val uri = try {
       URI(url)
     } catch (invalid: Exception) {
@@ -112,10 +171,37 @@ object MultibotTls {
     val host = uri.host?.trim('[', ']')
       ?: throw MultibotTlsException("unreachable", "Not a valid address.", null)
     val port = if (uri.port == -1) 443 else uri.port
+    // Fail closed rather than hand a `.onion` name to the system resolver: an
+    // onion address without a SOCKS port is a bug, and the leak it would cause
+    // (a DNS query naming the hidden service) is exactly what Tor is here for.
+    if (isOnion(host) && socksPort <= 0) {
+      throw MultibotTlsException("unreachable", "Tor is not running, so this address cannot be reached.", null)
+    }
 
     val ssl = SSLContext.getInstance("TLS")
     ssl.init(null, arrayOf<TrustManager>(TrustAnything), SecureRandom())
-    val socket = ssl.socketFactory.createSocket() as SSLSocket
+    // The plain socket is opened first so a SOCKS route can carry an UNRESOLVED
+    // target: `createUnresolved` is what makes Tor, not the phone, resolve the
+    // name. TLS is layered on top of whichever socket that produced, so the
+    // certificate read below is the server's either way.
+    val raw = if (socksPort > 0) Socket(socksProxy(socksPort)) else Socket()
+    val socket = try {
+      raw.connect(
+        if (socksPort > 0) InetSocketAddress.createUnresolved(host, port) else InetSocketAddress(host, port),
+        timeoutMs,
+      )
+      ssl.socketFactory.createSocket(raw, host, port, true) as SSLSocket
+    } catch (failure: Exception) {
+      try {
+        raw.close()
+      } catch (ignored: Exception) {
+        Log.w(TAG, "could not close the probe socket", ignored)
+      }
+      if (failure is java.net.SocketTimeoutException) {
+        throw MultibotTlsException("timeout", "The server did not answer in time.", failure)
+      }
+      throw MultibotTlsException("unreachable", failure.message ?: "Could not reach the server.", failure)
+    }
     try {
       // Without SNI a name-based virtual host answers with somebody else's
       // certificate and the pin is learned for the wrong thing. An IP literal is
@@ -125,7 +211,6 @@ object MultibotTls {
         params.serverNames = listOf(SNIHostName(host))
         socket.sslParameters = params
       }
-      socket.connect(InetSocketAddress(host, port), timeoutMs)
       socket.soTimeout = timeoutMs
       socket.startHandshake()
       val leaf = socket.session.peerCertificates.firstOrNull()
@@ -167,6 +252,11 @@ object MultibotTls {
         ssl.init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
         return OkHttpClientProvider.createClientBuilder(app)
           .sslSocketFactory(ssl.socketFactory, trustManager)
+          // `.onion` goes through Tor and nowhere else: the selector routes it
+          // and the resolver refuses it, so neither a missing route nor an
+          // unexpected redirect can turn one into a DNS query.
+          .proxySelector(OnionProxySelector)
+          .dns(NoOnionDns)
           .hostnameVerifier { hostname, session ->
             systemVerifier.verify(hostname, session) || isPinnedSession(app, hostname, session)
           }

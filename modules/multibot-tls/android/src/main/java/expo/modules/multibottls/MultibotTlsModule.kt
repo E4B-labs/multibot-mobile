@@ -39,8 +39,13 @@ class MultibotTlsModule : Module() {
     /** False means the prebuild patches are missing and the WebView refuses every server. */
     Function("markerPresent") { markerPresent() }
 
-    AsyncFunction("probeFingerprint") { url: String, timeoutMs: Int ->
-      MultibotTls.probeFingerprint(url, timeoutMs)
+    AsyncFunction("probeFingerprint") { url: String, timeoutMs: Int, socksPort: Int ->
+      MultibotTls.probeFingerprint(url, timeoutMs, socksPort)
+    }
+
+    /** Where MultibotTor's SOCKS5 listener is, or 0 when Tor is not running. */
+    Function("setTorSocksPort") { port: Int ->
+      MultibotTls.setTorSocksPort(port)
     }
 
     AsyncFunction("sha256File") { path: String ->

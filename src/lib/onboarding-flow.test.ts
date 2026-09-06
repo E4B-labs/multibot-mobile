@@ -87,3 +87,86 @@ test("nothing in the shell builds a plain http address for a host", () => {
     assert.ok(!/["'`]http:\/\//.test(readFileSync(file, "utf8")), `${file} still builds an http:// address`);
   }
 });
+
+test("only an onion host is routed through Tor, and the WebView proxy is set both ways", () => {
+  // The gate is the address, nothing else: a LAN or tailnet host must never
+  // start Tor, and must have the process-wide proxy override taken back off.
+  assert.ok(webview.includes("isOnionHost(host.url)"));
+  assert.ok(webview.includes("setWebViewProxyFor(host.url)"));
+  assert.ok(webview.includes("prepareTor(host.url)"));
+  // Tor and the proxy come before the first probe/load, otherwise an onion
+  // address is dialled while nothing can reach it.
+  assert.ok(
+    webview.indexOf("setWebViewProxyFor(host.url)") < webview.indexOf("await probeHost(host.url"),
+    "the WebView proxy must be applied before the host is probed",
+  );
+
+  const tor = readFileSync("src/lib/tor.ts", "utf8");
+  // clearWebViewProxy is NOT conditional on Tor running: a leftover override
+  // would silently break every ordinary host after visiting an onion one.
+  assert.match(tor, /if \(!isOnionHost\(url\)\) \{\s*await native\.clearWebViewProxy\(\);/);
+  // ProxyController lives in the native module; the shell never touches it.
+  assert.ok(!webview.includes("ProxyController"));
+  const native = readFileSync(
+    "modules/multibot-tor/android/src/main/java/expo/modules/multibottor/MultibotTor.kt",
+    "utf8",
+  );
+  assert.ok(native.includes("ProxyController.getInstance().setProxyOverride"));
+  assert.ok(native.includes("ProxyController.getInstance().clearProxyOverride"));
+});
+
+test("the CONNECT bridge is loopback-only, onion-only, and never resolves a name", () => {
+  const native = readFileSync(
+    "modules/multibot-tor/android/src/main/java/expo/modules/multibottor/MultibotTor.kt",
+    "utf8",
+  );
+  // An open proxy on the phone would be a hole, so the listener binds loopback
+  // and the accept loop drops anything that somehow arrives from elsewhere.
+  assert.ok(native.includes("ServerSocket(0, 64, InetAddress.getLoopbackAddress())"));
+  assert.ok(native.includes("!client.inetAddress.isLoopbackAddress"));
+  // CONNECT to a clearnet host must be refused: the bridge is for onions only.
+  assert.match(native, /ONION = Regex\("""\^\[a-z2-7\]\{56\}\\.onion\$"""\)/);
+  assert.ok(native.includes('!parts[0].equals("CONNECT", ignoreCase = true)'));
+  assert.ok(native.includes("!ONION.matches(host)"));
+  // The DNS leak this whole module exists to prevent: the target handed to the
+  // SOCKS route has to be UNRESOLVED, on both the bridge and the TLS probe.
+  assert.ok(native.includes("InetSocketAddress.createUnresolved(target.first, target.second)"));
+  const tls = readFileSync(
+    "modules/multibot-tls/android/src/main/java/expo/modules/multibottls/MultibotTls.kt",
+    "utf8",
+  );
+  assert.ok(tls.includes("InetSocketAddress.createUnresolved(host, port)"));
+  // And fetch fails closed rather than asking the system resolver for a .onion.
+  assert.ok(tls.includes("throw UnknownHostException"));
+});
+
+test("signing in over Tor says so instead of spinning silently", () => {
+  assert.ok(screen.includes("Connecting through Tor (up to 30 s)…"));
+  assert.ok(screen.includes("isOnionHost(normalizeHostUrl(url))"));
+});
+
+test("the tor binary is packaged so it can actually be executed", () => {
+  const app = JSON.parse(readFileSync("app.json", "utf8"));
+  const build = app.expo.plugins.find((p: unknown) => Array.isArray(p) && p[0] === "expo-build-properties");
+  // MultibotTor execs `nativeLibraryDir/libtor.so`. With the modern packaging
+  // Expo defaults to, native libraries stay compressed inside the APK and are
+  // mapped straight out of it — nativeLibraryDir is then empty and the exec
+  // fails at runtime, with nothing at build time to warn you. Legacy packaging
+  // (extractNativeLibs=true) is what puts a real file on disk.
+  assert.equal(build[1].android.useLegacyPackaging, true);
+  assert.equal(app.expo.runtimeVersion, "1.6.0", "a new native module needs a new runtime, not an OTA");
+
+  const gradle = readFileSync("modules/multibot-tor/android/build.gradle", "utf8");
+  // 0.4.9.6.2 and later require compileSdk 37, which Expo SDK 54 does not use —
+  // AGP fails the build on the AAR metadata check, so the version is pinned.
+  assert.ok(gradle.includes("implementation 'info.guardianproject:tor-android:0.4.9.6'"));
+  const native = readFileSync(
+    "modules/multibot-tor/android/src/main/java/expo/modules/multibottor/MultibotTor.kt",
+    "utf8",
+  );
+  // Our own torrc and our own subprocess: TorService pins DataDirectory and the
+  // control socket on its command line and could never be given this config.
+  assert.ok(!native.includes("import org.torproject"), "MultibotTor pulled in the AAR's own service");
+  assert.ok(native.includes("ClientOnly 1"));
+  assert.ok(native.includes("SocksPort auto"));
+});

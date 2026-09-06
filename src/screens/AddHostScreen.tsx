@@ -13,7 +13,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as IntentLauncher from "expo-intent-launcher";
 
-import { newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
+import { isOnionHost, newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
 import { saveHost } from "../lib/hosts";
 import { joinErrorField, joinErrorMessage, type JoinErrorCode, type JoinField } from "../lib/join";
 import { installTermux } from "../lib/mobile-release";
@@ -43,6 +43,17 @@ export default function AddHostScreen({ onDone }: Props) {
   const [serverPassword, setServerPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<{ field: JoinField; code: JoinErrorCode } | null>(null);
+
+  // A `.onion` address has to wait for Tor to build a circuit before anything
+  // else happens, so the button says so instead of spinning silently for half a
+  // minute. Derived from the typed address alone — no native call, no new IPC.
+  const overTor = (() => {
+    try {
+      return isOnionHost(normalizeHostUrl(url));
+    } catch {
+      return false;
+    }
+  })();
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -325,7 +336,14 @@ export default function AddHostScreen({ onDone }: Props) {
               disabled={busy || !url.trim() || !serverName.trim() || !serverPassword}
               onPress={() => void submitSignIn()}
             >
-              {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
+              {busy ? (
+                <View style={styles.buttonRow}>
+                  <ActivityIndicator color="#070707" />
+                  {overTor ? <Text style={styles.primaryButtonText}>Connecting through Tor (up to 30 s)…</Text> : null}
+                </View>
+              ) : (
+                <Text style={styles.primaryButtonText}>Sign in</Text>
+              )}
             </Pressable>
             <Pressable style={styles.linkButton} onPress={() => setMode("choice")}>
               <Text style={styles.linkText}>Back</Text>
@@ -360,6 +378,7 @@ const styles = StyleSheet.create({
   eyeText: { color: "#fcfcfc99", fontSize: 14, fontWeight: "600" },
   error: { color: "#ff8080", fontSize: 13, marginTop: 6 },
   notice: { color: "#fcfcfc99", fontSize: 13, marginTop: 10 },
+  buttonRow: { alignItems: "center", flexDirection: "row", gap: 10 },
   primaryButton: { alignItems: "center", backgroundColor: "#fcfcfc", borderRadius: 10, marginTop: 16, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
   primaryDisabled: { opacity: 0.5 },
   primaryButtonText: { color: "#070707", fontSize: 16, fontWeight: "700" },

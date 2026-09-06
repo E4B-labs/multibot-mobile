@@ -4,7 +4,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBootstrap, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { buildBootstrap, isOnionHost, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
+
+// A real v3 address is a 56-character base32 label plus `.onion`; the shape is
+// what matters here, not that this particular service exists.
+const LABEL = "p3xnc3flkjhsdfg7uyt6rewqazxswedcvfrtgbnhyujmkiolp2q4567".padEnd(56, "a");
+const ONION = `${LABEL}.onion`;
 
 test("normalizeHostUrl strips trailing slashes and insists on https", () => {
   assert.equal(normalizeHostUrl("https://host.ts.net/"), "https://host.ts.net");
@@ -24,6 +29,35 @@ test("normalizeHostUrl takes a bare IPv6 address with a port", () => {
   // Brackets mean IPv6, and IPv6 always has a colon.
   assert.throws(() => normalizeHostUrl("[10.0.0.1]:8799"));
   assert.throws(() => normalizeHostUrl("https://[2a00:1:2::9]:99999"));
+});
+
+test("an onion address survives normalizing and keys a pin like any other host", () => {
+  assert.equal(normalizeHostUrl(`${ONION}:8799`), `https://${ONION}:8799`);
+  assert.equal(normalizeHostUrl(` https://${ONION}:8799/ `), `https://${ONION}:8799`);
+  // The pin key is what the WebView patch rebuilds from the failing URL, so an
+  // onion host must land in the same shape as every other host or the
+  // certificate can never match.
+  assert.equal(tlsKey(`https://${ONION}:8799`), `${ONION}:8799`);
+  assert.equal(tlsKey(`https://${ONION.toUpperCase()}:8799`), `${ONION}:8799`);
+  // Still https-only: the whole point of the onion is reaching a TLS server.
+  assert.throws(() => normalizeHostUrl(`http://${ONION}:8799`), /https/);
+});
+
+test("isOnionHost is true only for a full v3 address", () => {
+  assert.equal(isOnionHost(`https://${ONION}:8799`), true);
+  assert.equal(isOnionHost(`https://${ONION}`), true);
+  assert.equal(isOnionHost(`https://${ONION.toUpperCase()}:8799`), true);
+  // Anything else must NOT start Tor: a v2 address (16 chars, dead since 2021),
+  // a truncated one, a name that merely ends in the word, and every ordinary
+  // host the app already handles.
+  assert.equal(isOnionHost("https://expyuzz4wqqyqhjn.onion:8799"), false);
+  assert.equal(isOnionHost(`https://${LABEL.slice(0, 55)}.onion`), false);
+  assert.equal(isOnionHost(`https://${LABEL}1.onion:8799`), false);
+  assert.equal(isOnionHost("https://notreallyanonion:8799"), false);
+  assert.equal(isOnionHost("https://sub.example.onion.com"), false);
+  assert.equal(isOnionHost("https://127.0.0.1:8799"), false);
+  assert.equal(isOnionHost("https://[2a00:1:2::9]:8799"), false);
+  assert.equal(isOnionHost("not-a-url"), false);
 });
 
 test("tlsKey matches the host:port the native store is keyed by", () => {

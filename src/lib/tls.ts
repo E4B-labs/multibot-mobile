@@ -9,8 +9,9 @@
 // certificate has been pinned.
 import { requireOptionalNativeModule } from "expo";
 
-import { normalizeHostUrl, probeServer, tlsKey } from "./host-logic";
+import { isOnionHost, normalizeHostUrl, probeServer, tlsKey } from "./host-logic";
 import { joinFragment, parseJoinResponse, type JoinErrorCode, type JoinResponse } from "./join";
+import { ensureTor, ONION_TIMEOUT_MS } from "./tor";
 
 interface NativeTls {
   /** "trusted" first time, "unchanged" on a match, "certificate_changed" otherwise. */
@@ -19,8 +20,13 @@ interface NativeTls {
   pinned(key: string): string | null;
   /** False when the prebuild patches are missing — the WebView trusts nothing. */
   markerPresent(): boolean;
-  /** Leaf certificate SHA-256 read off a bare TLS handshake — no HTTP request. */
-  probeFingerprint(url: string, timeoutMs: number): Promise<string>;
+  /** Leaf certificate SHA-256 read off a bare TLS handshake — no HTTP request.
+   * `socksPort` of 0 dials directly; anything else dials through Tor's SOCKS5
+   * listener with an UNRESOLVED target, so a `.onion` name never reaches DNS. */
+  probeFingerprint(url: string, timeoutMs: number, socksPort: number): Promise<string>;
+  /** Tells the pinned OkHttp client where Tor listens, so React Native's own
+   * `fetch` can reach a `.onion` host. 0 turns the route back off. */
+  setTorSocksPort(port: number): void;
   /** SHA-256 of a file on disk, for checking a downloaded APK before installing. */
   sha256File(path: string): Promise<string>;
 }
@@ -31,6 +37,31 @@ const native = requireOptionalNativeModule<NativeTls>("MultibotTls");
 
 const PROBE_TIMEOUT_MS = 8_000;
 const JOIN_TIMEOUT_MS = 15_000;
+
+/**
+ * Brings the embedded Tor client up when (and only when) the address needs it,
+ * and points React Native's `fetch` at its SOCKS listener. Returns the SOCKS
+ * port, or 0 for an address that is reached directly.
+ *
+ * Every caller that is about to touch a host calls this first: it is a no-op
+ * for a LAN or tailnet address, and the one thing that makes an onion one work.
+ */
+export async function prepareTor(url: string): Promise<number> {
+  if (!native) return 0;
+  // A known port is never taken back off: the native proxy selector only routes
+  // `.onion` through it anyway, so leaving it set costs nothing, while clearing
+  // it here would break a live onion WebView the moment some other screen asked
+  // about a LAN address.
+  if (!isOnionHost(url)) return 0;
+  const { socksPort } = await ensureTor();
+  native.setTorSocksPort(socksPort);
+  return socksPort;
+}
+
+/** Network budget for one address: onion traffic crosses three relays. */
+export function timeoutFor(url: string, direct: number): number {
+  return isOnionHost(url) ? ONION_TIMEOUT_MS : direct;
+}
 
 export function tlsAvailable(): boolean {
   return native !== null;
@@ -55,7 +86,8 @@ export function forgetServer(url: string): void {
 
 export async function probeFingerprint(url: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<string> {
   if (!native) throw new Error("This build cannot verify server certificates. Install the current APK.");
-  return native.probeFingerprint(url, timeoutMs);
+  const socksPort = await prepareTor(url);
+  return native.probeFingerprint(url, timeoutFor(url, timeoutMs), socksPort);
 }
 
 export interface JoinOutcome {
@@ -80,11 +112,19 @@ export async function joinHost(rawUrl: string, serverName: string, serverPasswor
     return { ok: false, error: "invalid_address" };
   }
 
-  const trusted = await trustServer(url);
+  // Tor first: without it the probe below dials a name nothing can resolve.
+  let socksPort = 0;
+  try {
+    socksPort = await prepareTor(url);
+  } catch {
+    return { ok: false, error: "unreachable", url };
+  }
+
+  const trusted = await trustServer(url, socksPort);
   if (trusted) return { ok: false, error: trusted, url };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), JOIN_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutFor(url, JOIN_TIMEOUT_MS));
   let response: JoinResponse;
   try {
     const res = await fetch(`${url}/api/auth/join`, {
@@ -121,11 +161,11 @@ function probeErrorCode(error: unknown): JoinErrorCode {
 }
 
 /** Pins the certificate if it is new. Returns an error code when it can't. */
-async function trustServer(url: string): Promise<JoinErrorCode | null> {
+async function trustServer(url: string, socksPort: number): Promise<JoinErrorCode | null> {
   if (!native) return "unreachable";
   let fingerprint: string;
   try {
-    fingerprint = await native.probeFingerprint(url, PROBE_TIMEOUT_MS);
+    fingerprint = await native.probeFingerprint(url, timeoutFor(url, PROBE_TIMEOUT_MS), socksPort);
   } catch (error) {
     return probeErrorCode(error);
   }
@@ -142,7 +182,7 @@ export async function probeLocalServer(): Promise<boolean> {
   if (!native) return false;
   let fingerprint: string;
   try {
-    fingerprint = await native.probeFingerprint(LOCAL_SERVER_URL, 2_500);
+    fingerprint = await native.probeFingerprint(LOCAL_SERVER_URL, 2_500, 0);
   } catch {
     return false;
   }
