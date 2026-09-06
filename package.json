@@ -2,7 +2,7 @@
   "name": "multibot2-mobile",
   "description": "MultiBot Mobile — sign in to a host, then show its full web UI in a WebView.",
   "private": true,
-  "version": "0.3.9",
+  "version": "0.4.0",
   "main": "index.ts",
   "expo": {
     "autolinking": {
