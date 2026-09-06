@@ -1,16 +1,17 @@
 // App-level settings, in the right-side slot: who you are + credentials
 // shared by all bots. Per-bot settings (name, persona, model, computer)
 // live in SettingsPanel; contextual Box-token entry stays in ComputerPanel.
-import { FileDown, Loader2, Plus, QrCode, Trash2, X } from "lucide-react";
+import { FileDown, Loader2, Plus, Trash2, X } from "lucide-react";
 // multibot: ikony szyny sekcji przerysowane z lucide, żeby dało się animować
 // ich części na kliknięcie (suwaki jeżdżą, strzałki się kręcą, klucz dokręca).
-import { RefreshTabIcon, SlidersTabIcon, WrenchTabIcon } from "./SettingsTabIcons";
+import { RefreshTabIcon, ShieldTabIcon, SlidersTabIcon, WrenchTabIcon } from "./SettingsTabIcons";
+import { AdminPanel } from "./AdminPanel";
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
 import { getUpdater, useUpdaterState } from "@/lib/updater";
 import { cn } from "@/lib/cn";
-import { authFetch, setAuthToken } from "@/lib/auth";
+import { authFetch, clearAuthToken } from "@/lib/auth";
 import { languageLabel, setLanguage, useLanguage, type Language } from "@/lib/language";
 import { SkinPicker } from "./SkinPicker";
 import { BotSettingsCard } from "./BotSettingsCard";
@@ -50,7 +51,7 @@ function bytes(value: number | undefined): string {
   return `${(value / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function MachineResources() {
+export function MachineResources() {
   const polish = useLanguage() === "pl";
   const [resources, setResources] = useState<DeviceResources | null>(null);
   useEffect(() => {
@@ -102,117 +103,74 @@ function DiagnosticsRow() {
   );
 }
 
-/** Name + email, persisted to /api/config {profile} on blur. Prefilled from
- * the current config (the values are echoed back — they're not secrets). */
+/** v2 profile: username is immutable; display name labels messages. */
 function ProfileFields() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const [name, setName] = useState(state.config?.profile?.name ?? "");
-  const [email, setEmail] = useState(state.config?.profile?.email ?? "");
+  const [username, setUsername] = useState("");
   const polish = useLanguage() === "pl";
-  // adopt late-arriving config exactly once per open (config loads async)
   useEffect(() => {
-    setName(state.config?.profile?.name ?? "");
-    setEmail(state.config?.profile?.email ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.config?.profile?.name, state.config?.profile?.email]);
+    void authFetch("/api/profile")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((body) => {
+        setName(body.user?.displayName ?? state.config?.profile?.name ?? "");
+        setUsername(body.user?.username ?? "");
+      })
+      .catch(() => setName(state.config?.profile?.name ?? ""));
+  }, [state.config?.profile?.name]);
 
   const save = () => {
-    void authFetch("/api/config", {
-      method: "PUT",
+    void authFetch("/api/profile", {
+      method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
-    })
-      .then((r) => r.json())
-      .then((config) => dispatch({ type: "configStatus", config }))
-      .catch(() => {});
+      body: JSON.stringify({ displayName: name.trim() }),
+    }).catch(() => {});
   };
 
   const inputClass =
     "w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[14px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none";
   return (
     <div className="flex flex-col gap-3">
-      <input value={name} onChange={(e) => setName(e.target.value)} onBlur={save} placeholder={polish ? "Twoje imię" : "Your name"} className={inputClass} />
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        onBlur={save}
-        placeholder="you@example.com"
-        className={inputClass}
-      />
+      <input value={name} onChange={(e) => setName(e.target.value)} onBlur={save} placeholder={polish ? "Nazwa wyświetlana" : "Display name"} className={inputClass} />
+      <input readOnly value={username} placeholder={polish ? "Nazwa użytkownika" : "Username"} className={`${inputClass} opacity-60`} />
     </div>
   );
 }
 
-function AccessTokenSettings() {
+export function AccountSessions() {
   const polish = useLanguage() === "pl";
-  const [token, setToken] = useState("");
-  const [shown, setShown] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [account, setAccount] = useState<any>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; deviceName: string; lastSeenAt: number }>>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    authFetch("/api/auth/token")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(polish ? "Nie można pobrać tokenu" : "Unable to load token"))))
-      .then((body) => setToken(typeof body.token === "string" ? body.token : ""))
+    void Promise.all([api("/api/auth/me"), api("/api/auth/sessions")])
+      .then(([me, sessionBody]) => { setAccount(me); setSessions(sessionBody.sessions ?? []); })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const rotate = () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    authFetch("/api/auth/token/rotate", { method: "POST" })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(polish ? "Nie można odświeżyć tokenu" : "Unable to rotate token"))))
-      .then((body) => {
-        if (typeof body.token !== "string") throw new Error(polish ? "Serwer nie zwrócił tokenu" : "Server returned no token");
-        setToken(body.token);
-        setAuthToken(body.token);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+  const logout = async (all: boolean) => {
+    await authFetch(`/api/auth/logout${all ? "-all" : ""}`, { method: "POST" }).catch(() => {});
+    clearAuthToken();
+    window.location.reload();
+  };
+
+  const revoke = async (id: string) => {
+    if (!(await authFetch(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" })).ok) return;
+    setSessions((current) => current.filter((session) => session.id !== id));
   };
 
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">{polish ? "Dostęp do serwera" : "Server access"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Token jest wymagany przy połączeniu z innego urządzenia." : "Token required when connecting from another device."}</div>
-      <div className="mt-3 flex gap-2">
-        <input
-          readOnly
-          type={shown ? "text" : "password"}
-          value={token}
-          placeholder={polish ? "Ładowanie…" : "Loading…"}
-          className="min-w-0 flex-1 rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink outline-none"
-        />
-        <button onClick={() => setShown((value) => !value)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">
-          {shown ? polish ? "Ukryj" : "Hide" : polish ? "Pokaż" : "Show"}
-        </button>
+      <div className="text-[15px] font-medium text-ink">{polish ? "Konto i sesje" : "Account & sessions"}</div>
+      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Każde urządzenie loguje się własną sesją. Tokeny techniczne nie są pokazywane." : "Each device has its own session. Technical tokens are never displayed."}</div>
+      {account?.user && <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[13px] text-ink">{account.user.displayName} <span className="text-ink-secondary">· @{account.user.username} · {account.user.role}</span></div>}
+      {sessions.length > 0 && <div className="mt-3 space-y-1 text-[12px] text-ink-secondary">{sessions.map((session) => <div key={session.id} className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate">{session.deviceName}</span><button type="button" onClick={() => void revoke(session.id)} className="text-ink hover:text-danger">{polish ? "Unieważnij" : "Revoke"}</button></div>)}</div>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => void logout(false)} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover">{polish ? "Wyloguj" : "Log out"}</button>
+        <button type="button" onClick={() => void logout(true)} className="rounded-lg border border-danger/40 px-3 py-2 text-[13px] text-danger hover:bg-danger/10">{polish ? "Wyloguj wszystkie urządzenia" : "Log out all devices"}</button>
       </div>
-      <button onClick={rotate} disabled={busy} className="mt-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">
-        {busy ? polish ? "Generowanie…" : "Generating…" : polish ? "Wygeneruj nowy token" : "Generate new token"}
-      </button>
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
-    </div>
-  );
-}
-
-function PairDeviceSettings() {
-  const polish = useLanguage() === "pl";
-  const [pairing, setPairing] = useState<{ code: string; expiresAt: number; pairUrl: string; qrSvg: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const start = () => {
-    setBusy(true);
-    api("/api/pair/start", { method: "POST" }).then(setPairing).catch(() => {}).finally(() => setBusy(false));
-  };
-  return (
-    <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="flex items-center gap-2 text-[15px] font-medium text-ink"><QrCode size={16} />{polish ? "Połącz urządzenie" : "Connect a device"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Pokaż kod QR, aby telefon połączył się z tym serwerem." : "Show a QR code so a phone can connect to this server."}</div>
-      {pairing ? <div className="mt-3 flex items-center gap-4">
-        <div className="size-32 shrink-0 overflow-hidden rounded-lg bg-white p-2" dangerouslySetInnerHTML={{ __html: pairing.qrSvg }} />
-        <div className="min-w-0"><div className="text-[11px] text-ink-secondary">{polish ? "Kod jednorazowy · 5 minut" : "One-time code · 5 minutes"}</div><div className="mt-1 text-2xl font-semibold tracking-[0.2em] text-ink">{pairing.code}</div><div className="mt-1 break-all text-[11px] text-ink-secondary">{pairing.pairUrl}</div></div>
-      </div> : <button onClick={start} disabled={busy} className="mt-3 flex items-center gap-2 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}{polish ? "Pokaż kod QR" : "Show QR code"}</button>}
     </div>
   );
 }
@@ -888,97 +846,57 @@ function MotionSettings({ polish }: { polish: boolean }) {
   );
 }
 
-function WorkspaceAccessSettings() {
-  const polish = useLanguage() === "pl";
-  const [workspace, setWorkspace] = useState<{
-    name?: string;
-    currentUser?: { uid: string; name?: string | null; email?: string | null; role: "owner" | "member" } | null;
-    members?: Array<{ uid: string; name?: string; email?: string; role: "owner" | "member" }>;
-  } | null>(null);
-  const [invite, setInvite] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const settingsTabs = [
+  {
+    id: "general",
+    Icon: SlidersTabIcon,
+    pl: "Ogólne",
+    en: "General",
+    descriptionPl: "Język, profil, wygląd i połączenia.",
+    descriptionEn: "Language, profile, appearance, and connections.",
+  },
+  {
+    id: "other",
+    Icon: WrenchTabIcon,
+    pl: "Narzędzia",
+    en: "Tools",
+    descriptionPl: "Dostęp, modele, usługa lokalna i diagnostyka.",
+    descriptionEn: "Access, models, local service, and diagnostics.",
+  },
+  {
+    id: "admin",
+    Icon: ShieldTabIcon,
+    pl: "Admin",
+    en: "Admin",
+    descriptionPl: "Użytkownicy, obciążenie, boty i czas odpowiedzi.",
+    descriptionEn: "Users, load, bots, and response times.",
+  },
+  {
+    id: "update",
+    Icon: RefreshTabIcon,
+    pl: "Aktualizacje",
+    en: "Updates",
+    descriptionPl: "Sprawdź i zainstaluj aktualizacje aplikacji.",
+    descriptionEn: "Check for and install app updates.",
+  },
+] as const;
+type AppSettingsTab = (typeof settingsTabs)[number]["id"];
 
-  useEffect(() => {
-    let alive = true;
-    void authFetch("/api/workspace")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
-      .then((value) => alive && setWorkspace(value))
-      .catch((reason) => alive && setError(reason instanceof Error ? reason.message : String(reason)));
-    return () => {
-      alive = false;
-    };
-  }, []);
+/** "loading" and "unknown" both hide the admin tab, but they are NOT the same
+ * thing: unknown means the role lookup failed, and the panel says so rather
+ * than quietly treating an owner as a member and hiding their own tools with
+ * no explanation. */
+export type SettingsRole = "loading" | "owner" | "member" | "unknown";
 
-  const createInvite = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await authFetch("/api/workspace/invites", { method: "POST" });
-      const value = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(value.error ?? String(response.status));
-      setInvite(typeof value.code === "string" ? value.code : null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyInvite = async () => {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite);
-    } catch {
-      setError(polish ? "Nie można skopiować kodu." : "Could not copy invite code.");
-    }
-  };
-
-  const members = workspace?.members ?? [];
-  return (
-    <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">{polish ? "Wspólny serwer" : "Shared server"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">
-        {polish ? "Każda osoba ma własne konto. Boty i sekcje są wspólne, prywatne boty mają osobne ACL." : "Each person has an account. Bots and sections are shared; private bots use their own ACL."}
-      </div>
-      {workspace?.currentUser && (
-        <div className="mt-3 rounded-lg bg-inset px-3 py-2 text-[12px] text-ink-secondary">
-          {workspace.currentUser.name || workspace.currentUser.email || workspace.currentUser.uid}
-          <span className="ml-2 text-ink">· {workspace.currentUser.role}</span>
-        </div>
-      )}
-      {members.length > 0 && (
-        <div className="mt-3 space-y-1 text-[12px] text-ink-secondary">
-          {members.map((member) => (
-            <div key={member.uid} className="flex items-center justify-between gap-2">
-              <span className="truncate">{member.name || member.email || member.uid}</span>
-              <span className="shrink-0">{member.role}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {workspace?.currentUser?.role === "owner" && (
-        <div className="mt-3">
-          <button type="button" onClick={() => void createInvite()} disabled={busy} className="rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">
-            {busy ? polish ? "Tworzenie…" : "Creating…" : polish ? "Utwórz zaproszenie" : "Create invite"}
-          </button>
-          {invite && (
-            <button type="button" onClick={() => void copyInvite()} className="ml-2 rounded-lg border border-hairline/40 bg-inset px-3 py-2 font-mono text-[12px] text-ink hover:bg-raised">
-              {invite}
-            </button>
-          )}
-        </div>
-      )}
-      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
-    </div>
-  );
+export function visibleSettingsTabs(role: SettingsRole): typeof settingsTabs[number][] {
+  return settingsTabs.filter((item) => item.id !== "admin" || role === "owner");
 }
 
 export function AppSettingsPanel() {
   const { dispatch } = useStore();
   const language = useLanguage();
   const polish = language === "pl";
-  const [tab, setTab] = useState<"general" | "update" | "other">("general");
+  const [tab, setTab] = useState<AppSettingsTab>("general");
   // multibot: czerwony znacznik na ikonie Ustawienia, gdy aktualizacja czeka
   // (port 5a407d6: banner -> badge). Na mobile bridge updatera jest null, więc
   // znacznik jest nieaktywny, dopóki native nie zacznie zgłaszać stanu.
@@ -987,13 +905,24 @@ export function AppSettingsPanel() {
   // multibot: licznik kliknięć w szynę sekcji. Sam `tab` nie wystarczy —
   // ponowne kliknięcie w już wybraną ikonę nie zmienia stanu, więc animacja
   // nie miałaby czego odtworzyć. Numer idzie do `key`, co przemontowuje
-  // ikonę i puszcza animację od nowa.
-  const [press, setPress] = useState<{ tab: "general" | "update" | "other"; nth: number }>({ tab: "general", nth: 0 });
-  const settingsTabs = [
-    { id: "general" as const, Icon: SlidersTabIcon, label: polish ? "Ogólne" : "General" },
-    { id: "update" as const, Icon: RefreshTabIcon, label: polish ? "Aktualizacje" : "Updates" },
-    { id: "other" as const, Icon: WrenchTabIcon, label: polish ? "Narzędzia" : "Tools" },
-  ];
+  // warstwę błysku i puszcza ją od nowa.
+  const [press, setPress] = useState<{ tab: AppSettingsTab; nth: number }>({ tab: "general", nth: 0 });
+  // Admin is the owner's tab and nobody else's — a member seeing an empty
+  // "Users" table would be a promise the server refuses to keep anyway.
+  const [role, setRole] = useState<SettingsRole>("loading");
+  useEffect(() => {
+    let alive = true;
+    void authFetch("/api/auth/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value) => {
+        if (!alive) return;
+        const found = value?.user?.role;
+        setRole(found === "owner" || found === "member" ? found : "unknown");
+      })
+      .catch(() => alive && setRole("unknown"));
+    return () => { alive = false; };
+  }, []);
+  const visibleTabs = visibleSettingsTabs(role);
 
   return (
     <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -1009,8 +938,12 @@ export function AppSettingsPanel() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-hairline/40 px-2 py-2">
-          {settingsTabs.map(({ id, Icon, label }) => {
+        <nav
+          aria-label={polish ? "Sekcje ustawień" : "Settings sections"}
+          className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-hairline/40 bg-panel px-2 py-2"
+        >
+          {visibleTabs.map(({ id, Icon, pl, en }) => {
+            const label = polish ? pl : en;
             const active = tab === id;
             return (
               <button
@@ -1079,6 +1012,14 @@ export function AppSettingsPanel() {
               <div className="mt-4 rounded-xl bg-card p-4">
                 <NotificationsRow polish={polish} />
               </div>
+              {role === "unknown" && (
+                <div className="mt-2 rounded-xl bg-card p-4 text-[12.5px] text-ink-secondary">
+                  {polish
+                    ? "Nie udało się odczytać Twojej roli na tym serwerze, więc narzędzia właściciela są ukryte. Odśwież okno, gdy serwer wróci."
+                    : "We could not read your role on this server, so the owner's tools are hidden. Reload once the server answers again."}
+                </div>
+              )}
+              <AccountSessions />
               <BotSettingsCard polish={polish} />
               <div className="mt-4 rounded-xl bg-card p-4">
                 <div className="text-[15px] font-medium text-ink">{polish ? "Skórka" : "Skin"}</div>
@@ -1112,6 +1053,8 @@ export function AppSettingsPanel() {
             </>
           )}
 
+          {tab === "admin" && role === "owner" && <AdminPanel />}
+
           {tab === "update" && (
             <>
               <UpdatesRow />
@@ -1121,11 +1064,6 @@ export function AppSettingsPanel() {
 
           {tab === "other" && (
             <>
-              {/* multibot: G2 — server token, masked until explicitly shown. */}
-              <AccessTokenSettings />
-              <WorkspaceAccessSettings />
-              <PairDeviceSettings />
-
               {/* multibot: G1 — custom model catalog lives at app level, never per bot. */}
               <CustomModels />
               {/* multibot: G1 — CLI allowlist UI; provisioning actions land in G3. */}

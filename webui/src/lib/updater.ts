@@ -4,7 +4,7 @@
 // mounted after the download finished still sees "downloaded".
 import { useEffect, useState } from "react";
 import type { UpdaterState } from "@/types/ogb";
-import { postNativeMessage } from "@/lib/nativeBridge";
+import { shellPost } from "@/lib/shell";
 
 export type { UpdaterState };
 
@@ -18,9 +18,9 @@ export type UpdaterBridge = {
 function nativeUpdater(): UpdaterBridge | null {
   if (!window.ReactNativeWebView) return null;
   return {
-    check: async () => { postNativeMessage({ type: "app.update.check" }); },
-    download: async () => { postNativeMessage({ type: "app.update.download" }); },
-    install: async () => { postNativeMessage({ type: "app.update.install" }); },
+    check: async () => { shellPost({ type: "app.update.check" }); },
+    download: async () => { shellPost({ type: "app.update.download" }); },
+    install: async () => { shellPost({ type: "app.update.install" }); },
     onState: (cb) => {
       const handler = (event: Event) => {
         const state = (event as CustomEvent<UpdaterState>).detail;

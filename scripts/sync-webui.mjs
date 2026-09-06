@@ -29,15 +29,15 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `6f8e61e6` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-09-06, wydanie 0.3.39: rozmowa bot↔bot
-// kończy się ciszą, nie limitem wiadomości — licznik bez budżetu).
-// Poprzednia baza: `ef79eb0c` (0.3.38), wcześniej `40887e83` (0.3.37).
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `bbaad38c` w repo `multibot`
+// (stan `src/` wciągnięty tutaj 2026-09-06, wydanie 0.4.0: onboarding
+// setup/sign-in, zakładka admina, most `host.join` i `push.request` z nonce).
+// Poprzednia baza: `6f8e61e6` (0.3.39), wcześniej `ef79eb0c` (0.3.38).
 // Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
 // scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
 //
 // Ta synchronizacja NIE szła tym skryptem: każdy plik przez `git merge-file`
-// (OURS = telefon, BASE = 311e1b54, THEIRS = a0bb1e0a), pliki z `PHONE_OWNED`
+// (OURS = telefon, BASE = 6f8e61e6, THEIRS = bbaad38c), pliki z `PHONE_OWNED`
 // ręcznie. Skryptu nadal się nie uruchamia.
 
 import { execFileSync } from "node:child_process";

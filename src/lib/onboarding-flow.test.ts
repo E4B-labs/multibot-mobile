@@ -61,6 +61,14 @@ test("the shell hands the page a push token instead of registering itself", () =
 test("privileged bridge messages need the per-mount nonce", () => {
   assert.match(webview, /const PRIVILEGED = new Set\(\[[^\]]*"host\.join"[^\]]*"tls\.forget"[^\]]*"push\.request"/s);
   assert.ok(webview.includes("PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce"));
+  // The noVNC frame gets a ReactNativeWebView of its own, so opening the camera
+  // and reading the clipboard are gated like the rest — and the gate has to run
+  // BEFORE their handlers, which is what tripped them up the first time.
+  assert.match(webview, /const PRIVILEGED = new Set\(\[[^\]]*"native\.camera\.request"[^\]]*"native\.clipboard\.image"/s);
+  assert.ok(
+    webview.indexOf("PRIVILEGED.has(msg?.type)") < webview.indexOf('msg?.type === "native.camera.request"'),
+    "the nonce gate must come before the camera and clipboard handlers",
+  );
   assert.ok(webview.includes("injectedJavaScriptBeforeContentLoadedForMainFrameOnly"));
   // A page that could navigate anywhere would carry the bridge with it.
   assert.ok(!webview.includes('originWhitelist={["*"]}'));
