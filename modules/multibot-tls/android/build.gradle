@@ -13,3 +13,11 @@ android {
     versionName '0.1.0'
   }
 }
+
+dependencies {
+  // OkHttpClientProvider/OkHttpClientFactory are used directly, and
+  // expo-module-gradle-plugin only puts the Kotlin stdlib on the classpath —
+  // so React Native is declared here rather than assumed. Same form as
+  // react-native-webview's own build.gradle; okhttp arrives with it.
+  implementation 'com.facebook.react:react-native:+'
+}

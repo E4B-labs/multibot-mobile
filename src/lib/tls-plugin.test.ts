@@ -51,6 +51,22 @@ test("the iOS patches read the same store and fall back to default handling", ()
   }
 });
 
+test("the ObjC helper lands at file scope, not inside an @implementation", () => {
+  for (const [name, path, patch] of SOURCES.slice(1)) {
+    const patched = patch(readFileSync(path, "utf8"));
+    const helper = patched.indexOf("static BOOL MultibotTlsTrusted");
+    assert.ok(helper > -1, `${name} lost the helper`);
+    // The last @implementation opened before the helper must already have been
+    // closed — a C function defined between @implementation and @end is not
+    // portable, and the method that calls it has to see the declaration first.
+    // (`@end` also closes `@interface`, so counting the two is not the test.)
+    const lastOpen = patched.lastIndexOf("\n@implementation ", helper);
+    const lastClose = patched.lastIndexOf("\n@end", helper);
+    assert.ok(lastOpen < lastClose, `${name} defines the helper inside an @implementation block`);
+    assert.ok(patched.indexOf("MultibotTlsTrusted(", helper + 1) > helper, `${name} never calls the helper`);
+  }
+});
+
 test("a moved anchor fails loudly instead of shipping an unpatched build", () => {
   assert.throws(() => plugin.patchWebViewClientJava("class Nothing {}\n"), /anchor not found/);
   assert.throws(() => plugin.patchWebViewImplObjC("@interface Nothing\n@end\n"), /anchor not found/);

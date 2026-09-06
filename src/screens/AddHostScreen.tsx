@@ -13,7 +13,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as IntentLauncher from "expo-intent-launcher";
 
-import { newHostId, type Host } from "../lib/host-logic";
+import { newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
 import { saveHost } from "../lib/hosts";
 import { joinErrorField, joinErrorMessage, type JoinErrorCode, type JoinField } from "../lib/join";
 import { installTermux } from "../lib/mobile-release";
@@ -44,6 +44,14 @@ export default function AddHostScreen({ onDone }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<{ field: JoinField; code: JoinErrorCode } | null>(null);
 
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const openHost = useCallback(
     async (hostUrl: string, name: string, fragment?: string) => {
       const host: Host = {
@@ -65,6 +73,10 @@ export default function AddHostScreen({ onDone }: Props) {
   // into it — the web UI runs the setup screen from there.
   const openLocalIfUp = useCallback(async () => {
     if (!(await probeLocalServer())) return false;
+    // The screen may have been left (or unmounted) during the probe; opening a
+    // host from under a screen the user already walked away from is a jump they
+    // did not ask for.
+    if (!mounted.current) return false;
     await openHost(LOCAL_SERVER_URL, "This phone");
     return true;
   }, [openHost]);
@@ -96,6 +108,9 @@ export default function AddHostScreen({ onDone }: Props) {
     return () => {
       cancelled = true;
       clearInterval(timer);
+      // A probe still in flight when the screen goes away would otherwise leave
+      // the guard stuck and kill the poll if this screen ever comes back.
+      polling.current = false;
     };
   }, [mode, openLocalIfUp]);
 
@@ -147,6 +162,10 @@ export default function AddHostScreen({ onDone }: Props) {
         return;
       }
       await openHost(result.url!, serverName.trim() || result.url!, result.fragment);
+    } catch {
+      // saveHost, SecureStore or anything else throwing must not leave the
+      // spinner spinning with no explanation.
+      setError({ field: "form", code: "failed" });
     } finally {
       setBusy(false);
     }
@@ -154,9 +173,9 @@ export default function AddHostScreen({ onDone }: Props) {
 
   async function trustNewCertificate() {
     try {
-      forgetServer(url.includes("://") ? url : `https://${url}`);
+      forgetServer(normalizeHostUrl(url));
     } catch {
-      // An unparsable address cannot have a pin; the retry reports it properly.
+      // An address that doesn't parse has no pin; the retry reports it properly.
     }
     setError(null);
     await submitSignIn();

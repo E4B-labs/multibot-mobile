@@ -21,6 +21,16 @@
 // ponytail: sed over node_modules; the upgrade path is a react-native-webview
 // fork with a real `onReceivedSslError` prop, at which point (a) goes away.
 //
+// ponytail: Android is the verified target. On iOS, WKWebView is documented to
+// route the MAIN navigation's server-trust challenge through
+// `didReceiveAuthenticationChallenge`, but subresources loaded by the page —
+// XHR and WebSocket in particular — go through WebKit's networking process and
+// may never reach that delegate. If they don't, the phone loads the page and
+// then fails every API call, which is worse than failing outright. UNVERIFIED
+// until someone runs it on a device; if it turns out to be a problem the answer
+// is a custom `WKURLSchemeHandler` (or terminating TLS in native code and
+// serving the UI over `multibot://`), not more patching here.
+//
 // Every patch is idempotent (marker check) and fails LOUDLY when its anchor is
 // gone — a react-native-webview or React Native bump must break the build here
 // rather than silently ship an app that trusts nothing (or everything).
@@ -178,6 +188,10 @@ function patchWebViewImplObjC(source) {
 
 // --- iOS: React Native's own fetch ------------------------------------------
 
+// The helper must land at file scope, BEFORE the @implementation block — a C
+// function defined between @implementation and @end is not portable and the
+// method that calls it has to see the declaration first.
+const REQUEST_HANDLER_HELPER_ANCHOR = "@implementation RCTHTTPRequestHandler {";
 const REQUEST_HANDLER_ANCHOR = "#pragma mark - NSURLSession delegate\n";
 
 const REQUEST_HANDLER_METHOD = `
@@ -200,16 +214,25 @@ const REQUEST_HANDLER_METHOD = `
 /** Exported for the plugin test: runs against the real RCTHTTPRequestHandler.mm. */
 function patchRequestHandlerObjC(source) {
   if (source.includes(MARKER)) return source;
-  const withHelper = insertBefore(source, REQUEST_HANDLER_ANCHOR, OBJC_HELPER, "RCTHTTPRequestHandler.mm");
+  const withHelper = insertBefore(source, REQUEST_HANDLER_HELPER_ANCHOR, OBJC_HELPER, "RCTHTTPRequestHandler.mm");
   const at = anchor(withHelper, REQUEST_HANDLER_ANCHOR, "RCTHTTPRequestHandler.mm") + REQUEST_HANDLER_ANCHOR.length;
   return withHelper.slice(0, at) + REQUEST_HANDLER_METHOD + withHelper.slice(at);
 }
 
+/** Patches a file and then re-reads it: a build that gets this far without the
+ * marker on disk would ship an app that trusts no MultiBot server at all, and
+ * that failure is invisible until a user tries to sign in. */
 function patchFile(projectRoot, relativePath, patch) {
   const file = path.join(projectRoot, relativePath);
   const before = fs.readFileSync(file, "utf8");
   const after = patch(before);
   if (after !== before) fs.writeFileSync(file, after);
+  if (!fs.readFileSync(file, "utf8").includes(MARKER)) {
+    throw new Error(
+      `with-tls-pinning: ${relativePath} has no ${MARKER} marker after patching. ` +
+        `Refusing to build an app that cannot reach any MultiBot server.`,
+    );
+  }
 }
 
 const RNWV_JAVA = "node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java";
@@ -217,7 +240,7 @@ const RNWV_OBJC = "node_modules/react-native-webview/apple/RNCWebViewImpl.m";
 const RN_REQUEST_HANDLER = "node_modules/react-native/Libraries/Network/RCTHTTPRequestHandler.mm";
 
 function withTlsPinning(config) {
-  const { withDangerousMod, withAndroidManifest } = require("expo/config-plugins");
+  const { withDangerousMod, withAndroidManifest, withStringsXml, AndroidConfig } = require("expo/config-plugins");
 
   let next = withDangerousMod(config, [
     "android",
@@ -226,6 +249,18 @@ function withTlsPinning(config) {
       return cfg;
     },
   ]);
+
+  // The patched sources live in node_modules, which never reaches the device —
+  // so leave a flag inside the APK. MultibotTlsModule reads it at start and
+  // shouts into logcat when it is missing, which is the only way to tell "the
+  // plugin never ran" apart from "the server is down".
+  next = withStringsXml(next, (cfg) => {
+    cfg.modResults = AndroidConfig.Strings.setStringItem(
+      [{ _: "true", $: { name: "multibot_tls_patched", translatable: "false" } }],
+      cfg.modResults,
+    );
+    return cfg;
+  });
 
   next = withDangerousMod(next, [
     "ios",

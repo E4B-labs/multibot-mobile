@@ -3,6 +3,9 @@ import * as Application from "expo-application";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 
+import { APK_HOSTS, expectedSha256, isHttpsUrl, pickTermuxApk, type GithubAsset } from "./release-assets";
+import { sha256File } from "./tls";
+
 export type MobileRelease = {
   version: string;
   versionCode: number;
@@ -11,23 +14,6 @@ export type MobileRelease = {
 };
 
 const MANIFEST_URL = "https://raw.githubusercontent.com/E4B-labs/multibot/main/mobile-release.json";
-const APK_HOSTS = new Set([
-  "expo.dev",
-  "github.com",
-  "objects.githubusercontent.com",
-  "github-releases.githubusercontent.com",
-]);
-
-function isHttpsUrl(value: unknown, hosts?: Set<string>): value is string {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (!hosts || hosts.has(url.hostname));
-  } catch {
-    return false;
-  }
-}
-
 function parseRelease(value: unknown): MobileRelease | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
@@ -103,7 +89,7 @@ export async function installAndroidRelease(release: MobileRelease): Promise<voi
 /** Downloads an APK into the cache and hands it to the system installer.
  * Shared by the self-update path and by "Set up a server", which installs
  * Termux exactly the same way. REQUEST_INSTALL_PACKAGES is already granted. */
-export async function downloadAndInstallApk(url: string, fileName: string): Promise<void> {
+export async function downloadAndInstallApk(url: string, fileName: string, expectedDigest?: string): Promise<void> {
   if (Platform.OS !== "android") throw new Error("APK installation is available on Android only.");
   const cacheDirectory = FileSystem.cacheDirectory;
   if (!cacheDirectory) throw new Error("Android cache directory unavailable.");
@@ -113,6 +99,19 @@ export async function downloadAndInstallApk(url: string, fileName: string): Prom
   const downloaded = await FileSystem.downloadAsync(url, apkUri, {
     headers: { Accept: "application/vnd.android.package-archive" },
   });
+  // The publisher's own checksum, when there is one. Handing an unverified
+  // binary to the package installer is the one step in this app the user cannot
+  // undo, so a mismatch deletes the file rather than asking.
+  if (expectedDigest) {
+    const actual = await sha256File(downloaded.uri).catch(async (e: unknown) => {
+      await FileSystem.deleteAsync(apkUri, { idempotent: true });
+      throw e;
+    });
+    if (actual.toLowerCase() !== expectedDigest.toLowerCase()) {
+      await FileSystem.deleteAsync(apkUri, { idempotent: true });
+      throw new Error("The downloaded APK does not match the checksum the publisher signed. Nothing was installed.");
+    }
+  }
   const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
   await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
     data: contentUri,
@@ -123,24 +122,6 @@ export async function downloadAndInstallApk(url: string, fileName: string): Prom
 
 const TERMUX_RELEASE_API = "https://api.github.com/repos/termux/termux-app/releases/latest";
 
-export interface GithubAsset {
-  name?: unknown;
-  browser_download_url?: unknown;
-}
-
-/** The universal APK out of a GitHub release listing. Termux publishes one
- * build per ABI plus a universal one; only the universal one is safe to pick
- * without knowing this phone's architecture. */
-export function pickTermuxApk(assets: GithubAsset[] | undefined): string | null {
-  const match = (assets ?? []).find(
-    (asset) =>
-      typeof asset?.name === "string" &&
-      /^termux-app_.*universal\.apk$/i.test(asset.name) &&
-      isHttpsUrl(asset.browser_download_url, APK_HOSTS),
-  );
-  return match ? String(match.browser_download_url) : null;
-}
-
 /** Termux is not on Play, so the only way in is the APK from its own releases. */
 export async function installTermux(): Promise<void> {
   const response = await fetch(TERMUX_RELEASE_API, {
@@ -149,7 +130,14 @@ export async function installTermux(): Promise<void> {
   });
   if (!response.ok) throw new Error(`GitHub answered HTTP ${response.status}.`);
   const body = (await response.json()) as { assets?: GithubAsset[] };
-  const apkUrl = pickTermuxApk(body?.assets);
-  if (!apkUrl) throw new Error("The latest Termux release has no universal APK.");
-  await downloadAndInstallApk(apkUrl, "Termux.apk");
+  const apk = pickTermuxApk(body?.assets);
+  if (!apk) throw new Error("The latest Termux release has no universal APK.");
+  if (!apk.sumsUrl) throw new Error("The latest Termux release publishes no checksums — refusing to install it.");
+
+  const sums = await fetch(apk.sumsUrl, { cache: "no-store" });
+  if (!sums.ok) throw new Error(`Could not read the Termux checksums (HTTP ${sums.status}).`);
+  const digest = expectedSha256(await sums.text(), apk.name);
+  if (!digest) throw new Error("The Termux checksums do not cover the universal APK.");
+
+  await downloadAndInstallApk(apk.url, "Termux.apk", digest);
 }

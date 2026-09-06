@@ -4,15 +4,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  joinErrorField,
-  joinErrorMessage,
-  joinFragment,
-  parseJoinResponse,
-  sameFingerprint,
-  tofuDecision,
-  type JoinErrorCode,
-} from "./join.ts";
+import { joinErrorField, joinErrorMessage, joinFragment, parseJoinResponse, type JoinErrorCode } from "./join.ts";
+import { expectedSha256, pickTermuxApk } from "./release-assets.ts";
 
 test("every join error lands on the field the user can fix", () => {
   assert.equal(joinErrorField("unreachable"), "address");
@@ -45,21 +38,6 @@ test("every join error has its own message", () => {
   for (const message of messages) assert.ok(message.length > 0);
 });
 
-test("a fingerprint comparison ignores case and padding", () => {
-  assert.equal(sameFingerprint("AB:cd", " ab:CD "), true);
-  assert.equal(sameFingerprint("abcd", "abce"), false);
-  assert.equal(sameFingerprint(null, "abcd"), false);
-  assert.equal(sameFingerprint("abcd", undefined), false);
-  assert.equal(sameFingerprint(null, null), false);
-});
-
-test("trust on first use pins once and refuses a swapped certificate", () => {
-  assert.equal(tofuDecision(null, "aa11"), "trust");
-  assert.equal(tofuDecision("", "aa11"), "trust");
-  assert.equal(tofuDecision("AA11", "aa11"), "match");
-  assert.equal(tofuDecision("aa11", "bb22"), "certificate_changed");
-});
-
 test("a successful join yields the grant the web UI needs", () => {
   const ok = parseJoinResponse(200, { joinGrant: "g-1", expiresAt: 1, hasUsers: true });
   assert.deepEqual(ok, { ok: true, joinGrant: "g-1", hasUsers: true });
@@ -81,4 +59,37 @@ test("the server's own error codes are passed through, others are not", () => {
   assert.deepEqual(parseJoinResponse(404, {}), { ok: false, error: "not_multibot" });
   assert.deepEqual(parseJoinResponse(500, { error: "boom" }), { ok: false, error: "failed" });
   assert.deepEqual(parseJoinResponse(401, null), { ok: false, error: "failed" });
+});
+
+test("a Termux checksum listing yields the digest for one exact file", () => {
+  const listing = [
+    "7600078440c3c34ef050bc009b00fc3215cb87ec4a449e01a696f74cf4249db2  termux-app_v0.118.3+github-debug_universal.apk",
+    "72fdb596045116bf5ba1b5bdf5b26fddb9acc0bd074ad9f2da9eb0ae85e83a4e  termux-app_v0.118.3+github-debug_arm64-v8a.apk",
+    "",
+  ].join("\n");
+  assert.equal(
+    expectedSha256(listing, "termux-app_v0.118.3+github-debug_universal.apk"),
+    "7600078440c3c34ef050bc009b00fc3215cb87ec4a449e01a696f74cf4249db2",
+  );
+  // A near-miss on the name must not borrow another file's digest.
+  assert.equal(expectedSha256(listing, "termux-app_v0.118.3+github-debug_universal.ap"), null);
+  assert.equal(expectedSha256(listing, "missing.apk"), null);
+  assert.equal(expectedSha256("", "anything.apk"), null);
+});
+
+test("only the universal APK is picked, with its checksum file", () => {
+  const assets = [
+    { name: "termux-app_v1_arm64-v8a.apk", browser_download_url: "https://github.com/a.apk" },
+    { name: "termux-app_v1_universal.apk", browser_download_url: "https://github.com/u.apk" },
+    { name: "termux-app_v1_sha256sums", browser_download_url: "https://github.com/s" },
+  ];
+  assert.deepEqual(pickTermuxApk(assets), {
+    name: "termux-app_v1_universal.apk",
+    url: "https://github.com/u.apk",
+    sumsUrl: "https://github.com/s",
+  });
+  // An asset hosted somewhere other than the release CDN is not an asset.
+  assert.equal(pickTermuxApk([{ name: "termux-app_v1_universal.apk", browser_download_url: "https://evil.example/u.apk" }]), null);
+  assert.equal(pickTermuxApk([]), null);
+  assert.equal(pickTermuxApk(undefined), null);
 });

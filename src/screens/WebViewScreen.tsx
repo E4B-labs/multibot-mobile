@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
 import { WebView, type WebViewNavigation } from "react-native-webview";
@@ -41,6 +41,18 @@ const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (StatusBar.currentHeight ?
 const LOAD_TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 8_000;
 
+// Anything running in this WebView can call `postMessage`, including a frame the
+// page embeds (the bot-computer noVNC view is one). The privileged messages —
+// swapping servers, dropping a certificate pin, installing an update, minting a
+// push token — must come from the page the shell itself loaded, so the shell
+// injects a fresh secret into the MAIN FRAME ONLY and ignores any privileged
+// message that doesn't carry it back.
+const PRIVILEGED = new Set(["host.join", "tls.forget", "push.request", "app.update.check", "app.update.download", "app.update.install"]);
+
+function newBridgeNonce(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
 type AppUpdateState = {
   status: "idle" | "checking" | "available" | "downloading" | "downloaded" | "error";
   version?: string;
@@ -68,6 +80,9 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
   const [bootstrap, setBootstrap] = useState<string | null>(null);
+  // One secret per mount, handed only to the main frame. A remount (host swap,
+  // retry) invalidates the old one.
+  const nonce = useMemo(newBridgeNonce, []);
   const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -102,14 +117,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
       // updatera.currentVersion() na desktopie).
       const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
-      setBootstrap(buildBootstrap({ token, botId, fragment, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
+      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
     return () => {
       cancelled = true;
     };
-  }, [host, botId, fragment]);
+  }, [host, botId, fragment, nonce]);
 
   // Spinner with a deadline: after LOAD_TIMEOUT_MS without onLoadEnd, say what
   // actually failed instead of spinning forever.
@@ -213,7 +228,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       sendToPage({ type: "host.join.result", ok: false, error: "failed" });
       return;
     }
-    const result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword);
+    let result: { ok: boolean; error?: JoinErrorCode };
+    try {
+      result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword);
+    } catch {
+      // A page left waiting on a reply that never comes looks like a hang. Any
+      // throw becomes an answer.
+      result = { ok: false, error: "failed" };
+    }
     // On success the shell swaps hosts and remounts this screen, so there is no
     // page left to answer — only the failure needs a reply.
     if (!result.ok) {
@@ -224,6 +246,31 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         message: joinErrorMessage(result.error ?? "failed"),
       });
     }
+  }
+
+  // Dropping a pin is the one bridge call that weakens security, so it needs a
+  // human: it only ever applies to the host on screen, and only after a native
+  // confirmation the page cannot draw or dismiss.
+  function confirmForget() {
+    Alert.alert(
+      "Trust a new certificate?",
+      `${host.url} is presenting a different certificate than the one you trusted. Only continue if you know the server was reinstalled — otherwise something is impersonating it.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Trust new certificate",
+          style: "destructive",
+          onPress: () => {
+            try {
+              forgetServer(host.url);
+              sendToPage({ type: "tls.forget.result", ok: true });
+            } catch {
+              sendToPage({ type: "tls.forget.result", ok: false });
+            }
+          },
+        },
+      ],
+    );
   }
 
   const sendUpdateState = (state: AppUpdateState) => {
@@ -352,6 +399,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         // wgrywania czegokolwiek na serwer MultiBota.
         source={{ html: WEBUI_HTML, baseUrl: host.url.replace(/\/$/, "") }}
         injectedJavaScriptBeforeContentLoaded={bootstrap}
+        // The bridge nonce must not leak into an embedded frame (the
+        // bot-computer noVNC view is one), which is what makes the check worth
+        // anything. This is the library default; pinned so an upgrade cannot
+        // widen it silently.
+        injectedJavaScriptBeforeContentLoadedForMainFrameOnly
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data);
@@ -361,17 +413,12 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
+            if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
             if (msg?.type === "host.join") void handleJoinHost(msg);
             if (msg?.type === "push.request") void handlePushRequest();
-            // "Trust new certificate" from inside the web UI: drop the pin so
-            // the next sign-in pins whatever the server presents now.
-            if (msg?.type === "tls.forget" && typeof msg.url === "string") {
-              try {
-                forgetServer(msg.url);
-              } catch {
-                /* an address that doesn't parse has no pin to drop */
-              }
-            }
+            // "Trust new certificate" from inside the web UI. The URL is not
+            // taken from the message: only the host on screen can be forgotten.
+            if (msg?.type === "tls.forget") confirmForget();
             if (msg?.type === "app.update.check" || msg?.type === "app.update.download" || msg?.type === "app.update.install") {
               void handleAppUpdate(msg.type.slice("app.update.".length));
             }
@@ -388,7 +435,9 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         domStorageEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        originWhitelist={["*"]}
+        // The UI only ever talks to its own server; anything else navigating in
+        // here would run with the same bridge and the same origin.
+        originWhitelist={[`${host.url}/*`, host.url]}
         // startInLoadingState alone can leave the spinner forever when
         // onLoadEnd never arrives — so we hold the state ourselves.
         onLoadEnd={() => setLoaded(true)}

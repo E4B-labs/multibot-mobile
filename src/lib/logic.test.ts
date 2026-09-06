@@ -20,12 +20,24 @@ test("normalizeHostUrl strips trailing slashes and insists on https", () => {
 test("normalizeHostUrl takes a bare IPv6 address with a port", () => {
   assert.equal(normalizeHostUrl("[2a00:1:2::9]:8799"), "https://[2a00:1:2::9]:8799");
   assert.equal(normalizeHostUrl("https://[2a00:1:2::9]:8799/"), "https://[2a00:1:2::9]:8799");
+  assert.equal(normalizeHostUrl("[::1]:8799"), "https://[::1]:8799");
+  // Brackets mean IPv6, and IPv6 always has a colon.
+  assert.throws(() => normalizeHostUrl("[10.0.0.1]:8799"));
+  assert.throws(() => normalizeHostUrl("https://[2a00:1:2::9]:99999"));
 });
 
 test("tlsKey matches the host:port the native store is keyed by", () => {
   assert.equal(tlsKey("https://127.0.0.1:8799"), "127.0.0.1:8799");
   assert.equal(tlsKey("https://Host.TS.net"), "host.ts.net:443");
+  assert.equal(tlsKey("https://localhost:8799"), "localhost:8799");
+  // IPv6 is where React Native's URL polyfill goes wrong, so this is the case
+  // that decides whether a pin can ever match on device.
   assert.equal(tlsKey("https://[2A00:1:2::9]:8799"), "2a00:1:2::9:8799");
+  assert.equal(tlsKey("https://[2a00:1:2::9]"), "2a00:1:2::9:443");
+  assert.equal(tlsKey("https://[::1]:8799"), "::1:8799");
+  // Same address, same key, whichever spelling the caller used.
+  assert.equal(tlsKey(normalizeHostUrl("[2A00:1:2::9]:8799/")), tlsKey("https://[2a00:1:2::9]:8799"));
+  assert.throws(() => tlsKey("not-a-url"));
 });
 
 test("host bearer requests opt into protocol v2", () => {
