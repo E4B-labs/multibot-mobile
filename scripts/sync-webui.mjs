@@ -29,11 +29,13 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `a27b03a4` w repo `multibot`
-// (wydanie 0.5.1, wciągnięte tutaj 2026-09-07: kierunkowa aktywność bot↔bot,
-// `lib/peerActivity.ts` + `PeerActivity` w `ChatView.tsx`, `room.event` z
-// wariantem `received`).
-// Poprzednia baza: `bbaad38c` (0.4.0), wcześniej `6f8e61e6` (0.3.39).
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `2577c1ac` w repo `multibot`
+// (PR #104, wciągnięte tutaj 2026-09-07: karta bot↔bot znowu otwiera pokój
+// zamiast rozwijać w dół listę członków — wspólny `openRoom()` w
+// `ChatView.tsx`).
+// Poprzednia baza: `a27b03a4` (0.5.1, kierunkowa aktywność bot↔bot,
+// `lib/peerActivity.ts` + `PeerActivity`, `room.event` z wariantem
+// `received`), wcześniej `bbaad38c` (0.4.0) i `6f8e61e6` (0.3.39).
 //
 // WYJĄTEK, żeby nie zgubić roboty: delta desktopu 0.4.0 → 0.5.0
 // (`bbaad38c..eb3d5581`) NIE została wciągnięta. Dotyczy dziewięciu plików:
@@ -42,15 +44,16 @@
 // `lib/auth.test.ts`, `lib/shell.ts`, `lib/shell.test.ts`,
 // `types/ogb.d.ts` — telefon ma tam własne logowanie/TLS/Tor i przepisanie
 // ich bez przeglądu urwałoby produkcję. Dla TYCH plików realna baza to nadal
-// `bbaad38c`; przy następnej synchronizacji użyj jej, nie `a27b03a4`.
+// `bbaad38c`; przy następnej synchronizacji użyj jej, nie `2577c1ac`.
 //
 // Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
 // scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
 //
-// Ta synchronizacja NIE szła tym skryptem: cztery pliki z PR #99 desktopu
-// przeniesione pojedynczo (`peerActivity.ts` i `peerActivity.test.ts` wprost,
-// `ChatView.tsx` i `store.tsx` przez `git merge-file`). Skryptu nadal się
-// nie uruchamia.
+// Ta synchronizacja NIE szła tym skryptem: dwa pliki z PR #104 desktopu
+// (`ChatView.tsx` i `ChatView.test.ts`) przeniesione pojedynczo przez
+// `git merge-file`. Konflikt był tylko w importach — `ChevronDown` odpada
+// razem z szufladą, mobilne `DrawerToggle`/`Square`/`FileIcon` zostają.
+// Skryptu nadal się nie uruchamia.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
