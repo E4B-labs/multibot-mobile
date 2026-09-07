@@ -121,8 +121,10 @@ object MultibotTls {
     torSocksPort = if (port in 1..65535) port else 0
   }
 
+  // Pinned to IPv4: getLoopbackAddress() answers ::1 on Android, and Tor's
+  // `SocksPort auto` listens on 127.0.0.1 only — a ::1 dial is refused instantly.
   private fun socksProxy(port: Int): Proxy =
-    Proxy(Proxy.Type.SOCKS, InetSocketAddress(InetAddress.getLoopbackAddress(), port))
+    Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port))
 
   /**
    * Sends `.onion` requests to Tor and leaves everything else alone. The JDK
