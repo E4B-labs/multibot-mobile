@@ -1,7 +1,10 @@
 package expo.modules.multibottor
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.webkit.WebView
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
@@ -227,12 +230,40 @@ object MultibotTor {
 
   private val direct = Executor { it.run() }
 
+  private val main = Handler(Looper.getMainLooper())
+
+  /**
+   * Runs one ProxyController call on the main thread, with the WebView engine
+   * guaranteed to be running first.
+   *
+   * Both are load-bearing. `ProxyController` is a thin shim over the WebView
+   * that the process has already started, and off the main thread it hands the
+   * work to Chromium's run queue and blocks — which Chromium refuses to do
+   * before its browser process is up, with a bare
+   * `RuntimeException("Must be started before we block!")`. Every one of these
+   * calls happens while the first host is being opened, which is before
+   * anything has ever built a WebView, so on a cold start the queue is empty
+   * and the call throws. Constructing a WebView (and immediately throwing it
+   * away) is the documented way to start the engine, it may only be done on the
+   * main thread, and it costs nothing once the engine is already up.
+   */
+  private fun onWebViewEngine(context: Context, whenFailed: String, done: (MultibotTorException?) -> Unit, work: () -> Unit) {
+    main.post {
+      try {
+        WebView(context).destroy()
+        work()
+      } catch (failure: Exception) {
+        done(MultibotTorException("unavailable", failure.message ?: whenFailed, failure))
+      }
+    }
+  }
+
   /**
    * Sends every WebView request through the bridge. Process-wide by design:
    * there is one WebView in this app, and while it is showing an onion host
    * nothing else may leave it. [clearWebViewProxy] puts it back.
    */
-  fun setWebViewProxy(bridgePort: Int, done: (MultibotTorException?) -> Unit) {
+  fun setWebViewProxy(context: Context, bridgePort: Int, done: (MultibotTorException?) -> Unit) {
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
       done(
         MultibotTorException(
@@ -242,24 +273,20 @@ object MultibotTor {
       )
       return
     }
-    try {
+    onWebViewEngine(context, "Could not route the WebView through Tor.", done) {
       val config = ProxyConfig.Builder().addProxyRule("http://127.0.0.1:$bridgePort").build()
       ProxyController.getInstance().setProxyOverride(config, direct) { done(null) }
-    } catch (failure: Exception) {
-      done(MultibotTorException("unavailable", failure.message ?: "Could not route the WebView through Tor.", failure))
     }
   }
 
-  fun clearWebViewProxy(done: (MultibotTorException?) -> Unit) {
+  fun clearWebViewProxy(context: Context, done: (MultibotTorException?) -> Unit) {
     // Not supported means nothing was ever set, so there is nothing to undo.
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
       done(null)
       return
     }
-    try {
+    onWebViewEngine(context, "Could not take the WebView off Tor.", done) {
       ProxyController.getInstance().clearProxyOverride(direct) { done(null) }
-    } catch (failure: Exception) {
-      done(MultibotTorException("unavailable", failure.message ?: "Could not take the WebView off Tor.", failure))
     }
   }
 
