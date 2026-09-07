@@ -275,7 +275,9 @@ object MultibotTor {
    * work exactly as they do on a LAN address.
    */
   private class Bridge(private val socksPort: Int) {
-    private val server = ServerSocket(0, 64, InetAddress.getLoopbackAddress())
+    // IPv4 on both ends: the WebView proxy rule below points at 127.0.0.1, and
+    // Tor's SOCKS listener is IPv4-only, while getLoopbackAddress() gives ::1.
+    private val server = ServerSocket(0, 64, InetAddress.getByName("127.0.0.1"))
     private val pool = Executors.newCachedThreadPool()
 
     @Volatile
@@ -328,7 +330,7 @@ object MultibotTor {
 
         // createUnresolved is the whole point: the name goes to Tor as a name.
         // Resolving it here would be both a DNS leak and a guaranteed failure.
-        val out = Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress(InetAddress.getLoopbackAddress(), socksPort)))
+        val out = Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort)))
         upstream = out
         out.connect(InetSocketAddress.createUnresolved(target.first, target.second), CONNECT_TIMEOUT_MS)
 

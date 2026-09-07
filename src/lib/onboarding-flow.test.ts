@@ -122,7 +122,7 @@ test("the CONNECT bridge is loopback-only, onion-only, and never resolves a name
   );
   // An open proxy on the phone would be a hole, so the listener binds loopback
   // and the accept loop drops anything that somehow arrives from elsewhere.
-  assert.ok(native.includes("ServerSocket(0, 64, InetAddress.getLoopbackAddress())"));
+  assert.ok(native.includes('ServerSocket(0, 64, InetAddress.getByName("127.0.0.1"))'));
   assert.ok(native.includes("!client.inetAddress.isLoopbackAddress"));
   // CONNECT to a clearnet host must be refused: the bridge is for onions only.
   assert.match(native, /ONION = Regex\("""\^\[a-z2-7\]\{56\}\\.onion\$"""\)/);
@@ -138,6 +138,11 @@ test("the CONNECT bridge is loopback-only, onion-only, and never resolves a name
   assert.ok(tls.includes("InetSocketAddress.createUnresolved(host, port)"));
   // And fetch fails closed rather than asking the system resolver for a .onion.
   assert.ok(tls.includes("throw UnknownHostException"));
+  // The loopback the JDK picks by default is ::1 on Android, while Tor's
+  // `SocksPort auto` binds 127.0.0.1 only — every dial has to name IPv4 itself
+  // or it is refused the moment it is made.
+  assert.ok(native.includes('InetSocketAddress("127.0.0.1", socksPort)'));
+  assert.ok(tls.includes('InetSocketAddress("127.0.0.1", port)'));
 });
 
 test("signing in over Tor says so instead of spinning silently", () => {
