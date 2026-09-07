@@ -1021,7 +1021,7 @@ export function Composer({
             ))}
           </div>
         )}
-        <div className="relative flex min-h-12 items-center gap-1.5 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5">
+        <div data-composer-row className="relative flex min-h-12 items-center gap-1.5 rounded-2xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2.5">
         {/* Czat grupowy nie ma jednego wlasciciela pliku, a `onSend` niesie sam
             tekst - lepiej nie pokazywac spinacza niz zzerac zalacznik. */}
         {!onSend && (
@@ -1040,6 +1040,7 @@ export function Composer({
         </button>
         )}
         <textarea
+          data-composer-input
           ref={inputRef}
           rows={1}
           value={text}
