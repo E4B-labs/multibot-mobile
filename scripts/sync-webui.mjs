@@ -29,16 +29,28 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `bbaad38c` w repo `multibot`
-// (stan `src/` wciągnięty tutaj 2026-09-06, wydanie 0.4.0: onboarding
-// setup/sign-in, zakładka admina, most `host.join` i `push.request` z nonce).
-// Poprzednia baza: `6f8e61e6` (0.3.39), wcześniej `ef79eb0c` (0.3.38).
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `a27b03a4` w repo `multibot`
+// (wydanie 0.5.1, wciągnięte tutaj 2026-09-07: kierunkowa aktywność bot↔bot,
+// `lib/peerActivity.ts` + `PeerActivity` w `ChatView.tsx`, `room.event` z
+// wariantem `received`).
+// Poprzednia baza: `bbaad38c` (0.4.0), wcześniej `6f8e61e6` (0.3.39).
+//
+// WYJĄTEK, żeby nie zgubić roboty: delta desktopu 0.4.0 → 0.5.0
+// (`bbaad38c..eb3d5581`) NIE została wciągnięta. Dotyczy dziewięciu plików:
+// `components/Composer.tsx`, `components/Onboarding.tsx`,
+// `components/Onboarding.test.ts`, `lib/analytics.ts`, `lib/auth.ts`,
+// `lib/auth.test.ts`, `lib/shell.ts`, `lib/shell.test.ts`,
+// `types/ogb.d.ts` — telefon ma tam własne logowanie/TLS/Tor i przepisanie
+// ich bez przeglądu urwałoby produkcję. Dla TYCH plików realna baza to nadal
+// `bbaad38c`; przy następnej synchronizacji użyj jej, nie `a27b03a4`.
+//
 // Po kolejnej synchronizacji podmień ten hash na świeży, inaczej trzystronne
 // scalanie liczy różnice od złej bazy i znowu wywali przeróbki mobilne.
 //
-// Ta synchronizacja NIE szła tym skryptem: każdy plik przez `git merge-file`
-// (OURS = telefon, BASE = 6f8e61e6, THEIRS = bbaad38c), pliki z `PHONE_OWNED`
-// ręcznie. Skryptu nadal się nie uruchamia.
+// Ta synchronizacja NIE szła tym skryptem: cztery pliki z PR #99 desktopu
+// przeniesione pojedynczo (`peerActivity.ts` i `peerActivity.test.ts` wprost,
+// `ChatView.tsx` i `store.tsx` przez `git merge-file`). Skryptu nadal się
+// nie uruchamia.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
