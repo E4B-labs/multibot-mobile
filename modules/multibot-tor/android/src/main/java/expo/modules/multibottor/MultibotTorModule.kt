@@ -28,13 +28,13 @@ class MultibotTorModule : Module() {
     Function("stop") { MultibotTor.stop() }
 
     AsyncFunction("setWebViewProxy") { bridgePort: Int, promise: Promise ->
-      MultibotTor.setWebViewProxy(bridgePort) { failure ->
+      MultibotTor.setWebViewProxy(context, bridgePort) { failure ->
         if (failure == null) promise.resolve(null) else promise.reject(failure)
       }
     }
 
     AsyncFunction("clearWebViewProxy") { promise: Promise ->
-      MultibotTor.clearWebViewProxy { failure ->
+      MultibotTor.clearWebViewProxy(context) { failure ->
         if (failure == null) promise.resolve(null) else promise.reject(failure)
       }
     }

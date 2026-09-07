@@ -113,6 +113,18 @@ test("only an onion host is routed through Tor, and the WebView proxy is set bot
   );
   assert.ok(native.includes("ProxyController.getInstance().setProxyOverride"));
   assert.ok(native.includes("ProxyController.getInstance().clearProxyOverride"));
+  // Both calls land before anything in the process has ever built a WebView,
+  // and off the main thread ProxyController blocks on a Chromium that has not
+  // started yet — a bare RuntimeException("Must be started before we block!"),
+  // which the shell then shows as "Can't reach <host>". Building and dropping a
+  // WebView on the main thread starts the engine, so neither call may skip the
+  // helper that does it.
+  assert.ok(native.includes("WebView(context).destroy()"));
+  assert.equal(
+    native.split("onWebViewEngine(context,").length - 1,
+    2,
+    "setWebViewProxy and clearWebViewProxy must both go through the engine guard",
+  );
 });
 
 test("the CONNECT bridge is loopback-only, onion-only, and never resolves a name", () => {
