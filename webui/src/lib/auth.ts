@@ -41,12 +41,19 @@ function stripFragment(rest: string): void {
 export function bootstrapLocalAuthToken(): void {
   const fragment = new URLSearchParams(location.hash.slice(1));
   const token = fragment.get("access_token");
-  if (!token) return;
-  setV2AuthToken(token);
-  // Z fragmentu zabieramy WYŁĄCZNIE swój klucz: jedzie w nim też `join=<grant>`
+  // Zapamiętane logowanie: profil zalogowała POWŁOKA, natywnie, więc token
+  // sesji przychodzi obok tokenu dostępu. Bez niego strona wstaje zalogowana i
+  // wypada po 15 minutach, przy pierwszym odnowieniu — a WebView nie ma
+  // ciastka sesji, żeby to nadrobić.
+  const session = fragment.get("session");
+  if (!token && !session) return;
+  if (token) setV2AuthToken(token);
+  if (session) setSessionToken(session);
+  // Z fragmentu zabieramy WYŁĄCZNIE swoje klucze: jedzie w nim też `join=<grant>`
   // powłoki, a wymiecenie całego hasha kasowało go, zanim onboarding zdążył go
   // przeczytać.
   fragment.delete("access_token");
+  fragment.delete("session");
   stripFragment(fragment.toString());
 }
 
