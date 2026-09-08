@@ -33,3 +33,28 @@ describe("jedno wejście: Onboarding zamiast LoginScreen", () => {
     expect(app).toContain("if (!authenticated) return <Onboarding onDone={() => setAuthenticated(true)} />;");
   });
 });
+
+describe("Android Back korzysta z aktualnego stanu WebUI", () => {
+  it("odświeża ref przy renderze i nie zamyka handlera nad pierwszym state", () => {
+    expect(app).toContain("useEffect, useRef, useState");
+    expect(app).toContain("const nativeBackState = useRef(state);");
+    expect(app).toContain("nativeBackState.current = state;");
+    expect(app).toContain("const currentState = nativeBackState.current;");
+    expect(app).not.toMatch(/const closePanel = state\.appSettingsOpen/);
+    for (const panel of [
+      "appSettingsOpen",
+      "pluginsOpen",
+      "computerOpen",
+      "inspectorOpen",
+      "skillsOpen",
+      "routinesOpen",
+      "teamMapOpen",
+      "roomsOpen",
+      "roomOpen",
+      "groupOpen",
+      "settingsOpen",
+    ]) {
+      expect(app).toContain(`currentState.${panel}`);
+    }
+  });
+});

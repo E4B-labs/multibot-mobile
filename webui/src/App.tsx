@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { StoreProvider, useStore } from "@/state/store";
 import { Onboarding } from "@/components/Onboarding";
@@ -29,6 +29,8 @@ import { useLanguage } from "@/lib/language";
 
 function Shell() {
   const { state, dispatch } = useStore();
+  const nativeBackState = useRef(state);
+  nativeBackState.current = state;
   const polish = useLanguage() === "pl";
   const bot = state.bots.find((b) => b.id === state.selectedId) ?? state.bots[0];
   useEffect(() => {
@@ -70,6 +72,7 @@ function Shell() {
   // deletes the saved host or returns to sign-in.
   useEffect(() => {
     const onNativeBack = (event: Event) => {
+      const currentState = nativeBackState.current;
       const requestId = (event as CustomEvent<{ requestId?: unknown }>).detail?.requestId;
       const reply = (handled: boolean) => shellPost({
         type: "native.back.result",
@@ -84,27 +87,27 @@ function Shell() {
         reply(true);
         return;
       }
-      const closePanel = state.appSettingsOpen
+      const closePanel = currentState.appSettingsOpen
         ? () => dispatch({ type: "toggleAppSettings", open: false })
-        : state.pluginsOpen
+        : currentState.pluginsOpen
           ? () => dispatch({ type: "togglePlugins", open: false })
-          : state.computerOpen
+          : currentState.computerOpen
             ? () => dispatch({ type: "toggleComputer", open: false })
-            : state.inspectorOpen
+            : currentState.inspectorOpen
               ? () => dispatch({ type: "toggleInspector", open: false })
-              : state.skillsOpen
+              : currentState.skillsOpen
                 ? () => dispatch({ type: "toggleSkills", open: false })
-                : state.routinesOpen
+                : currentState.routinesOpen
                   ? () => dispatch({ type: "toggleRoutines", open: false })
-                  : state.teamMapOpen
+                  : currentState.teamMapOpen
                     ? () => dispatch({ type: "toggleTeamMap", open: false })
-                    : state.roomsOpen
+                    : currentState.roomsOpen
                       ? () => dispatch({ type: "toggleRooms", open: false })
-                      : state.roomOpen
+                      : currentState.roomOpen
                         ? () => dispatch({ type: "toggleRoom", room: null })
-                        : state.groupOpen
+                        : currentState.groupOpen
                           ? () => dispatch({ type: "toggleGroup", group: null })
-                          : state.settingsOpen
+                          : currentState.settingsOpen
                             ? () => dispatch({ type: "toggleSettings", open: false })
                             : null;
       if (closePanel) {
