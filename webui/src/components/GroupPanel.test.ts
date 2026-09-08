@@ -68,6 +68,6 @@ describe("wiersz grupy w Sidebarze", () => {
     expect(row).toContain("size={40}");
     expect(row).toContain("overflow > 0");
     expect(row).toContain("+{overflow}");
-    expect(row).toContain("{...sidebarAvatarProps(b)}");
+    expect(row).toContain("{...groupMemberAvatarProps(b)}");
   });
 });

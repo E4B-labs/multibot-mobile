@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Bot } from "@/state/store";
-import { hiddenBotsForSidebar, sidebarAvatarProps } from "./Sidebar";
+import { groupMemberAvatarProps, hiddenBotsForSidebar, sidebarAvatarProps } from "./Sidebar";
 
 describe("hidden bot recovery", () => {
   it("keeps hidden bots available for sidebar recovery", () => {
@@ -69,9 +69,10 @@ describe("sidebar group row avatars", () => {
     ({ id: "m1", name: "Member", color: "#fff", messages: [], ...over }) as Bot;
 
   it("freezes group members too", () => {
-    expect(sidebarAvatarProps(member({ busy: false })).animated).toBe(false);
-    expect(sidebarAvatarProps(member({ busy: true })).animated).toBe(false);
-    expect(sidebarAvatarProps(member({ busy: true })).motion).toBe("none");
+    expect(groupMemberAvatarProps(member({ busy: false })).animated).toBe(false);
+    expect(groupMemberAvatarProps(member({ busy: true })).animated).toBe(false);
+    expect(groupMemberAvatarProps(member({ busy: true })).motion).toBe("none");
+    expect(groupMemberAvatarProps(member({ busy: true })).state).toBe("happy");
   });
 
   it("wires every sidebar avatar through sidebarAvatarProps", () => {
@@ -80,6 +81,7 @@ describe("sidebar group row avatars", () => {
     // tworzenia grupy — każdy z nich brał wcześniej `busyMascotMotion`
     // inline i przez to animował bota, który nie pracuje.
     expect(sidebar).not.toContain("busyMascotMotion(");
-    expect(sidebar.match(/\{\.\.\.sidebarAvatarProps\(/g)?.length).toBe(4);
+    expect(sidebar).toContain("{...groupMemberAvatarProps(b)}");
+    expect(sidebar.match(/\{\.\.\.sidebarAvatarProps\(/g)?.length).toBe(3);
   });
 });
