@@ -156,9 +156,16 @@ function Bubble({
     >
       <div
         className={cn(
-          // multibot: dymek bota zostaje (tło, zaokrąglenia, padding), ale
-          // idzie na całą szerokość kolumny — wcześniejsze `max-w-[70%]`
-          // zostawiało na telefonie pusty pas po prawej stronie ekranu.
+          // multibot: dymek bota sięga aż do krawędzi kolumny — wcześniejsze
+          // `max-w-[70%]` zostawiało na telefonie pusty pas po prawej stronie
+          // ekranu. To jednak SUFIT (`max-w-full`), nie szerokość: `w-full`
+          // rozciągało każdy dymek na całą kolumnę, więc „Sesja wygasła,
+          // loguję się ponownie." dostawało pas na pół ekranu zamiast dymka na
+          // swoją miarę (Kacper 08.09, zrzut z telefonu; zmierzone w headless
+          // Chrome przy kolumnie 400 px: `w-full` 400 px, `max-w-full` 267 px).
+          // Dymek jest elementem flexa, więc z samym sufitem kurczy się do
+          // treści, a długa wiadomość, tabela czy blok kodu nadal biorą całe
+          // 100%.
           //
           // multibot: `min-w-0 break-words` = koniec poziomego paska w czacie.
           // Dymek jest elementem flexa, a taki ma `min-width:auto`, więc NIE
@@ -171,7 +178,7 @@ function Bubble({
           "min-w-0 break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
           user
             ? "max-w-[70%] whitespace-pre-wrap bg-bubble-user text-ink"
-            : "w-full bg-card text-ink",
+            : "max-w-full bg-card text-ink",
           message.pending && "opacity-60",
         )}
       >
@@ -412,7 +419,7 @@ function StreamingBubble({ text }: { text: string }) {
     <div className="flex w-full justify-start">
       {/* multibot: ta sama szerokość i ten sam dymek co w `Bubble` —
           inaczej tekst przeskakiwałby po zakończeniu strumienia. */}
-      <div className="w-full min-w-0 break-words rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+      <div className="max-w-full min-w-0 break-words rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
         <ChatMarkdown text={text} streaming />
         <span className="ml-0.5 inline-block h-[14px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
       </div>
