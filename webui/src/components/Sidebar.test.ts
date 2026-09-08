@@ -23,6 +23,24 @@ describe("mobile bot sections", () => {
   });
 });
 
+describe("sidebar search", () => {
+  it("opens the shared CmdK palette instead of a second local popover", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    expect(sidebar).toContain('new CustomEvent("mb:cmdk:open")');
+    expect(sidebar).not.toContain("searchOpen");
+    expect(sidebar).not.toContain("SearchPalette");
+    expect(sidebar).not.toContain("data-search-menu");
+  });
+});
+
+describe("plugins menu icon", () => {
+  it("does not render an escaped newline next to the Plug icon", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    expect(sidebar).not.toContain(">\\n");
+    expect(sidebar).toContain("<Plug size={15} />");
+  });
+});
+
 describe("sidebar avatar", () => {
   const bot = (over: Partial<Bot>): Bot =>
     ({ id: "b1", name: "Bot", color: "#fff", messages: [], ...over }) as Bot;

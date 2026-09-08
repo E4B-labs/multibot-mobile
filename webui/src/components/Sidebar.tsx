@@ -32,7 +32,6 @@ import { ScoutTeamModal } from "./ScoutTeamModal";
 import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
-import { SearchPalette, type SearchTab } from "./SearchPalette";
 import { getLanguage, useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
@@ -950,9 +949,6 @@ export function Sidebar() {
   const [scoutOpen, setScoutOpen] = useState(false);
   const [groups, setGroups] = useEngineGroups(state.workspaceVersion);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<SearchTab>("All");
   const [hiddenBotsCollapsed, setHiddenBotsCollapsed] = useState(true);
   // Wybór sekcji obsługuje i bota, i grupę — obie rzeczy stoją na liście tak
   // samo, więc popover jest jeden, a `kind` mówi tylko, co zapisać.
@@ -969,7 +965,6 @@ export function Sidebar() {
       return next;
     });
   };
-  const searchInputRef = useRef<HTMLInputElement>(null);
   // Dymek profilu i jego menu: menu idzie portalem do <body>, więc nie ma
   // rodzica, względem którego mogłoby się ustawić — kotwiczymy je na pozycji
   // przycisku odczytanej w chwili otwarcia.
@@ -1002,34 +997,13 @@ export function Sidebar() {
   const baseBots = visibleBots.filter((b) => !b.pinned);
 
   // multibot: B4 — filtrowanie listy po zapytaniu z palety wyszukiwania
-  const q = query.trim().toLowerCase();
-  const filteredBots = q
-    ? baseBots.filter(
-        (b) =>
-          b.name.toLowerCase().includes(q) ||
-          b.description.toLowerCase().includes(q),
-      )
-    : baseBots;
-  const filteredPinned = q
-    ? pinnedBots.filter(
-        (b) =>
-          b.name.toLowerCase().includes(q) ||
-          b.description.toLowerCase().includes(q),
-      )
-    : pinnedBots;
-  const filteredHidden = q
-    ? hiddenBots.filter(
-        (b) =>
-          b.name.toLowerCase().includes(q) ||
-          b.description.toLowerCase().includes(q),
-      )
-    : hiddenBots;
+  const filteredBots = baseBots;
+  const filteredPinned = pinnedBots;
+  const filteredHidden = hiddenBots;
 
   // Grupy filtrujemy tym samym zapytaniem co boty — paleta wyszukiwania stoi
   // nad całą listą, więc zostawienie grup poza filtrem wyglądałoby na błąd.
-  const filteredGroups = q
-    ? (groups ?? []).filter((g) => (g.name || g.id).toLowerCase().includes(q))
-    : (groups ?? []);
+  const filteredGroups = groups ?? [];
 
   // multibot: sekcje trzymają boty i grupy razem — osobnej listy „GRUPY" już
   // nie ma, grupa stoi tam, gdzie wskazuje jej `section`. Kolejność sekcji jest
@@ -1122,32 +1096,6 @@ export function Sidebar() {
     };
   }, [userMenuOpen]);
 
-  useEffect(() => {
-    if (!searchOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-search-menu]")) {
-        setSearchOpen(false);
-        setQuery("");
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSearchOpen(false);
-        setQuery("");
-      }
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [searchOpen]);
-
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
-
   return (
     <aside className="fixed inset-0 z-[60] bg-app md:static md:z-auto md:flex md:w-[320px] md:shrink-0 md:border-r md:border-hairline/40">
       {/* Główna karta ekranu: prawie czarna, zaokrąglona jak ramka telefonu.
@@ -1171,12 +1119,12 @@ export function Sidebar() {
           </div>
           <div className="flex-1" />
           {/* Szukaj — kliknięcie lupki rozwija popover z paletą wyszukiwania */}
-          <div data-search-menu>
+          <div>
             <button
-              onClick={() => setSearchOpen((v) => !v)}
+              onClick={() => window.dispatchEvent(new CustomEvent("mb:cmdk:open"))}
               className="rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
               aria-label={polish ? "Szukaj" : "Search"}
-              aria-expanded={searchOpen}
+              aria-haspopup="dialog"
             >
               <Search size={20} />
             </button>
@@ -1239,37 +1187,6 @@ export function Sidebar() {
             )}
           </div>
         </div>
-
-        {/* Szukaj — popover pełnej szerokości karty, rozwijany ikoną lupki */}
-        {searchOpen && (
-          <div
-            data-search-menu
-            className="absolute inset-x-2 top-2 z-40 flex items-center gap-1 rounded-2xl border border-white/10 bg-card p-2 shadow-lg"
-          >
-            {/* Jeden wiersz: pole szukania + X. Osobny nagłówek „Szukaj" nad
-                polem z własną ramką robił dwie ramki i pusty pas u góry —
-                poprawka: „dziwny spacing". */}
-            <div className="min-w-0 flex-1">
-              <SearchPalette
-                query={query}
-                onQueryChange={setQuery}
-                activeTab={tab}
-                onTabChange={setTab}
-                inputRef={searchInputRef}
-              />
-            </div>
-            <button
-              onClick={() => {
-                setSearchOpen(false);
-                setQuery("");
-              }}
-              className="shrink-0 rounded-md p-2 text-ink-secondary hover:bg-white/10 hover:text-ink"
-              aria-label={polish ? "Zamknij szukanie" : "Close search"}
-            >
-              <X size={18} />
-            </button>
-          </div>
-        )}
 
         {/* Pinned — 1: wycentrowany duży (72px); 2: para obok, wycentrowana (56px);
             3+: siatka 3 kolumny (56px). Hover z opisem jak reszta botów. */}
@@ -1467,7 +1384,9 @@ export function Sidebar() {
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
             >
-              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">\n                 <Plug size={15} />\n               </span>
+              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
+                <Plug size={15} />
+              </span>
               {polish ? "Wtyczki" : "Plugins"}
             </button>
             <button

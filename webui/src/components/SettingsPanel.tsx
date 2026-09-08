@@ -504,16 +504,27 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               </div>
             </div>
             <button
+              type="button"
               role="switch"
               aria-checked={bot.notifications}
+              aria-label={polish ? "Powiadomienia" : "Notifications"}
               onClick={() => {
                 if (!bot.notifications) void requestBrowserNotifications();
                 patch({ notifications: !bot.notifications });
               }}
               className={cn(
-                "relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors",
+                "relative shrink-0 cursor-pointer border border-hairline/40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
                 bot.notifications ? "bg-accent" : "bg-raised",
               )}
+              style={{
+                width: 44,
+                height: 26,
+                minWidth: 44,
+                minHeight: 26,
+                padding: 0,
+                borderRadius: 13,
+                appearance: "none",
+              }}
             >
               <span
                 className={cn(

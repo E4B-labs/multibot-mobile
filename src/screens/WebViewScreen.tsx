@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
-import { WebView, type WebViewNavigation } from "react-native-webview";
+import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
@@ -67,6 +67,7 @@ const PRIVILEGED = new Set([
   "app.update.install",
   "native.camera.request",
   "native.clipboard.image",
+  "native.back.result",
 ]);
 
 function newBridgeNonce(): string {
@@ -112,9 +113,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // How much of the page made it in before it stopped — "loading" means the
   // same at 0% and at 99% without this.
   const [progress, setProgress] = useState(0);
-  // WebView history depth, so the back control (and the hardware button on
-  // Android) steps out of the in-page chat before bailing to the host list.
-  const [canGoBack, setCanGoBack] = useState(false);
+  // The hardware back button is handled by the page UI first. It must never
+  // use WebView history as app navigation: a hash change is not a screen, and
+  // the old fallback deleted the saved host and returned to sign-in.
+  const nativeBackRequest = useRef<string | null>(null);
+  const nativeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cameraRequest, setCameraRequest] = useState<{ requestId: string; purpose: "attachment" | "avatar" } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraRef = useRef<CameraView>(null);
@@ -186,20 +189,32 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     return () => clearTimeout(timer);
   }, [loaded, failed, host.url, attempt, progress, onion]);
 
-  // Android hardware back: step out of the in-page history first, only leave to
-  // the host list when the WebView itself can't go further.
+  // Android hardware back: ask the WebUI to open the bot picker. If it reports
+  // that the picker is already open, leave the app to the phone desktop. The
+  // host remains in SecureStore, so reopening the app stays signed in.
   useEffect(() => {
     const onHardwareBack = () => {
-      if (canGoBack) {
-        webRef.current?.goBack();
-        return true;
-      }
-      onBack();
+      if (nativeBackRequest.current) return true;
+      const requestId = `back-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      nativeBackRequest.current = requestId;
+      nativeBackTimer.current = setTimeout(() => {
+        if (nativeBackRequest.current !== requestId) return;
+        nativeBackRequest.current = null;
+        BackHandler.exitApp();
+      }, 350);
+      webRef.current?.injectJavaScript(
+        `window.dispatchEvent(new CustomEvent("mb:native-back", { detail: { requestId: ${JSON.stringify(requestId)} } })); true;`,
+      );
       return true;
     };
     const sub = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
-    return () => sub.remove();
-  }, [canGoBack, onBack]);
+    return () => {
+      sub.remove();
+      if (nativeBackTimer.current) clearTimeout(nativeBackTimer.current);
+      nativeBackTimer.current = null;
+      nativeBackRequest.current = null;
+    };
+  }, []);
 
   // Tapnięcie w powiadomienie przy JUŻ otwartej aplikacji: bootstrap poszedł
   // dawno temu, więc hash trzeba wstrzyknąć teraz.
@@ -209,15 +224,13 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   }, [botId, loaded]);
 
   function handleBack() {
-    if (canGoBack) webRef.current?.goBack();
-    else onBack();
+    onBack();
   }
 
   function retry() {
     setFailed(null);
     setLoaded(false);
     setProgress(0);
-    setCanGoBack(false);
     setAttempt((n) => n + 1);
   }
 
@@ -457,6 +470,13 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             // the gate. Everything else goes below it.
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
             if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
+            if (msg?.type === "native.back.result" && msg.requestId === nativeBackRequest.current) {
+              if (nativeBackTimer.current) clearTimeout(nativeBackTimer.current);
+              nativeBackTimer.current = null;
+              nativeBackRequest.current = null;
+              if (!msg.handled) BackHandler.exitApp();
+              return;
+            }
             if (msg?.type === "native.camera.request" && typeof msg.requestId === "string" && (msg.purpose === "attachment" || msg.purpose === "avatar")) {
               setCameraReady(false);
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
@@ -493,7 +513,6 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
           setProgress(nativeEvent.progress);
           if (nativeEvent.progress >= 1) setLoaded(true);
         }}
-        onNavigationStateChange={(nav: WebViewNavigation) => setCanGoBack(nav.canGoBack)}
         startInLoadingState
         // Not wrapped in a ScrollView and scrollEnabled stays at its default
         // (true): pinch-zoom and scroll inside the noVNC/fullscreen view must

@@ -27,6 +27,22 @@ describe("mobile app settings parity", () => {
     expect(card).toContain('style={{ width: 44, height: 26, borderRadius: 13, display: "inline-block" }}');
   });
 
+  it("keeps notification switches at the same mobile-safe geometry", () => {
+    expect(panel).toContain('function NotificationsRow({ polish }: { polish: boolean })');
+    expect(panel).toContain('role="switch"');
+    expect(panel).toContain("minWidth: 44");
+    expect(panel).toContain("minHeight: 26");
+    expect(panel).toContain("padding: 0");
+    expect(panel).toContain('borderRadius: 13');
+    expect(panel).toContain('appearance: "none"');
+
+    const settings = readFileSync(new URL("./SettingsPanel.tsx", import.meta.url), "utf8");
+    expect(settings).toContain('aria-label={polish ? "Powiadomienia" : "Notifications"}');
+    expect(settings).toContain("minWidth: 44");
+    expect(settings).toContain("minHeight: 26");
+    expect(settings).toContain('appearance: "none"');
+  });
+
   it("shows numbered update-log pages without next/previous shortcuts", () => {
     expect(panel).toContain('<UpdateLog repository="E4B-labs/multibot-mobile"');
     expect(panel).toContain("pageNumbers");

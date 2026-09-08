@@ -313,13 +313,13 @@ export function CmdK() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-app/80 pt-[18vh]"
+      className="fixed inset-0 z-[80] flex items-start justify-center overflow-hidden bg-app/80 px-3 pt-[calc(var(--safe-top)+12px)] pb-[calc(var(--safe-bottom)+12px)] md:px-0 md:pt-[18vh] md:pb-0"
       onMouseDown={() => setOpen(false)}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="w-[560px] max-w-[calc(100vw-40px)] animate-pop-in overflow-hidden rounded-2xl border border-hairline/40 bg-panel shadow-lg"
+        className="flex max-h-full min-h-0 w-[560px] max-w-full animate-pop-in flex-col overflow-hidden rounded-2xl border border-hairline/40 bg-panel shadow-lg md:max-w-[calc(100vw-40px)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <input
@@ -347,7 +347,7 @@ export function CmdK() {
             }
           }}
           placeholder={polish ? "Szukaj wiadomości, botów i działań…" : "Search messages, bots and actions…"}
-          className="w-full border-b border-hairline/30 bg-transparent px-4 py-3 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none"
+          className="min-h-12 w-full shrink-0 border-b border-hairline/30 bg-transparent px-4 py-3 text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none"
         />
         {showHidden ? (
           <div className="flex items-center justify-between border-b border-hairline/30 px-4 py-2 text-[12px] text-ink-secondary">
@@ -357,14 +357,14 @@ export function CmdK() {
             </button>
           </div>
         ) : (
-        <div className="flex gap-1 overflow-x-auto border-b border-hairline/30 px-3 py-2">
+        <div className="flex shrink-0 gap-1 overflow-x-auto overscroll-x-contain border-b border-hairline/30 px-3 py-2">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
               className={cn(
-                "shrink-0 rounded-full px-2.5 py-1 text-[11px]",
+                "min-h-9 shrink-0 rounded-full px-3 py-1 text-[11px]",
                 tab === item.id ? "bg-ink text-app" : "text-ink-secondary hover:bg-raised hover:text-ink",
               )}
             >
@@ -373,13 +373,13 @@ export function CmdK() {
           ))}
         </div>
         )}
-        <div className="max-h-[320px] overflow-y-auto py-1.5">
+        <div className="min-h-0 max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-144px)] overflow-x-hidden overflow-y-auto overscroll-contain py-1.5 md:max-h-[320px]">
           {rows.length === 0 && (
             <div className="flex items-center gap-2 px-4 py-3 text-[13px] text-ink-secondary"><Search size={14} />{polish ? "Brak wyników" : "No results"}</div>
           )}
           {rows.map((row, i) => {
             if ("run" in row) {
-              return <button key={row.id} onClick={row.run} onMouseEnter={() => setHighlight(i)} className={cn("flex w-full items-center gap-2.5 px-4 py-2 text-left", i === highlight ? "bg-raised-hover" : "")}>
+              return <button key={row.id} onClick={row.run} onMouseEnter={() => setHighlight(i)} className={cn("flex min-h-12 w-full min-w-0 items-center gap-2.5 overflow-hidden px-4 py-2 text-left", i === highlight ? "bg-raised-hover" : "")}>
                 <span className="flex size-6 shrink-0 items-center justify-center text-ink-secondary">{row.icon}</span>
                 <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{row.label}</span>
                 <span className="min-w-0 shrink truncate text-xs text-ink-secondary">{row.hint}</span>
@@ -389,7 +389,7 @@ export function CmdK() {
               </button>;
             }
             const bot = row.botId ? state.bots.find((item) => item.id === row.botId) : undefined;
-            return <button key={row.id} onClick={() => openResult(row)} onMouseEnter={() => setHighlight(i)} className={cn("flex w-full items-center gap-2.5 px-4 py-2 text-left", i === highlight ? "bg-raised-hover" : "")}>
+            return <button key={row.id} onClick={() => openResult(row)} onMouseEnter={() => setHighlight(i)} className={cn("flex min-h-12 w-full min-w-0 items-center gap-2.5 overflow-hidden px-4 py-2 text-left", i === highlight ? "bg-raised-hover" : "")}>
               <span className="flex size-6 shrink-0 items-center justify-center text-ink-secondary">{bot ? <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? "happy"} size={22} animated={false} /> : resultIcon(row.kind)}</span>
               <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium text-ink">{row.title}</span><span className="block truncate text-[11px] text-ink-secondary">{row.subtitle}</span></span>
               <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[10px] text-ink-secondary">{resultType(row.kind, polish)}</span>

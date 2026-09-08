@@ -797,7 +797,19 @@ function NotificationsRow({ polish }: { polish: boolean }) {
         aria-checked={enabled}
         aria-label={label}
         onClick={toggle}
-        className={cn("relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors", enabled ? "bg-accent" : "bg-raised")}
+        className={cn(
+          "relative shrink-0 cursor-pointer border border-hairline/40 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+          enabled ? "bg-accent" : "bg-raised",
+        )}
+        style={{
+          width: 44,
+          height: 26,
+          minWidth: 44,
+          minHeight: 26,
+          padding: 0,
+          borderRadius: 13,
+          appearance: "none",
+        }}
       >
         <span className={cn("absolute top-[3px] size-5 rounded-full bg-white transition-[left]", enabled ? "left-[21px]" : "left-[3px]")} />
       </button>
@@ -1078,4 +1090,3 @@ export function AppSettingsPanel() {
     </aside>
   );
 }
-

@@ -46,6 +46,20 @@ test("the WebView bridge carries host.join both ways", () => {
   assert.ok(webview.includes('msg?.type === "tls.forget"'));
 });
 
+test("Android back stays inside the mobile app before exiting", () => {
+  const app = readFileSync("App.tsx", "utf8");
+  const webui = readFileSync("webui/src/App.tsx", "utf8");
+  assert.ok(webview.includes('new CustomEvent("mb:native-back"'));
+  assert.ok(webview.includes('msg?.type === "native.back.result"'));
+  assert.ok(webview.includes("BackHandler.exitApp()"));
+  assert.ok(!webview.includes("if (canGoBack)"));
+  assert.ok(webui.includes('type: "native.back.result"'));
+  assert.ok(webui.includes('document.body.classList.add("mb-drawer-open")'));
+  // The normal hardware-back path must not use the visible Change server
+  // callback, because that callback intentionally deletes the saved host.
+  assert.match(app, /onBack=\{\(\) => changeHost\(route\.host\.id\)\}/);
+});
+
 test("the shell hands the page a push token instead of registering itself", () => {
   assert.ok(webview.includes('msg?.type === "push.request"'));
   assert.ok(webview.includes('type: "push.token"'));

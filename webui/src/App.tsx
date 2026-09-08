@@ -65,6 +65,60 @@ function Shell() {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
+  // Android back is a two-step app navigation: chat -> bot picker -> phone
+  // desktop. The native shell asks the page first, so normal back never
+  // deletes the saved host or returns to sign-in.
+  useEffect(() => {
+    const onNativeBack = (event: Event) => {
+      const requestId = (event as CustomEvent<{ requestId?: unknown }>).detail?.requestId;
+      const reply = (handled: boolean) => shellPost({
+        type: "native.back.result",
+        requestId: typeof requestId === "string" ? requestId : undefined,
+        handled,
+      });
+
+      // Close an open palette/dialog or app panel before changing the drawer
+      // level. This keeps Back behaving like screen navigation inside the UI.
+      if (document.querySelector('[role="dialog"]')) {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        reply(true);
+        return;
+      }
+      const closePanel = state.appSettingsOpen
+        ? () => dispatch({ type: "toggleAppSettings", open: false })
+        : state.pluginsOpen
+          ? () => dispatch({ type: "togglePlugins", open: false })
+          : state.computerOpen
+            ? () => dispatch({ type: "toggleComputer", open: false })
+            : state.inspectorOpen
+              ? () => dispatch({ type: "toggleInspector", open: false })
+              : state.skillsOpen
+                ? () => dispatch({ type: "toggleSkills", open: false })
+                : state.routinesOpen
+                  ? () => dispatch({ type: "toggleRoutines", open: false })
+                  : state.teamMapOpen
+                    ? () => dispatch({ type: "toggleTeamMap", open: false })
+                    : state.roomsOpen
+                      ? () => dispatch({ type: "toggleRooms", open: false })
+                      : state.roomOpen
+                        ? () => dispatch({ type: "toggleRoom", room: null })
+                        : state.groupOpen
+                          ? () => dispatch({ type: "toggleGroup", group: null })
+                          : state.settingsOpen
+                            ? () => dispatch({ type: "toggleSettings", open: false })
+                            : null;
+      if (closePanel) {
+        closePanel();
+        reply(true);
+        return;
+      }
+      const opened = document.body.classList.contains("mb-drawer-open");
+      reply(!opened);
+      if (!opened) document.body.classList.add("mb-drawer-open");
+    };
+    window.addEventListener("mb:native-back", onNativeBack);
+    return () => window.removeEventListener("mb:native-back", onNativeBack);
+  }, []);
   return (
     <div className="multibot-shell flex h-full flex-col">
       {/* fixed-position popup, bottom-left — outside the layout flow */}
