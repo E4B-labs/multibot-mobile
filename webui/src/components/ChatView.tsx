@@ -20,6 +20,7 @@ import { formatChatSessionTime, shouldStartChatSession } from "@/lib/chatSession
 import { MausAvatar } from "./Avatar";
 import { sidebarAvatarProps, stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { CopyMessageButton } from "./CopyMessageButton";
 import { OptionCard } from "./OptionCard";
 import { ComputerHandoffCard } from "./ComputerHandoffCard";
 import { ConnectCard } from "./ConnectCard";
@@ -218,6 +219,8 @@ function Bubble({
           <div className="mt-1.5 flex items-center justify-start gap-1.5">
             {/* TTS renders null when the provider does not support it. */}
             <SpeakButton text={text} />
+            {/* multibot: kopiuje zrodlo wiadomosci - patrz CopyMessageButton.tsx */}
+            <CopyMessageButton text={text} />
           </div>
         )}
       </div>

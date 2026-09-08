@@ -102,10 +102,11 @@ export function SpeakButton({ text }: { text: string }) {
     <button
       onClick={() => (phase === "loading" || phase === "playing" ? stop() : void play())}
       className={cn(
-        // multibot: bez `mt-1` — przycisk siedzi teraz w rzędzie stopki dymka
-        // razem z godziną (patrz ChatView.tsx), więc własny odstęp od góry
-        // rozjeżdżałby ten rząd.
-        "rounded p-1 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/msg:opacity-100",
+        // multibot: bez `mt-1` - przycisk siedzi w rzedzie stopki dymka razem
+        // z godzina (patrz ChatView.tsx), wiec wlasny odstep od gory rozjezdzalby
+        // ten rzad. Na telefonie nie ma hovera, wiec `group-hover/msg` nigdy by
+        // nie zadzialal - dotyk dostaje przycisk na stale.
+        "rounded p-1 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/msg:opacity-100 [@media(hover:none)]:opacity-100",
         phase === "error" ? "text-danger" : "text-ink-secondary hover:bg-raised hover:text-ink",
         phase !== "idle" && "opacity-100",
       )}
