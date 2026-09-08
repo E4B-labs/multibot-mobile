@@ -101,6 +101,7 @@ describe("pigułka pokoju: napisał(a) / odpisał(a)", () => {
 // opis i awatary zostają, klikniecie ma znowu otwierać transkrypt.
 describe("karta bot↔bot otwiera pokój", () => {
   const card = chat.slice(chat.indexOf("function PeerActivity"), chat.indexOf("function RoomChip"));
+  const legacyRoomChip = chat.slice(chat.indexOf("function RoomChip"), chat.indexOf("function userEventChip"));
 
   it("kliknięcie otwiera pokój, a nie rozwija karty", () => {
     expect(card).toContain("openRoom(room.id, dispatch)");
@@ -119,6 +120,22 @@ describe("karta bot↔bot otwiera pokój", () => {
       expect(card, `brak kierunkowego opisu ${label}`).toContain(label);
     }
     expect(card).toContain("const avatars = sent ? [actor, ...peers] : [actor];");
+  });
+
+  it("PeerActivity is a text-only row without a status pill", () => {
+    expect(card).toContain('className="flex w-full min-w-0 cursor-pointer');
+    for (const status of ["status", "Completed", "Uko\u0144czone", "Failed", "B\u0142\u0105d", "Working", "W toku"]) {
+      expect(card, `PeerActivity still contains status: ${status}`).not.toContain(status);
+    }
+    for (const pillClass of ["border", "bg-", "rounded-"]) {
+      expect(card, `PeerActivity still has pill class: ${pillClass}`).not.toContain(pillClass);
+    }
+  });
+
+  it("legacy room links use the same borderless treatment", () => {
+    expect(legacyRoomChip).toContain('const pill = "flex max-w-full items-center gap-1.5 py-1');
+    expect(legacyRoomChip).not.toContain("border-hairline");
+    expect(legacyRoomChip).not.toContain("bg-panel");
   });
 
   it("obie karty wchodzą do pokoju tym samym helperem", () => {

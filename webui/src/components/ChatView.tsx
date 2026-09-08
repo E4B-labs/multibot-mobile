@@ -290,8 +290,6 @@ function PeerActivity({ messages, currentBotId }: { messages: Message[]; current
       ? (polish ? `Napisano do ${names[0] ?? room.bot_ids[1] ?? "agenta"}` : `Messaged ${names[0] ?? room.bot_ids[1] ?? "agent"}`)
       : (polish ? `Napisano do ${peers.length} agentów` : `Messaged ${peers.length} agents`)
     : (polish ? `Wiadomość od ${actorName}` : `Message from ${actorName}`);
-  const status = state.rooms.find((candidate) => candidate.id === room.id)?.status ?? room.status;
-  const statusLabel = status === "done" ? (polish ? "Ukończone" : "Completed") : status === "failed" ? (polish ? "Błąd" : "Failed") : (polish ? "W toku" : "Working");
   const avatars = sent ? [actor, ...peers] : [actor];
   const content = (
     <span className="flex min-w-0 items-center gap-2">
@@ -304,15 +302,14 @@ function PeerActivity({ messages, currentBotId }: { messages: Message[]; current
     </span>
   );
   return (
-    <div className="flex w-full justify-center">
+    <div className="flex w-full">
       <button
         type="button"
         onClick={() => openRoom(room.id, dispatch)}
         title={polish ? "Otwórz pokój współpracy (tylko do odczytu)" : "Open collaboration room (read-only)"}
-        className="mx-auto flex max-w-full cursor-pointer items-center gap-2 rounded-2xl border border-hairline/40 bg-panel px-3 py-2 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
+        className="flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary hover:text-ink"
       >
         {content}
-        <span className="shrink-0 text-[12px]">{statusLabel}</span>
       </button>
     </div>
   );
@@ -325,7 +322,7 @@ function RoomChip({ message }: { message: Message }) {
   const polish = useLanguage() === "pl";
   const room = message.room;
   if (!room) return null;
-  const pill = "flex max-w-full items-center gap-1.5 rounded-full border border-hairline/40 bg-panel px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink";
+  const pill = "flex max-w-full items-center gap-1.5 py-1 text-[13px] text-ink-secondary hover:text-ink";
   // A group turn mirrors ONE room shared by every member, so "X texted Y, Z"
   // read as nonsense in a member's private thread: name the group instead and
   // lead back to the group chat, not the room ledger.

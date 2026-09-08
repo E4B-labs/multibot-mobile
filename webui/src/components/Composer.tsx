@@ -1043,6 +1043,7 @@ export function Composer({
           data-composer-input
           ref={inputRef}
           rows={1}
+          wrap="off"
           value={text}
           onChange={(e) => {
             const el = e.target;
@@ -1108,7 +1109,7 @@ export function Composer({
           // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
           // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
           // przez `max-height`.
-          className="max-h-64 w-full resize-none self-center overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"        />
+          className="max-h-64 min-w-0 flex-1 basis-0 resize-none self-center overflow-x-auto overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"        />
         <div className="relative shrink-0">
           <button
             onClick={() => setReasoningOpen((open) => !open)}

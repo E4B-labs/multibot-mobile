@@ -198,9 +198,13 @@ describe("composer na telefonie", () => {
     // zostawal sam pasek ikon bez pola do pisania.
     expect(composer).toContain('<div data-composer-row className="relative flex min-h-12');
     expect(composer).toContain("data-composer-input");
+    expect(composer).toContain('wrap="off"');
+    expect(composer).toContain("min-w-0 flex-1 basis-0");
     const phone = css.slice(css.indexOf("@media (max-width: 700px)"));
-    expect(phone).toContain("[data-composer-row] { flex-wrap: wrap; }");
-    expect(phone).toContain("[data-composer-row] > [data-composer-input] { order: -1; flex-basis: 100%; }");
+    expect(phone).toContain("[data-composer-row] { flex-wrap: nowrap; min-width: 0; gap: 2px; }");
+    expect(phone).toContain("[data-composer-row] > [data-composer-input]");
+    expect(phone).toContain("flex: 1 1 0%");
+    expect(phone).toContain("white-space: nowrap");
     expect(phone).toContain("[data-composer-row] > div > button > span { display: none; }");
   });
 });

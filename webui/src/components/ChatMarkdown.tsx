@@ -129,7 +129,11 @@ function ChatMarkdownComponent({ text, streaming = false }: { text: string; stre
               return <span>{children}</span>;
             }
             return (
-              <span className="inline-flex translate-y-px items-center gap-1 rounded-full bg-raised px-2 py-0.5 align-middle text-[13px] font-medium text-ink">
+              <span
+                className="inline-flex translate-y-px items-center gap-1 rounded-full bg-raised px-2 py-0.5 align-middle text-[13px] font-medium text-ink"
+                role="img"
+                aria-label={bot.name}
+              >
                 <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? "happy"} size={16} animated={false} />
                 {children}
               </span>
