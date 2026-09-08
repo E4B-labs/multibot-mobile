@@ -29,7 +29,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { sidebarAvatarProps } from "@/lib/mascot";
+import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { getLanguage, useLanguage } from "@/lib/language";
@@ -58,6 +58,16 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
  * pasek nad rozmowa trzyma sie tej samej zasady. Reeksport, zeby importy
  * nie ruszaly. */
 export { sidebarAvatarProps };
+
+/** Group rows use the same static face vocabulary as the appearance picker. */
+export function groupMemberAvatarProps(bot: Bot) {
+  return {
+    ...sidebarAvatarProps(bot),
+    state: GROUP_AVATAR_STATE,
+    shape: "blob" as const,
+    avatarUrl: null,
+  };
+}
 
 function preview(bot: Bot): string {
   if (bot.busy) return "Working…";
@@ -736,10 +746,9 @@ function GroupRow({
           {shown.map((b, i) => (
             <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-3")}>
               <MausAvatar
-                color={b.color} avatarUrl={b.avatarUrl}
-                shape={b.mascotShape}
+                color={b.color}
                 size={40}
-                {...sidebarAvatarProps(b)}
+                {...groupMemberAvatarProps(b)}
               />
             </span>
           ))}

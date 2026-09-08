@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { joinErrorField, joinErrorMessage, joinFragment, parseJoinResponse, type JoinErrorCode } from "./join.ts";
+import { joinErrorField, joinErrorMessage, joinFragment, parseJoinResponse, parseLoginResponse, sessionFragment, type JoinErrorCode } from "./join.ts";
+import { rememberedEntryOf } from "./host-logic.ts";
 import { expectedSha256, pickTermuxApk } from "./release-assets.ts";
 
 test("every join error lands on the field the user can fix", () => {
@@ -92,4 +93,32 @@ test("only the universal APK is picked, with its checksum file", () => {
   assert.equal(pickTermuxApk([{ name: "termux-app_v1_universal.apk", browser_download_url: "https://evil.example/u.apk" }]), null);
   assert.equal(pickTermuxApk([]), null);
   assert.equal(pickTermuxApk(undefined), null);
+});
+
+test("a remembered login is only offerable once both halves are in", () => {
+  const full = { url: "https://10.0.0.5:8799", serverName: "brave-otter", serverPassword: "7f3k", username: "kacper", password: "correct horse battery" };
+  // Nazwa serwera i profilu wychodzą na przycisk. Hasła NIE wychodzą nigdzie.
+  assert.deepEqual(rememberedEntryOf(full), { url: full.url, serverName: "brave-otter", username: "kacper" });
+  // Sama połowa serwerowa: przycisk prowadziłby prosto z powrotem do formularza.
+  assert.equal(rememberedEntryOf({ url: full.url, serverName: "brave-otter", serverPassword: "7f3k" }), null);
+  assert.equal(rememberedEntryOf({ ...full, password: "" }), null);
+  assert.equal(rememberedEntryOf(null), null);
+});
+
+test("a native login answer is read down to one code the screen can show", () => {
+  assert.deepEqual(parseLoginResponse(200, { accessToken: "a1", sessionToken: "s1" }), { ok: true, accessToken: "a1", sessionToken: "s1" });
+  // Serwer bez tokenu sesji nie unieważnia logowania — WebView po prostu
+  // straci je przy pierwszym odnowieniu, a to jest widać w interfejsie.
+  assert.deepEqual(parseLoginResponse(200, { accessToken: "a1" }), { ok: true, accessToken: "a1", sessionToken: "" });
+  assert.deepEqual(parseLoginResponse(401, { error: "wrong_profile_password" }), { ok: false, error: "wrong_profile_password" });
+  assert.deepEqual(parseLoginResponse(404, { error: "no_such_profile" }), { ok: false, error: "no_such_profile" });
+  assert.deepEqual(parseLoginResponse(429, {}), { ok: false, error: "rate_limited" });
+  // Tekstu z sieci nie wpuszczamy do formularza.
+  assert.deepEqual(parseLoginResponse(401, { error: "Zadzwon pod 0700-oszust" }), { ok: false, error: "failed" });
+  assert.deepEqual(parseLoginResponse(200, { accessToken: "" }), { ok: false, error: "failed" });
+});
+
+test("the shell hands a signed-in page both tokens, and escapes them", () => {
+  assert.equal(sessionFragment("a 1", "s&1"), "#access_token=a%201&session=s%261");
+  assert.equal(sessionFragment("a1", ""), "#access_token=a1");
 });

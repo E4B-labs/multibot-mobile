@@ -6,9 +6,9 @@ import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
-import { getHostToken } from "../lib/hosts";
-import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
+import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, rememberedEntryOf, type AppInfo, type Host } from "../lib/host-logic";
+import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
+import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
 import { forgetServer, prepareTor } from "../lib/tls";
 import { setWebViewProxyFor } from "../lib/tor";
@@ -24,7 +24,11 @@ interface Props {
   onBotVisible?: (botId: string | null) => void;
   /** Sign-in started from inside the web UI: the shell resolves the address and
    * swaps hosts, because the page cannot reach another origin itself. */
-  onJoinHost?: (url: string, serverName: string, serverPassword: string) => Promise<{ ok: boolean; error?: JoinErrorCode }>;
+  onJoinHost?: (url: string, serverName: string, serverPassword: string, remember?: boolean) => Promise<{ ok: boolean; error?: JoinErrorCode }>;
+  /** One-tap sign-in from inside the web UI, after a sign-out: the shell holds
+   * the five remembered values, joins AND logs the profile in natively, then
+   * remounts this screen with a ready session in the fragment. */
+  onSignInRemembered?: () => Promise<{ ok: boolean; error?: JoinErrorCode | LoginErrorCode }>;
 }
 
 // W Android WebView `env(safe-area-inset-top)` nie obejmuje paska stanu (tylko
@@ -60,6 +64,13 @@ const ONION_PROBE_TIMEOUT_MS = 45_000;
 // gate a page inside it could open the camera or pull the clipboard.
 const PRIVILEGED = new Set([
   "host.join",
+  // Zapamiętane logowanie: „daj wpis" i „zaloguj" sięgają do SecureStore,
+  // „zapamiętaj profil" wkłada tam hasło. Wszystkie trzy za bramką nonce'a —
+  // bez niej ramka noVNC mogłaby o nie poprosić.
+  "remember.get",
+  "remember.signin",
+  "remember.profile",
+  "remember.forget",
   "tls.forget",
   "push.request",
   "app.update.check",
@@ -107,7 +118,7 @@ async function probeHost(url: string, timeoutMs: number): Promise<string | null>
   }
 }
 
-export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost }: Props) {
+export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost, onSignInRemembered }: Props) {
   const webRef = useRef<WebView>(null);
   const updateLogControllers = useRef(new Map<string, AbortController>());
   useEffect(() => () => {
@@ -174,10 +185,25 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         setFailed(problem);
         return;
       }
-      // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
-      // updatera.currentVersion() na desktopie).
-      const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
-      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
+      // multibot: co to za INSTALACJA — odpowiednik bridge'a
+      // updatera.currentVersion() na desktopie. Wersja serwera to zupełnie
+      // inna liczba (inny program, inna maszyna) i webui pokazuje ją osobno;
+      // tutaj idzie wyłącznie APK + paczka OTA, która na nim stoi.
+      const app: AppInfo = {
+        version: Application.nativeApplicationVersion ?? "",
+        build: Application.nativeBuildVersion ?? "",
+        ...(Updates.runtimeVersion ? { runtimeVersion: Updates.runtimeVersion } : {}),
+        ...(Updates.updateId ? { updateId: Updates.updateId } : {}),
+        // `toISOString()` rzuca RangeError na Invalid Date, a rzut z tego
+        // miejsca leci w `catch` efektu i podmienia CAŁY ekran na „nie mogę
+        // odczytać tokenu". Data z popsutego manifestu ma kosztować jedną
+        // linijkę w panelu, nie aplikację.
+        ...(Number.isFinite(Updates.createdAt?.getTime())
+          ? { updateCreatedAt: Updates.createdAt!.toISOString() }
+          : {}),
+        ...(Updates.channel ? { channel: Updates.channel } : {}),
+      };
+      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, app }));
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
@@ -293,7 +319,34 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     });
   }
 
-  async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown }) {
+  // Zapamiętane logowanie. Strona dostaje z niego WYŁĄCZNIE adres, nazwę
+  // serwera i nazwę profilu — dokładnie tyle, ile trzeba na przycisk. Żadne
+  // hasło nie przechodzi przez most w tę stronę.
+  async function handleRememberGet() {
+    const record = await readRemembered().catch(() => null);
+    sendToPage({ type: "remember.entry", entry: rememberedEntryOf(record) });
+  }
+
+  async function handleRememberSignIn() {
+    let result: { ok: boolean; error?: JoinErrorCode | LoginErrorCode };
+    try {
+      result = onSignInRemembered ? await onSignInRemembered() : { ok: false, error: "failed" };
+    } catch {
+      result = { ok: false, error: "failed" };
+    }
+    // Sukces przeładowuje WebView z nową sesją, więc nie ma już komu odpowiadać.
+    if (result.ok) return;
+    const code = result.error ?? "failed";
+    const login = code === "no_such_profile" || code === "wrong_profile_password" || code === "join_grant_invalid";
+    sendToPage({
+      type: "remember.signin.result",
+      ok: false,
+      error: code,
+      message: login ? loginErrorMessage(code as LoginErrorCode) : joinErrorMessage(code as JoinErrorCode),
+    });
+  }
+
+  async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown; remember?: unknown }) {
     if (typeof msg.url !== "string" || typeof msg.serverName !== "string" || typeof msg.serverPassword !== "string") {
       sendToPage({ type: "host.join.result", ok: false, error: "invalid_address" });
       return;
@@ -304,7 +357,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     }
     let result: { ok: boolean; error?: JoinErrorCode };
     try {
-      result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword);
+      result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword, msg.remember === true);
     } catch {
       // A page left waiting on a reply that never comes looks like a hang. Any
       // throw becomes an answer.
@@ -537,6 +590,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
             if (msg?.type === "host.join") void handleJoinHost(msg);
+            if (msg?.type === "remember.get") void handleRememberGet();
+            if (msg?.type === "remember.signin") void handleRememberSignIn();
+            // Druga połowa wpisu, po udanym logowaniu profilu. Bez czekającej
+            // połowy serwerowej to nic nie robi — haczyk był odznaczony.
+            if (msg?.type === "remember.profile" && typeof msg.username === "string" && typeof msg.password === "string") {
+              void rememberProfile(msg.username, msg.password).catch(() => undefined);
+            }
+            if (msg?.type === "remember.forget") void forgetRemembered().catch(() => undefined);
             if (msg?.type === "push.request") void handlePushRequest();
             if (
               msg?.type === "update-log.request" &&

@@ -17,6 +17,7 @@ import { SkinPicker } from "./SkinPicker";
 import { BotSettingsCard } from "./BotSettingsCard";
 import { applyMotionMode, readMotionMode, type MotionMode } from "@/lib/motion";
 import { fetchUpdateLog, pageNumbers, type UpdateLogPage } from "@/lib/updateLog";
+import type { AppInfo } from "@/lib/shell";
 import { readDesktopNotifications, requestBrowserNotifications, setDesktopNotifications } from "@/lib/notifications";
 
 const slug = (value: string) =>
@@ -622,7 +623,15 @@ function UpdatesRow() {
   const s = useUpdaterState();
   const polish = useLanguage() === "pl";
   const updater = getUpdater();
-  const currentVersion = (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__;
+  // Co to za INSTALACJA, a nie co to za serwer. Powłoka mobilna wstrzykuje to
+  // w `buildBootstrap` (src/lib/host-logic.ts); w Electronie i w przeglądarce
+  // pola nie ma i całe „Aplikacja"/„OTA" po prostu nie wchodzi.
+  const app = (window as unknown as { __MULTIBOT_APP__?: AppInfo }).__MULTIBOT_APP__;
+  const otaLine = app
+    ? app.updateId
+      ? `${app.updateId.slice(0, 8)}${app.updateCreatedAt ? ` · ${app.updateCreatedAt.slice(0, 10)}` : ""}${app.channel ? ` · ${app.channel}` : ""}`
+      : polish ? "paczka wbudowana w APK" : "bundle shipped in the APK"
+    : null;
   const label =
     s?.status === "checking"
       ? polish ? "Sprawdzanie…" : "Checking…"
@@ -638,9 +647,20 @@ function UpdatesRow() {
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
       <div className="text-[15px] font-medium text-ink">{polish ? "Aktualizacje aplikacji" : "App updates"}</div>
-      <div className="mt-0.5 text-[13px] text-ink-secondary">
-        {polish ? "Bieżąca wersja" : "Current version"}: <span className="font-medium text-ink">{currentVersion ?? "…"}</span>
-      </div>
+      {app && (
+        <>
+          <div className="mt-0.5 text-[13px] text-ink-secondary">
+            {polish ? "Aplikacja" : "App"}:{" "}
+            <span className="font-medium text-ink">
+              {app.version || "?"}{app.build ? ` (build ${app.build})` : ""}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[13px] text-ink-secondary">
+            {polish ? "Aktualizacja OTA" : "OTA update"}: <span className="font-medium text-ink">{otaLine}</span>
+            {app.runtimeVersion ? ` · runtime ${app.runtimeVersion}` : ""}
+          </div>
+        </>
+      )}
       {updater && (
         <>
           <div className="mt-0.5 text-[13px] text-ink-secondary">{label}</div>

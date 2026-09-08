@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
 import { MausAvatar } from "./Avatar";
-import { MAUS_COLORS, MAUS_COLOR_NAMES, stateForBot } from "@/lib/mascot";
+import { MAUS_COLORS, MAUS_COLOR_NAMES, pickerAvatarState } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
@@ -152,7 +152,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "avatarUrl">
     >,
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
-  const activeState = stateForBot(bot);
+  const activeState = pickerAvatarState(bot);
   // Na mobile panel idzie do document.body (createPortal), by na pewno był
   // warstwą najwyższą nad drawerem (z-[60]) — niezależnie od kontekstu
   // nakładania wewnątrz .multibot-shell. Na desktopie render w miejscu
