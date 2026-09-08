@@ -39,6 +39,11 @@ import { peerActivityGroupFor } from "@/lib/peerActivity";
 const USER_COLLAPSE_CHARS = 600;
 const USER_COLLAPSE_LINES = 8;
 
+/** Keep the composer text scoped to its bot instead of the active chat view. */
+export function setBotDraft(drafts: Record<string, string>, botId: string, text: string): Record<string, string> {
+  return { ...drafts, [botId]: text };
+}
+
 function MessageAttachment({ botId, file }: { botId: string; file: NonNullable<Message["attachments"]>[number] }) {
   const [url, setUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -432,6 +437,10 @@ export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const updateDraft = useCallback((botId: string, text: string) => {
+    setDrafts((current) => setBotDraft(current, botId, text));
+  }, []);
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
@@ -767,7 +776,13 @@ export function ChatView({ bot }: { bot: Bot }) {
         </div>
       )}
 
-      <Composer bot={bot} replyToId={replyTo?.id} onClearReply={() => setReplyTo(null)} />
+      <Composer
+        bot={bot}
+        draft={drafts[bot.id] ?? ""}
+        onDraftChange={(text) => updateDraft(bot.id, text)}
+        replyToId={replyTo?.id}
+        onClearReply={() => setReplyTo(null)}
+      />
 
     </main>
   );

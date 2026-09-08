@@ -208,3 +208,13 @@ describe("composer na telefonie", () => {
     expect(phone).toContain("[data-composer-row] > div > button > span { display: none; }");
   });
 });
+
+describe("sterowany draft composera", () => {
+  it("deleguje zmianę i wyczyszczenie wysłanej wiadomości do właściciela draftu", () => {
+    expect(composer).toContain("draft?: string;");
+    expect(composer).toContain("onDraftChange?: (text: string) => void;");
+    expect(composer).toContain("const text = draft ?? localText;");
+    expect(composer).toContain("if (draft !== undefined) onDraftChange?.(next);");
+    expect(composer).toContain('setText("");');
+  });
+});

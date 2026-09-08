@@ -301,16 +301,28 @@ export function Composer({
   replyToId,
   onClearReply,
   onSend,
+  draft,
+  onDraftChange,
 }: {
   bot: Bot;
   /** multibot: flat reply — id wiadomości z paska cytatu nad inputem */
   replyToId?: string;
   onClearReply?: () => void;
   onSend?: (text: string) => boolean;
+  /** Controlled draft used by the one-to-one chat view. */
+  draft?: string;
+  onDraftChange?: (text: string) => void;
 }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
-  const [text, setText] = useState("");
+  // Group chat still uses the local draft. ChatView supplies a draft per bot,
+  // so changing the selected bot never reuses the previous bot's text.
+  const [localText, setLocalText] = useState("");
+  const text = draft ?? localText;
+  const setText = useCallback((next: string) => {
+    if (draft !== undefined) onDraftChange?.(next);
+    else setLocalText(next);
+  }, [draft, onDraftChange]);
   const [recording, setRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);

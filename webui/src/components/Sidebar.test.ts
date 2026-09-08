@@ -41,6 +41,16 @@ describe("plugins menu icon", () => {
   });
 });
 
+describe("user menu icon alignment", () => {
+  it("uses the same 28px icon slot for Plugins and Settings", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    const slots = sidebar.match(/className="inline-flex size-7 shrink-0 items-center justify-center/g);
+
+    expect(slots).toHaveLength(2);
+    expect(sidebar).toContain('<Settings size={15} />');
+  });
+});
+
 describe("sidebar avatar", () => {
   const bot = (over: Partial<Bot>): Bot =>
     ({ id: "b1", name: "Bot", color: "#fff", messages: [], ...over }) as Bot;
