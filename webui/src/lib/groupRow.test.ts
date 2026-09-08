@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupAvatarSplit, groupRowTitle } from "./groupRow";
+import { groupAvatarStack, groupRowTitle } from "./groupRow";
 
 describe("groupRowTitle", () => {
   it("joins member names with a comma", () => {
@@ -10,22 +10,18 @@ describe("groupRowTitle", () => {
   });
 });
 
-describe("groupAvatarSplit", () => {
-  it("shows at most two avatars and counts the rest", () => {
-    expect(groupAvatarSplit(["a", "b", "c", "d"])).toEqual({ shown: ["a", "b"], overflow: 2 });
+describe("groupAvatarStack", () => {
+  it("stacks both members when the group has exactly two", () => {
+    expect(groupAvatarStack(["a", "b"])).toEqual({ shown: ["a", "b"], plus: 0 });
   });
-  it("has no overflow at or below the limit", () => {
-    expect(groupAvatarSplit(["a", "b"])).toEqual({ shown: ["a", "b"], overflow: 0 });
-    expect(groupAvatarSplit(["a"])).toEqual({ shown: ["a"], overflow: 0 });
-  });
-  it("respects a custom limit", () => {
-    expect(groupAvatarSplit(["a", "b", "c"], 1)).toEqual({ shown: ["a"], overflow: 2 });
+  it("keeps one avatar and counts the rest behind a +N badge", () => {
+    expect(groupAvatarStack(["a", "b", "c", "d"])).toEqual({ shown: ["a"], plus: 3 });
   });
   it("counts bots this app does not know via the total", () => {
     // Grupa ma pięciu członków w `bot_ids`, ale tylko trzech jest znanych.
-    expect(groupAvatarSplit(["a", "b", "c"], 2, 5)).toEqual({ shown: ["a", "b"], overflow: 3 });
+    expect(groupAvatarStack(["a", "b", "c"], 5)).toEqual({ shown: ["a"], plus: 4 });
   });
-  it("never goes negative when the total is smaller than what is shown", () => {
-    expect(groupAvatarSplit(["a", "b"], 2, 1)).toEqual({ shown: ["a", "b"], overflow: 0 });
+  it("shows a single avatar for a one-member group", () => {
+    expect(groupAvatarStack(["a"])).toEqual({ shown: ["a"], plus: 0 });
   });
 });
