@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useCallback, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, Bell, CalendarClock, Crosshair, FileIcon, Loader2, Square, Upload, Wand2 } from "lucide-react";
+import { ArrowDown, Bell, CalendarClock, Crosshair, FileIcon, Loader2, Upload, Wand2 } from "lucide-react";
 import { DrawerToggle } from "./DrawerToggle";
 // multibot: wspólna pigułka zdarzenia i wspólna karta pliku
 import { EventChip } from "./EventChip";
@@ -603,16 +603,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             ma tylko tyle miejsca, ile zostanie po prawej grupie. Odstęp
             odrabiamy powiększonym paddingiem samych przycisków. */}
         <div className="flex shrink-0 items-center gap-1">
-          {bot.busy && (
-            <button
-              onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
-              className="flex items-center gap-1.5 rounded-full border border-hairline/40 bg-raised/60 px-2.5 py-1 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
-              title={polish ? "Zatrzymaj turę" : "Stop this turn"}
-            >
-              <Square size={12} className="fill-current" />
-              {polish ? "Zatrzymaj" : "Stop"}
-            </button>
-          )}
+          {/* hidden per Kacper 07.09.2026, panels kept */}
           <ModelPicker bot={bot} />
           {/* Cztery ikony akcji nie mieszczą się obok nazwy i pigułki modelu na
               ekranie telefonu — chowają się pod jednym przyciskiem. */}
