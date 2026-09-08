@@ -209,3 +209,14 @@ export function buildBootstrap(opts: {
          try { window.__MULTIBOT_APP__ = ${JSON.stringify(opts.app)}; } catch (e) {}
          true;`;
 }
+
+/** The three values of a remembered login the web UI is allowed to learn.
+ * `null` until the profile half landed: offering a one-tap that cannot log in
+ * is worse than not offering one. Pure, so the rule is testable without
+ * SecureStore — the store itself lives in hosts.ts. */
+export function rememberedEntryOf(
+  record: { url?: string; serverName?: string; serverPassword?: string; username?: string; password?: string } | null,
+): { url: string; serverName: string; username: string } | null {
+  if (!record?.url || !record.username || !record.password) return null;
+  return { url: record.url, serverName: record.serverName ?? "", username: record.username };
+}

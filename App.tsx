@@ -5,9 +5,9 @@ import * as Notifications from "expo-notifications";
 
 import type { Host } from "./src/lib/host-logic";
 import { newHostId, normalizeHostUrl } from "./src/lib/host-logic";
-import { deleteHost, listHosts, saveHost } from "./src/lib/hosts";
-import type { JoinErrorCode } from "./src/lib/join";
-import { joinHost } from "./src/lib/tls";
+import { deleteHost, listHosts, readRemembered, rememberServer, saveHost } from "./src/lib/hosts";
+import type { JoinErrorCode, LoginErrorCode } from "./src/lib/join";
+import { joinHost, signInRemembered } from "./src/lib/tls";
 import { installLatestRelease } from "./src/lib/mobile-release";
 import { configurePushNotifications, extractBotTarget, setVisibleBot } from "./src/lib/push";
 import AddHostScreen from "./src/screens/AddHostScreen";
@@ -62,9 +62,13 @@ export default function App() {
   // the address, pins the certificate, trades the credentials for a join grant,
   // and only then swaps hosts and reloads the UI from the new origin.
   const joinFromWebUi = useCallback(
-    async (rawUrl: string, serverName: string, serverPassword: string): Promise<{ ok: boolean; error?: JoinErrorCode }> => {
+    async (rawUrl: string, serverName: string, serverPassword: string, remember?: boolean): Promise<{ ok: boolean; error?: JoinErrorCode }> => {
       const result = await joinHost(rawUrl, serverName, serverPassword);
       if (!result.ok || !result.url) return { ok: false, error: result.error ?? "failed" };
+      // „Zapamiętaj mnie": połowa serwerowa. Drugą dokłada strona mostem
+      // (`remember.profile`), gdy logowanie profilu się uda. Odznaczony haczyk
+      // kasuje poprzedni wpis — nie zostawiamy cudzych haseł w SecureStore.
+      await rememberServer(remember ? { url: result.url, serverName: serverName.trim(), serverPassword } : null).catch(() => undefined);
       const previous = hostsRef.current;
       const host: Host = {
         id: newHostId(),
@@ -84,6 +88,35 @@ export default function App() {
     },
     [],
   );
+
+  /** Jedno stuknięcie z ekranu logowania w interfejsie — po wylogowaniu host
+   * zostaje zapisany, więc użytkownik nie wraca na natywny ekran dodawania.
+   * Powłoka robi join I logowanie profilu, a WebView wstaje z gotową sesją. */
+  const signInRememberedFromWebUi = useCallback(async (): Promise<{ ok: boolean; error?: JoinErrorCode | LoginErrorCode }> => {
+    const record = await readRemembered().catch(() => null);
+    if (!record?.username || !record.password) return { ok: false, error: "failed" };
+    const result = await signInRemembered({
+      url: record.url,
+      serverName: record.serverName,
+      serverPassword: record.serverPassword,
+      username: record.username,
+      password: record.password,
+    });
+    if (!result.ok || !result.url) return { ok: false, error: result.error ?? "failed" };
+    const previous = hostsRef.current;
+    const host: Host = {
+      id: newHostId(),
+      name: record.serverName || result.url,
+      url: result.url,
+      createdAt: Date.now(),
+      lastUsedAt: Date.now(),
+    };
+    await saveHost(host);
+    await Promise.all(previous.map((h) => deleteHost(h.id)));
+    setHosts([host]);
+    setRoute({ name: "webview", host, fragment: result.fragment });
+    return { ok: true };
+  }, []);
 
   useEffect(refresh, [refresh]);
 
@@ -281,6 +314,7 @@ export default function App() {
             onBack={() => changeHost(route.host.id)}
             onBotVisible={setVisibleBot}
             onJoinHost={joinFromWebUi}
+            onSignInRemembered={signInRememberedFromWebUi}
           />
         )}
       </SafeAreaView>
