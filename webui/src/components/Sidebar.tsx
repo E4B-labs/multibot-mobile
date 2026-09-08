@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
+import { Skeleton } from "./Loading";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
 import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
@@ -1255,11 +1256,14 @@ export function Sidebar() {
             do krawędzi ekranu), wcięcie zostaje po prawej, gdzie stoi godzina. */}
         <div className="flex-1 overflow-y-auto pr-2">
           <div className="flex flex-col gap-0.5">
+            {!state.hydrated && state.bots.length === 0 &&
+              [0, 1, 2, 3, 4].map((i) => <Skeleton key={`bot-skeleton-${i}`} className="h-9 w-full" />)}
             {unsectionedBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={openBotMenu} />
             ))}
             {/* Grupa jest zwykłym wierszem listy, nie osobną zwijaną sekcją:
                 stoi tam, gdzie wskazuje jej `section`, dokładnie jak bot. */}
+            {groups === null && state.hydrated && <Skeleton className="h-9 w-full" />}
             {rows.unsectioned.groups.map((g) => (
               <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
             ))}

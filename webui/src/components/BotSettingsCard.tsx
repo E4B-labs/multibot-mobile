@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { AUTO_TIMEZONE } from "@/lib/timezone";
 import { TimeZonePicker } from "./TimeZonePicker";
 import { DEFAULT_AUTO_VERIFY, type AutoVerifyDecision, type AutoVerifyRule, type AutoVerifySettings } from "@/lib/autoVerifyTypes";
+import { Skeleton, Spinner } from "./Loading";
 
 function DecisionSelect({ value, onChange, polish }: { value: AutoVerifyDecision; onChange: (value: AutoVerifyDecision) => void; polish: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -37,12 +38,18 @@ export function BotSettingsCard({ polish }: { polish: boolean }) {
   const autoVerify = state.config?.autoVerify ?? DEFAULT_AUTO_VERIFY;
   const [draft, setDraft] = useState("");
   const [draftDecision, setDraftDecision] = useState<AutoVerifyDecision>("ask");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   const save = (patch: { timeZone?: string; autoVerify?: AutoVerifySettings }) => {
+    setSaveState("saving");
     void authFetch("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) })
       .then((response) => response.json())
-      .then((config) => dispatch({ type: "configStatus", config }))
-      .catch(() => {});
+      .then((config) => {
+        dispatch({ type: "configStatus", config });
+        setSaveState("saved");
+        window.setTimeout(() => setSaveState("idle"), 1500);
+      })
+      .catch(() => setSaveState("idle"));
   };
   const setRules = (rules: AutoVerifyRule[]) => save({ autoVerify: { ...autoVerify, rules } });
   const addRule = () => {
@@ -56,7 +63,11 @@ export function BotSettingsCard({ polish }: { polish: boolean }) {
 
   return (
     <div className="mt-4 rounded-xl bg-card p-4">
-      <div className="text-[15px] font-medium text-ink">Bot</div>
+      <div className="flex items-center gap-2">
+        <div className="text-[15px] font-medium text-ink">Bot</div>
+        {saveState === "saving" && <Spinner size={13} className="text-ink-secondary" />}
+        {saveState === "saved" && <Check size={14} className="text-ink-secondary" />}
+      </div>
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-[15px] font-medium text-ink">{polish ? "Strefa czasowa" : "Time zone"}</div>
         <TimeZonePicker value={timeZone} onChange={(zone) => save({ timeZone: zone })} polish={polish} />
@@ -87,6 +98,12 @@ export function BotSettingsCard({ polish }: { polish: boolean }) {
       <div className="mt-4 border-t border-hairline/40 pt-4">
         <div className="text-[15px] font-medium text-ink">{polish ? "Reguły Autoweryfikacji" : "Auto-verification rules"}</div>
         <div className="mt-0.5 text-[13px] text-ink-secondary">{polish ? "Dodaj reguły, aby określić, kiedy MultiBot może działać bez pytania." : "Add rules to decide when MultiBot may act without asking."}</div>
+        {!state.config && (
+          <div className="mt-3 flex flex-col gap-2">
+            <Skeleton className="h-[46px]" />
+            <Skeleton className="h-[46px]" />
+          </div>
+        )}
         {autoVerify.rules.length > 0 && <div className="mt-3 flex flex-col gap-2">{autoVerify.rules.map((rule) => <div key={rule.id} className="flex items-center justify-between gap-3 rounded-lg bg-inset px-3 py-2"><div className="min-w-0"><div className="truncate text-[13px] font-medium text-ink">{rule.when}</div><div className="truncate text-[11px] text-ink-secondary">{rule.decision === "allow" ? polish ? "Zezwalaj automatycznie" : "Allow automatically" : polish ? "Najpierw pytaj" : "Ask first"}</div></div><button type="button" onClick={() => setRules(autoVerify.rules.filter((item) => item.id !== rule.id))} aria-label={polish ? "Usuń regułę" : "Remove rule"} className="shrink-0 rounded-md p-1.5 text-ink-secondary hover:bg-raised hover:text-danger"><Trash2 size={14} /></button></div>)}</div>}
         <div className="mt-3 text-[13px] text-ink-secondary">{polish ? "Gdy MultiBot chce:" : "When MultiBot wants to:"}</div>
         <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRule(); } }} placeholder={polish ? "np. odpowiadaj za mnie na e-maile" : "e.g. reply to emails for me"} className={cn(inputClass, "mt-1.5")} />

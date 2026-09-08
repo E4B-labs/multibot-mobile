@@ -13,6 +13,7 @@ import { useLanguage } from "@/lib/language";
 import { botDisplayName, botDisplayTitle } from "@/lib/botNames";
 import { AvatarCropper } from "./AvatarCropper";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
+import { Spinner } from "./Loading";
 
 function Field({
   label,
@@ -40,6 +41,7 @@ function BotSharing({ bot }: { bot: Bot }) {
   const [members, setMembers] = useState<Array<{ uid: string; name?: string; email?: string; role: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -51,7 +53,8 @@ function BotSharing({ bot }: { bot: Bot }) {
       if (sharing.visibility === "public" || sharing.visibility === "team" || sharing.visibility === "private") setVisibility(sharing.visibility);
       if (Array.isArray(sharing.allowedUserIds)) setAllowedUserIds(sharing.allowedUserIds.map(String));
       if (Array.isArray(roster.members)) setMembers(roster.members);
-    }).catch((reason) => alive && setError(reason instanceof Error ? reason.message : String(reason)));
+    }).catch((reason) => alive && setError(reason instanceof Error ? reason.message : String(reason)))
+      .finally(() => { if (alive) setLoading(false); });
     return () => {
       alive = false;
     };
@@ -83,21 +86,24 @@ function BotSharing({ bot }: { bot: Bot }) {
       <div className="mt-0.5 text-[13px] text-ink-secondary">
         {polish ? "Publiczny dla serwera, zespołowy albo prywatny dla wybranych kont." : "Public to the server, team-only, or private for selected accounts."}
       </div>
+      <div className="mt-3 flex items-center gap-2">
       <select
         value={visibility}
-        disabled={busy}
+        disabled={busy || loading}
         onChange={(event) => {
           const value = event.target.value as typeof visibility;
           setVisibility(value);
           void save(value, allowedUserIds);
         }}
-        className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink"
+        className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2 text-[13px] text-ink disabled:opacity-50"
       >
         <option value="public">{polish ? "Publiczny" : "Public"}</option>
         <option value="team">{polish ? "Zespół" : "Team"}</option>
         <option value="private">{polish ? "Prywatny" : "Private"}</option>
       </select>
-      {visibility === "private" && (
+      {(loading || busy) && <Spinner className="shrink-0 text-ink-secondary" />}
+      </div>
+      {!loading && visibility === "private" && (
         <div className="mt-3 space-y-2">
           {members.length ? members.map((member) => {
             const checked = allowedUserIds.includes(member.uid);
@@ -283,6 +289,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                     disabled={avatarBusy}
                     className="rounded-md px-2 py-1.5 text-[13px] text-danger"
                   >
+                    {avatarBusy && <Spinner size={12} />}
                     {polish ? "Usuń" : "Remove"}
                   </button>
                 ) : null}
@@ -295,21 +302,28 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                       <button onClick={() => fileInputRef.current?.click()} disabled={avatarBusy} className="rounded-lg bg-accent px-4 py-2.5 text-[14px] font-medium text-white">{bot.avatarUrl ? (polish ? "Zmień zdjęcie" : "Change photo") : (polish ? "Wybierz zdjęcie" : "Choose photo")}</button>
                     </div>
                   ) : (
-                    <AvatarCropper
-                      file={pendingFile}
-                      onSave={async (dataUrl) => {
-                        setAvatarBusy(true);
-                        try {
-                          const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: dataUrl }) });
-                          const body = await r.json().catch(() => ({}));
-                          if (!r.ok) throw new Error(body.error ?? "upload failed");
-                          dispatch({ type: "botPatched", bot: body.bot });
-                          setPendingFile(null);
-                          setAppearanceMode("closed");
-                        } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
-                      }}
-                      onCancel={() => setPendingFile(null)}
-                    />
+                    <>
+                      <AvatarCropper
+                        file={pendingFile}
+                        onSave={async (dataUrl) => {
+                          setAvatarBusy(true);
+                          try {
+                            const r = await authFetch(`/api/bots/${bot.id}/avatar`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: dataUrl }) });
+                            const body = await r.json().catch(() => ({}));
+                            if (!r.ok) throw new Error(body.error ?? "upload failed");
+                            dispatch({ type: "botPatched", bot: body.bot });
+                            setPendingFile(null);
+                            setAppearanceMode("closed");
+                          } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setAvatarBusy(false); }
+                        }}
+                        onCancel={() => setPendingFile(null)}
+                      />
+                      {avatarBusy && (
+                        <div className="mt-2 flex items-center justify-center gap-2 text-[12px] text-ink-secondary">
+                          <Spinner size={12} /> {polish ? "Zapisywanie…" : "Saving…"}
+                        </div>
+                      )}
+                    </>
                   )}
               </div>
             </div>
