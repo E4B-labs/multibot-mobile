@@ -61,7 +61,12 @@ export { sidebarAvatarProps };
 
 /** Group rows use the same static face vocabulary as the appearance picker. */
 export function groupMemberAvatarProps(bot: Bot) {
-  return { ...sidebarAvatarProps(bot), state: GROUP_AVATAR_STATE };
+  return {
+    ...sidebarAvatarProps(bot),
+    state: GROUP_AVATAR_STATE,
+    shape: "blob" as const,
+    avatarUrl: null,
+  };
 }
 
 function preview(bot: Bot): string {
@@ -741,8 +746,7 @@ function GroupRow({
           {shown.map((b, i) => (
             <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-3")}>
               <MausAvatar
-                color={b.color} avatarUrl={b.avatarUrl}
-                shape={b.mascotShape}
+                color={b.color}
                 size={40}
                 {...groupMemberAvatarProps(b)}
               />
