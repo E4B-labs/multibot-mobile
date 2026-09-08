@@ -66,6 +66,7 @@ const PRIVILEGED = new Set([
   "app.update.download",
   "app.update.install",
   "update-log.request",
+  "update-log.cancel",
   "native.camera.request",
   "native.clipboard.image",
   "native.back.result",
@@ -89,6 +90,8 @@ type UpdateLogRequest = {
   page: number;
 };
 
+const UPDATE_LOG_REPOSITORY = "E4B-labs/multibot-mobile";
+
 async function probeHost(url: string, timeoutMs: number): Promise<string | null> {
   // Certificate is already pinned by the time a host is saved, so a failure here
   // is the network or the server, never trust.
@@ -106,6 +109,11 @@ async function probeHost(url: string, timeoutMs: number): Promise<string | null>
 
 export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost }: Props) {
   const webRef = useRef<WebView>(null);
+  const updateLogControllers = useRef(new Map<string, AbortController>());
+  useEffect(() => () => {
+    for (const controller of updateLogControllers.current.values()) controller.abort();
+    updateLogControllers.current.clear();
+  }, []);
   // Skrypt wstrzykiwany przed kodem strony. `null` znaczy „jeszcze nie znam
   // tokenu" — bez niego interfejs wystartowałby wylogowany.
   const [bootstrap, setBootstrap] = useState<string | null>(null);
@@ -352,14 +360,16 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   };
 
   async function handleUpdateLogRequest(request: UpdateLogRequest) {
-    if (!/^[-a-zA-Z0-9._]+\/[-a-zA-Z0-9._]+$/.test(request.repository)) {
+    if (request.repository !== UPDATE_LOG_REPOSITORY) {
       sendUpdateLogResult({ requestId: request.requestId, ok: false, status: 400 });
       return;
     }
     const page = Number.isInteger(request.page) && request.page > 0 ? request.page : 1;
     const url = `https://api.github.com/repos/${request.repository}/commits?sha=main&per_page=10&page=${page}`;
+    const controller = new AbortController();
+    updateLogControllers.current.set(request.requestId, controller);
     try {
-      const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+      const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" }, signal: controller.signal });
       const body = await response.json().catch(() => null);
       sendUpdateLogResult({
         requestId: request.requestId,
@@ -368,9 +378,17 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         body,
         link: response.headers.get("link"),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
       sendUpdateLogResult({ requestId: request.requestId, ok: false, status: 0 });
+    } finally {
+      updateLogControllers.current.delete(request.requestId);
     }
+  }
+
+  function handleUpdateLogCancel(requestId: string) {
+    updateLogControllers.current.get(requestId)?.abort();
+    updateLogControllers.current.delete(requestId);
   }
 
   async function handleAppUpdate(action: "check" | "download" | "install") {
@@ -527,6 +545,9 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               Number.isInteger(msg.page)
             ) {
               void handleUpdateLogRequest(msg as UpdateLogRequest);
+            }
+            if (msg?.type === "update-log.cancel" && typeof msg.requestId === "string") {
+              handleUpdateLogCancel(msg.requestId);
             }
             // "Trust new certificate" from inside the web UI. The URL is not
             // taken from the message: only the host on screen can be forgotten.

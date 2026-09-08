@@ -90,6 +90,7 @@ async function fetchUpdateLogViaNative(
   signal?: AbortSignal,
 ): Promise<UpdateLogPage | null> {
   if (!isReactNativeShell()) return null;
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
 
   return new Promise<UpdateLogPage | null>((resolve, reject) => {
     const requestId = `update-log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -112,7 +113,10 @@ async function fetchUpdateLogViaNative(
       finish(() => resolve(parseUpdateLogPage(detail.body, page, detail.link ?? null)));
     };
     const onAbort = () => finish(() => reject(new DOMException("The operation was aborted.", "AbortError")));
-    const timeout = setTimeout(() => finish(() => resolve(null)), NATIVE_UPDATE_LOG_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+      shellPost({ type: "update-log.cancel", requestId });
+      finish(() => resolve(null));
+    }, NATIVE_UPDATE_LOG_TIMEOUT_MS);
 
     window.addEventListener(NATIVE_UPDATE_LOG_EVENT, onResult);
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -125,6 +129,7 @@ async function fetchUpdateLogViaNative(
 export async function fetchUpdateLog(repository: string, page: number, signal?: AbortSignal): Promise<UpdateLogPage> {
   const nativeResult = await fetchUpdateLogViaNative(repository, page, signal);
   if (nativeResult) return nativeResult;
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
 
   const response = await fetch(commitsUrl(repository, page), {
     headers: { Accept: "application/vnd.github+json" },
