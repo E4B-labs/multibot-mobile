@@ -1,7 +1,12 @@
 // Connected apps marketplace, backed by Composio Connect. Catalog comes
 // from /api/connectors/catalog — the full toolkit list with logos when a
-// Composio API key is configured, a curated set otherwise. Icons resolve
-// logo → favicon → monogram.
+// Composio API key is configured, a curated set otherwise.
+//
+// Ikony: najpierw znak z bundla (`@/lib/appIcons` po slugu), potem logo
+// z katalogu Composio, na końcu monogram. Monogram NIE jest gałęzią else,
+// tylko podkładem pod <img> — na telefonie interfejs jedzie z paczki
+// aplikacji i żądanie na obcy host potrafi wisieć bez `onError`, a wtedy
+// karta zostawała pusta zamiast pokazać literę.
 // multibot (F7): ten sam katalog niesie też własne serwery MCP użytkownika
 // (source === "custom") — renderowane w sekcji "Custom connectors" niżej,
 // obsługiwane trasami harnessa /api/connectors/custom/:id (działają bez
@@ -15,6 +20,7 @@ import { Images, Loader2, RefreshCw, X } from "lucide-react";
 import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
+import { APP_ICONS } from "@/lib/appIcons";
 import {
   imageScraperCards,
   markSeeded,
@@ -28,7 +34,6 @@ interface ToolkitCard {
   label: string;
   blurb: string;
   logo: string | null;
-  domain: string | null;
   // multibot (F7): source mówi, którą trasą kartę odłączyć — Composio OAuth
   // vs DELETE /api/connectors/custom/:id.
   source?: "composio" | "custom";
@@ -36,24 +41,21 @@ interface ToolkitCard {
 interface ConnectedAccount { id: string; alias?: string; status: string }
 
 function ServiceIcon({ card }: { card: ToolkitCard }) {
-  // 0 = official logo, 1 = favicon by domain, 2 = monogram
-  const [stage, setStage] = useState(card.logo ? 0 : card.domain ? 1 : 2);
-  if (stage === 0 && card.logo) {
-    return <img src={card.logo} alt="" className="size-8 rounded-md" onError={() => setStage(1)} />;
-  }
-  if (stage === 1 && card.domain) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const mark = APP_ICONS[card.slug];
+  if (mark) {
     return (
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${card.domain}&sz=64`}
-        alt=""
-        className="size-8 rounded-md"
-        onError={() => setStage(2)}
-      />
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-8 shrink-0 rounded-md bg-raised p-1.5 fill-ink">
+        <path d={mark} />
+      </svg>
     );
   }
   return (
-    <div className="flex size-8 items-center justify-center rounded-md bg-raised text-[13px] font-semibold text-ink-secondary">
+    <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-raised text-[13px] font-semibold text-ink-secondary">
       {card.label.slice(0, 1).toUpperCase()}
+      {card.logo && !logoFailed && (
+        <img src={card.logo} alt="" className="absolute inset-0 size-8" onError={() => setLogoFailed(true)} />
+      )}
     </div>
   );
 }
@@ -168,17 +170,6 @@ type KV = { k: string; v: string };
 // connectorCards() zawsze buduje jako "<transport>: …".
 function typeFromBlurb(blurb: string): TransportType {
   return blurb.startsWith("http:") ? "http" : blurb.startsWith("sse:") ? "sse" : "stdio";
-}
-
-// Favicon presetu bierzemy z hosta jego adresu — dokładnie tak, jak robi to
-// `connectorCards()` na serwerze dla już zapisanych konektorów, żeby wiersz
-// propozycji i wiersz po instalacji wyglądały tak samo.
-function hostOf(url: string): string | null {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return null;
-  }
 }
 
 function kvToMap(rows: KV[]): Record<string, string> | undefined {
@@ -404,9 +395,13 @@ function GoogleWorkspaceSection() {
 
   if (!status) return null;
   return (
-    <div className="border-t border-hairline/40 bg-card">
+    // multibot: własna zaokrąglona karta z odstępem, nie pas `border-t bg-card`
+    // na całą szerokość. Poprzednia wersja stała w tym samym kolorze co karty
+    // z siatki nad nią i bez żadnej przerwy, więc zjadała ich dolne rogi —
+    // wyglądało to, jakby rozwinięta karta nachodziła na Reddita i Airtable.
+    <div className="mt-2 rounded-xl bg-card">
       <div className="flex items-center gap-3 px-4 pb-1 pt-3">
-        <ServiceIcon card={{ slug: "google-workspace", label: "Google Workspace", blurb: "", logo: null, domain: "google.com" }} />
+        <ServiceIcon card={{ slug: "googledrive", label: "Google Workspace", blurb: "", logo: null }} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
             Google Workspace
@@ -519,7 +514,7 @@ export function PluginsPanel() {
         setSource(r.source ?? "curated");
         setConfigured(Boolean(r.configured));
         const composio = (r.cards ?? []).filter((c: ToolkitCard) => c.source !== "custom");
-        if (r.configured) void refreshStatus(composio.map((c: ToolkitCard) => c.slug).slice(0, 40));
+        if (r.configured) void refreshStatus(composio.map((c: ToolkitCard) => c.slug).slice(0, 100));
       })
       .catch((e) => setError(e.message));
   }, [refreshStatus]);
@@ -628,9 +623,6 @@ export function PluginsPanel() {
   const restComposio = composioCards.filter((c) => !scraperSlugs.has(c.slug));
   const restCustom = customCards.filter((c) => !scraperSlugs.has(c.slug));
 
-  // multibot: kategoryzacja jak na screenie Marketplace — Featured (najpopularniejsze),
-  // potem reszta po pierwszym słowie kategorii. Bez klucza Composio curated
-  // i tak daje krótki zestaw, więc kategorie degradują się do jednej listy.
   const yourCards = tab === "yours" ? composioCards.filter((c) => status[c.slug]?.connected) : [];
 
   return (
@@ -642,7 +634,12 @@ export function PluginsPanel() {
       onClick={() => dispatch({ type: "togglePlugins", open: false })}
     >
       <div
-        className="animate-pop-in flex max-h-[85%] w-full max-w-[560px] flex-col rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl"        onClick={(e) => e.stopPropagation()}
+        // multibot: ta sama karta na telefonie i na desktopie — szerokość
+        // idzie za kontenerem i zatrzymuje się na 640px, więc na wąskim
+        // ekranie karta po prostu maleje, a siatka niżej schodzi do jednej
+        // kolumny poniżej `sm`. Odstęp od krawędzi daje `p-3` na overlayu.
+        className="animate-pop-in flex max-h-[85%] w-full max-w-[640px] flex-col rounded-2xl border border-hairline/50 bg-panel p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <div className="text-[17px] font-semibold text-ink">{polish ? "Wtyczki" : "Plugins"}</div>
@@ -655,7 +652,9 @@ export function PluginsPanel() {
         </div>
 
         {/* Tabs + filter + search — jak na screenie Marketplace */}
-        <div className="mt-3 flex items-center gap-3">
+        {/* flex-wrap: na wąskim ekranie szukajka schodzi pod zakładki
+            zamiast ściskać je do nieczytelnej szerokości */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <div className="flex rounded-lg bg-raised/60 p-0.5">
             {([
               ["marketplace", polish ? "Marketplace" : "Marketplace"],
@@ -677,7 +676,7 @@ export function PluginsPanel() {
             <RefreshCw
               size={14}
               className={cn("shrink-0 cursor-pointer text-ink-secondary hover:text-ink", refreshing && "animate-spin")}
-              onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 40))}
+              onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 100))}
             />
             <input
               value={search}
@@ -805,7 +804,6 @@ export function PluginsPanel() {
                       label: preset.name,
                       blurb: "",
                       logo: null,
-                      domain: preset.transport.type === "stdio" ? null : hostOf(preset.transport.url),
                     }}
                   />
                   <div className="min-w-0 flex-1">
@@ -831,19 +829,48 @@ export function PluginsPanel() {
                   </button>
                 </div>
               ))}
-              {restComposio.map((card, i) => (
-                <ComposioRow
-                  key={card.slug}
-                  card={card}
-                  connected={Boolean(status[card.slug]?.connected)}
-                  busy={busySlug === card.slug}
-                  configured={configured}
-                  onConnect={() => connect(card.slug)}
-                  onDisconnect={() => disconnect(card.slug)}
-                  polish={polish}
-                  divider={i > 0 || scraperCards.length > 0 || proposals.length > 0}
-                />
-              ))}
+              {/* ── Marketplace — jedna lista „Wszystkie aplikacje" ──
+                  multibot: bez zakładki/sekcji „Wyróżnione". Katalog jest
+                  posortowany przez serwer (Composio: po użyciu), a do
+                  zawężania jest wyszukiwarka wyżej — dzielenie go na kubełki
+                  tylko chowało aplikacje przed osobą, która wie, czego szuka.
+                  Ta sama siatka co na desktopie; poniżej `sm` schodzi do
+                  jednej kolumny, więc telefon dostaje dokładnie ten układ. */}
+              {restComposio.length > 0 && (
+                <div className="mb-4">
+                  <div className="mb-2 text-[13px] font-medium text-ink-secondary">
+                    {polish ? "Wszystkie aplikacje" : "All apps"}
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {restComposio.map((card) => {
+                      const connected = status[card.slug]?.connected;
+                      const busy = busySlug === card.slug;
+                      return (
+                        <div key={card.slug} className="flex items-start gap-3 rounded-xl bg-card px-4 py-3">
+                          <ServiceIcon card={card} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-medium text-ink">{card.label}</div>
+                            <div className="line-clamp-2 text-[12px] leading-snug text-ink-secondary">{card.blurb}</div>
+                          </div>
+                          {connected ? (
+                            <span className="flex shrink-0 items-center gap-1 pt-0.5 text-[12.5px] text-success">
+                              ✓ {polish ? "Dodano" : "Added"}
+                            </span>
+                          ) : (
+                            <button
+                              disabled={!configured || busy}
+                              onClick={() => connect(card.slug)}
+                              className="shrink-0 rounded-full bg-raised px-3 py-1 text-[12.5px] text-ink hover:bg-raised-hover disabled:opacity-50"
+                            >
+                              {busy ? <Loader2 size={12} className="mx-auto animate-spin" /> : polish ? "Dodaj" : "Add"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
           {cards !== null && restComposio.length === 0 && scraperCards.length === 0 && (
@@ -859,7 +886,7 @@ export function PluginsPanel() {
               gate'owane przez `configured`. Kropki statusu też nie ma:
               /api/connectors zna tylko slugi Composio. */}
           {tab === "yours" && cards !== null && (
-            <div className="border-t border-hairline/40 pt-3">
+            <div className="mt-3 border-t border-hairline/40 pt-3">
               <div className="flex items-center justify-between pb-1">
                 <div>
                   <div className="text-[13px] font-semibold text-ink">{polish ? "Własne konektory" : "Custom connectors"}</div>
