@@ -29,7 +29,7 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { pickerAvatarState, sidebarAvatarProps } from "@/lib/mascot";
+import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { getLanguage, useLanguage } from "@/lib/language";
@@ -61,7 +61,7 @@ export { sidebarAvatarProps };
 
 /** Group rows use the same static face vocabulary as the appearance picker. */
 export function groupMemberAvatarProps(bot: Bot) {
-  return { ...sidebarAvatarProps(bot), state: pickerAvatarState(bot) };
+  return { ...sidebarAvatarProps(bot), state: GROUP_AVATAR_STATE };
 }
 
 function preview(bot: Bot): string {
