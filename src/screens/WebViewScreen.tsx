@@ -65,6 +65,7 @@ const PRIVILEGED = new Set([
   "app.update.check",
   "app.update.download",
   "app.update.install",
+  "update-log.request",
   "native.camera.request",
   "native.clipboard.image",
   "native.back.result",
@@ -79,6 +80,13 @@ type AppUpdateState = {
   version?: string;
   percent?: number;
   message?: string;
+};
+
+type UpdateLogRequest = {
+  type: "update-log.request";
+  requestId: string;
+  repository: string;
+  page: number;
 };
 
 async function probeHost(url: string, timeoutMs: number): Promise<string | null> {
@@ -337,6 +345,34 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     );
   };
 
+  const sendUpdateLogResult = (result: Record<string, unknown>) => {
+    webRef.current?.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent("mb:update-log", { detail: ${JSON.stringify(result)} })); true;`,
+    );
+  };
+
+  async function handleUpdateLogRequest(request: UpdateLogRequest) {
+    if (!/^[-a-zA-Z0-9._]+\/[-a-zA-Z0-9._]+$/.test(request.repository)) {
+      sendUpdateLogResult({ requestId: request.requestId, ok: false, status: 400 });
+      return;
+    }
+    const page = Number.isInteger(request.page) && request.page > 0 ? request.page : 1;
+    const url = `https://api.github.com/repos/${request.repository}/commits?sha=main&per_page=10&page=${page}`;
+    try {
+      const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+      const body = await response.json().catch(() => null);
+      sendUpdateLogResult({
+        requestId: request.requestId,
+        ok: response.ok,
+        status: response.status,
+        body,
+        link: response.headers.get("link"),
+      });
+    } catch {
+      sendUpdateLogResult({ requestId: request.requestId, ok: false, status: 0 });
+    }
+  }
+
   async function handleAppUpdate(action: "check" | "download" | "install") {
     try {
       if (!Updates.isEnabled) throw new Error("Updates are not enabled in this build.");
@@ -484,6 +520,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
             if (msg?.type === "host.join") void handleJoinHost(msg);
             if (msg?.type === "push.request") void handlePushRequest();
+            if (
+              msg?.type === "update-log.request" &&
+              typeof msg.requestId === "string" &&
+              typeof msg.repository === "string" &&
+              Number.isInteger(msg.page)
+            ) {
+              void handleUpdateLogRequest(msg as UpdateLogRequest);
+            }
             // "Trust new certificate" from inside the web UI. The URL is not
             // taken from the message: only the host on screen can be forgotten.
             if (msg?.type === "tls.forget") confirmForget();

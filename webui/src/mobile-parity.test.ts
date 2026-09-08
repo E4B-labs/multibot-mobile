@@ -54,6 +54,11 @@ describe("układ pod telefon", () => {
 });
 
 describe("most do powłoki", () => {
+  it("pobiera historię zmian przez natywny most WebView", () => {
+    expect(read("./lib/updateLog.ts")).toContain('shellPost({ type: "update-log.request"');
+    expect(read("../../src/screens/WebViewScreen.tsx")).toContain('"update-log.request"');
+  });
+
   it("wszystko leci jednym `shellPost`, więc wiezie nonce", () => {
     // Drugi `postMessage` po cichu gubił `app.update.*` — powłoka odrzuca
     // wiadomości uprzywilejowane bez `window.__MB_BRIDGE_NONCE__`.

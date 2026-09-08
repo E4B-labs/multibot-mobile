@@ -1,3 +1,5 @@
+import { isReactNativeShell, shellPost } from "./shell";
+
 export const COMMITS_PER_PAGE = 10;
 
 export type UpdateLogEntry = {
@@ -14,6 +16,17 @@ export type UpdateLogPage = {
   totalPages: number;
   entries: UpdateLogEntry[];
 };
+
+type NativeUpdateLogDetail = {
+  requestId?: string;
+  ok?: boolean;
+  status?: number;
+  body?: unknown;
+  link?: string | null;
+};
+
+const NATIVE_UPDATE_LOG_EVENT = "mb:update-log";
+const NATIVE_UPDATE_LOG_TIMEOUT_MS = 4_000;
 
 type PageNumber = number | "…";
 
@@ -70,9 +83,52 @@ export function parseUpdateLogPage(value: unknown, page: number, linkHeader: str
   };
 }
 
+/** Use the native shell on mobile so GitHub access does not depend on WebView CORS policy. */
+async function fetchUpdateLogViaNative(
+  repository: string,
+  page: number,
+  signal?: AbortSignal,
+): Promise<UpdateLogPage | null> {
+  if (!isReactNativeShell()) return null;
+
+  return new Promise<UpdateLogPage | null>((resolve, reject) => {
+    const requestId = `update-log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      window.removeEventListener(NATIVE_UPDATE_LOG_EVENT, onResult);
+      signal?.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onResult = (event: Event) => {
+      const detail = (event as CustomEvent<NativeUpdateLogDetail>).detail;
+      if (!detail || detail.requestId !== requestId) return;
+      if (!detail.ok) {
+        finish(() => reject(new Error(`Update log unavailable (${detail.status ?? 0}).`)));
+        return;
+      }
+      finish(() => resolve(parseUpdateLogPage(detail.body, page, detail.link ?? null)));
+    };
+    const onAbort = () => finish(() => reject(new DOMException("The operation was aborted.", "AbortError")));
+    const timeout = setTimeout(() => finish(() => resolve(null)), NATIVE_UPDATE_LOG_TIMEOUT_MS);
+
+    window.addEventListener(NATIVE_UPDATE_LOG_EVENT, onResult);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (!shellPost({ type: "update-log.request", requestId, repository, page })) {
+      finish(() => resolve(null));
+    }
+  });
+}
+
 export async function fetchUpdateLog(repository: string, page: number, signal?: AbortSignal): Promise<UpdateLogPage> {
+  const nativeResult = await fetchUpdateLogViaNative(repository, page, signal);
+  if (nativeResult) return nativeResult;
+
   const response = await fetch(commitsUrl(repository, page), {
     headers: { Accept: "application/vnd.github+json" },
+    cache: "no-store",
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new Error(`Update log unavailable (${response.status}).`);
