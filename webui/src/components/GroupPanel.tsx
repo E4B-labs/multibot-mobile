@@ -221,10 +221,13 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
                       <span className="text-[13px] font-semibold text-ink">{nameOf(entry.from)}</span>
                       <span className="text-[11px] text-ink-secondary">{formatTime(entry.at)}</span>
                     </div>
-                    <div className="rounded-2xl bg-card px-2 py-[5px] text-[14px] leading-[1.45] text-ink">
-                      {/* multibot (telefon): bez `compact` — ten wariant to samo
-                          zdrobnienie czcionki pod desktop, a mobilny ChatMarkdown
-                          trzyma się rozmiarów telefonu (tak samo jak ChatView). */}
+                    {/* multibot (telefon): dymek wzięty z ChatView — poprzednie
+                        `px-2 py-[5px] text-[14px]` przyszło z portu pulpitu
+                        i robiło z wypowiedzi w grupie mniejszy tekst niż ta
+                        sama wypowiedź w czacie 1:1. Bez `compact`: ten wariant
+                        to znowu zdrobnienie pod pulpit, a mobilny ChatMarkdown
+                        trzyma się rozmiarów telefonu. */}
+                    <div className="rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                       <ChatMarkdown text={formatPeerEnvelope(entry.text)} />
                     </div>
                   </div>
@@ -235,7 +238,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
                 czatem 1:1, a jego strumień nie jest treścią grupy. */}
             {busy && answering && state.streaming[answering.threadId] !== undefined && (
               <div className="flex w-full justify-start">
-                <div className="max-w-[90%] rounded-2xl bg-card px-2 py-[5px] text-[14px] leading-[1.45] text-ink">
+                <div className="max-w-[90%] rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                   <ChatMarkdown text={state.streaming[answering.threadId]} streaming />
                   <span className="ml-0.5 inline-block h-[13px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
                 </div>

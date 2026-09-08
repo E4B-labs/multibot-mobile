@@ -21,8 +21,7 @@ import { asciiMathToLatex } from "@/lib/asciiMath";
 import { Check, Copy } from "lucide-react";
 import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/cn";
-import { normalizeState } from "@/lib/mascot";
-import { MausAvatar } from "./Avatar";
+import { BotChip } from "./PeerBadge";
 import { SkillRef } from "./SkillRef";
 import { useStore } from "@/state/store";
 // multibot (2.4): wzmianki jako chip — logika wtyczki w osobnym, testowanym pliku.
@@ -154,16 +153,11 @@ function ChatMarkdownComponent({ text, streaming = false }: { text: string; stre
               }
               return <span>{children}</span>;
             }
-            return (
-              <span
-                className="inline-flex translate-y-px items-center gap-1 rounded-full bg-raised px-2 py-0.5 align-middle text-[13px] font-medium text-ink"
-                role="img"
-                aria-label={bot.name}
-              >
-                <MausAvatar color={bot.color} shape={bot.mascotShape} state={normalizeState(bot.mascotExpression) ?? "happy"} size={16} animated={false} />
-                {children}
-              </span>
-            );
+            // multibot: wzmianka rysuje się TĄ SAMĄ pigułką co plakietka
+            // nadawcy bot→bot — jeden komponent, patrz PeerBadge.tsx. Kopia
+            // klas, która stała tutaj, zgubiła `avatarUrl` (bot z własnym
+            // zdjęciem pokazywał na telefonie maskotkę) i nazwę wyświetlaną.
+            return <BotChip bot={bot} />;
           },
           pre({ children }: { children?: ReactNode }) {
             // fenced code arrives as <pre><code class="language-x">…</code></pre>
