@@ -183,7 +183,13 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         build: Application.nativeBuildVersion ?? "",
         ...(Updates.runtimeVersion ? { runtimeVersion: Updates.runtimeVersion } : {}),
         ...(Updates.updateId ? { updateId: Updates.updateId } : {}),
-        ...(Updates.createdAt ? { updateCreatedAt: Updates.createdAt.toISOString() } : {}),
+        // `toISOString()` rzuca RangeError na Invalid Date, a rzut z tego
+        // miejsca leci w `catch` efektu i podmienia CAŁY ekran na „nie mogę
+        // odczytać tokenu". Data z popsutego manifestu ma kosztować jedną
+        // linijkę w panelu, nie aplikację.
+        ...(Number.isFinite(Updates.createdAt?.getTime())
+          ? { updateCreatedAt: Updates.createdAt!.toISOString() }
+          : {}),
         ...(Updates.channel ? { channel: Updates.channel } : {}),
       };
       setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, app }));
