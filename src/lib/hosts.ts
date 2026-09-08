@@ -67,3 +67,62 @@ export async function markHostUsed(id: string, now = Date.now()): Promise<void> 
   const hosts = touchHost(await listHosts(), id, now);
   await saveIndex(hosts);
 }
+
+// ── remembered sign-in ─────────────────────────────────────────────────────
+// "Remember me": the five values that let one tap put somebody back on their
+// server — address, server name, server password, profile name, profile
+// password. One SecureStore key (Keychain/Keystore, encrypted at rest), never
+// the web UI's localStorage, and never logged.
+//
+// Written in two halves. The server half lands when the native sign-in
+// succeeds; the profile half only after the profile login, which the web UI
+// makes — so a record with only the first half is normal and means "not
+// offerable yet".
+const REMEMBER_KEY = "mb_remembered_login";
+
+export interface RememberedLogin {
+  url: string;
+  serverName: string;
+  serverPassword: string;
+  username?: string;
+  password?: string;
+}
+
+/** What the sign-in screen is allowed to see: enough to say "sign in as X on
+ * Y", and not one password. */
+export interface RememberedEntry {
+  url: string;
+  serverName: string;
+  username: string;
+}
+
+export async function readRemembered(): Promise<RememberedLogin | null> {
+  const raw = await SecureStore.getItemAsync(REMEMBER_KEY);
+  if (!raw) return null;
+  try {
+    const record = JSON.parse(raw) as RememberedLogin;
+    return record?.url ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Stores the server half, or forgets everything when passed null — signing in
+ * with "remember me" off must not leave the previous passwords behind. */
+export async function rememberServer(record: RememberedLogin | null): Promise<void> {
+  if (!record) return forgetRemembered();
+  await SecureStore.setItemAsync(REMEMBER_KEY, JSON.stringify(record));
+}
+
+/** The profile half. A no-op when no server half is waiting — "remember me"
+ * was off, or this page belongs to a host that was never remembered. */
+export async function rememberProfile(username: string, password: string): Promise<boolean> {
+  const record = await readRemembered();
+  if (!record || !username || !password) return false;
+  await SecureStore.setItemAsync(REMEMBER_KEY, JSON.stringify({ ...record, username, password }));
+  return true;
+}
+
+export async function forgetRemembered(): Promise<void> {
+  await SecureStore.deleteItemAsync(REMEMBER_KEY);
+}
