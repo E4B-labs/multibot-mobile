@@ -152,6 +152,8 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   const nativeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cameraRequest, setCameraRequest] = useState<{ requestId: string; purpose: "attachment" | "avatar" } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
@@ -473,8 +475,10 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         sendUpdateState({ status: "downloaded", version: Updates.updateId?.slice(0, 8) || "OTA" });
         return;
       }
+      setInstalling(true);
       await Updates.reloadAsync();
     } catch (error) {
+      setInstalling(false);
       sendUpdateState({
         status: "error",
         message: error instanceof Error ? error.message : "Could not update the app.",
@@ -485,6 +489,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   async function takeNativePhoto() {
     if (!cameraRequest || !cameraPermission?.granted || !cameraReady) return;
     const request = cameraRequest;
+    setCapturing(true);
     try {
       const picture = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.86 });
       if (!picture?.base64) throw new Error("The camera did not return an image.");
@@ -497,6 +502,8 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       setCameraRequest(null);
     } catch (error) {
       sendNativeError(request.requestId, request.purpose, error instanceof Error ? error.message : "Could not take a photo.");
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -678,7 +685,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               facing="back"
               onCameraReady={() => setCameraReady(true)}
             />
-          ) : (
+          ) : null}
+          {capturing && (
+            <View style={styles.captureOverlay}>
+              <ActivityIndicator color="#fcfcfc" />
+              <Text style={styles.errorBody}>Saving photo…</Text>
+            </View>
+          )}
+          {cameraPermission?.granted ? null : (
             <View style={styles.cameraPermission}>
               <Text style={styles.cameraTitle}>Camera access is required</Text>
               <Text style={styles.cameraBody}>Allow camera access to take a photo for this message.</Text>
@@ -692,11 +706,17 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               <Text style={styles.cameraCancelText}>Cancel</Text>
             </Pressable>
             {cameraPermission?.granted && (
-              <Pressable style={[styles.cameraButton, !cameraReady && styles.cameraButtonDisabled]} disabled={!cameraReady} onPress={() => void takeNativePhoto()}>
-                <Text style={styles.cameraButtonText}>Take photo</Text>
+              <Pressable style={[styles.cameraButton, (!cameraReady || capturing) && styles.cameraButtonDisabled]} disabled={!cameraReady || capturing} onPress={() => void takeNativePhoto()}>
+                <Text style={styles.cameraButtonText}>{capturing ? "Saving…" : "Take photo"}</Text>
               </Pressable>
             )}
           </View>
+        </View>
+      )}
+      {installing && (
+        <View style={styles.captureOverlay}>
+          <ActivityIndicator color="#fcfcfc" />
+          <Text style={styles.errorBody}>Installing update…</Text>
         </View>
       )}
     </View>
@@ -736,6 +756,7 @@ const styles = StyleSheet.create({
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
   backButton: { marginTop: 12, backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   backButtonText: { color: "#070707", fontWeight: "700" },
+  captureOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#070707cc", gap: 10 },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10, backgroundColor: "#070707", padding: 16 },
   cameraPreview: { flex: 1, borderRadius: 18, overflow: "hidden" },
   cameraPermission: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
