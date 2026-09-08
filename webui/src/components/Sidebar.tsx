@@ -749,7 +749,7 @@ function GroupRow({
             <MausAvatar color={shown[0].color} size={56} {...groupMemberAvatarProps(shown[0])} />
           ) : (
             <>
-              <span className="absolute left-0 top-0">
+              <span className="absolute left-0 top-0 flex">
                 <MausAvatar color={shown[0].color} size={32} {...groupMemberAvatarProps(shown[0])} />
               </span>
               {plus > 0 ? (
@@ -757,7 +757,7 @@ function GroupRow({
                   +{plus}
                 </span>
               ) : (
-                <span className="absolute bottom-0 right-0 rounded-full ring-2 ring-app">
+                <span className="absolute bottom-0 right-0 flex rounded-full ring-2 ring-app">
                   <MausAvatar color={shown[1].color} size={38} {...groupMemberAvatarProps(shown[1])} />
                 </span>
               )}
