@@ -164,6 +164,22 @@ export function isTailnetUrl(url: string): boolean {
   return /^https?:\/\/100\.\d/.test(url.trim());
 }
 
+/** What this INSTALL is, as opposed to what the server is. The web UI is the
+ * same bundle on every host, so without this it has nothing to show but the
+ * server's version — which is a different program on a different machine.
+ * `version`/`build` come from `expo-application` (the APK), the rest from
+ * `expo-updates` (the OTA bundle actually running). */
+export type AppInfo = {
+  version: string;
+  build: string;
+  runtimeVersion?: string;
+  /** Absent on an embedded launch: the app is running the bundle shipped in
+   * the APK, with no OTA update on top. */
+  updateId?: string;
+  updateCreatedAt?: string;
+  channel?: string;
+};
+
 /** Script injected before the web UI boots. A token (legacy hosts) is seeded
  * into localStorage under the key webui/src/lib/auth.ts reads; without one
  * nothing auth-related is seeded and the web UI shows its own login screen. */
@@ -177,7 +193,7 @@ export function buildBootstrap(opts: {
    * the main frame only, so an embedded frame never learns it. */
   bridgeNonce?: string;
   statusBarHeight: number;
-  appVersion: string;
+  app: AppInfo;
 }): string {
   const hash = opts.botId ? `#bot=${opts.botId}` : opts.fragment || "";
   const deep = hash ? `location.hash = ${JSON.stringify(hash)};` : "";
@@ -190,6 +206,6 @@ export function buildBootstrap(opts: {
   return `try { document.documentElement.style.setProperty('--android-status-bar', '${opts.statusBarHeight}px'); } catch (e) {}
          try { ${auth} ${deep} } catch (e) {}
          try { ${nonce} } catch (e) {}
-         try { window.__APP_VERSION__ = ${JSON.stringify(opts.appVersion)}; } catch (e) {}
+         try { window.__MULTIBOT_APP__ = ${JSON.stringify(opts.app)}; } catch (e) {}
          true;`;
 }

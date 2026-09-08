@@ -159,23 +159,45 @@ test("formatLastUsed buckets recent and old timestamps", () => {
   assert.equal(formatLastUsed(now - 3 * 86_400_000), "3 days ago");
 });
 
+const APP = {
+  version: "0.5.2",
+  build: "26",
+  runtimeVersion: "1.6.0",
+  updateId: "0192abcd-1111-2222-3333-444455556666",
+  updateCreatedAt: "2026-09-07T08:40:00.000Z",
+  channel: "production",
+};
+
+test("the bootstrap says what this INSTALL is, not what the server is", () => {
+  const script = buildBootstrap({ token: null, statusBarHeight: 0, app: APP });
+  assert.deepEqual(JSON.parse(/window\.__MULTIBOT_APP__ = (\{.*?\});/.exec(script)![1]), APP);
+  // The old single string is gone: it could not tell the APK apart from the
+  // OTA bundle running on top of it, which is the whole question here.
+  assert.ok(!script.includes("__APP_VERSION__"));
+
+  // An embedded launch carries no OTA fields, so the panel can say "shipped in
+  // the APK" instead of printing "undefined".
+  const embedded = buildBootstrap({ token: null, statusBarHeight: 0, app: { version: "0.5.2", build: "26" } });
+  assert.ok(!embedded.includes("updateId"));
+});
+
 test("a host without a saved token opens the web sign-in instead of failing", () => {
-  const anon = buildBootstrap({ token: null, statusBarHeight: 24, appVersion: "1.0.0" });
+  const anon = buildBootstrap({ token: null, statusBarHeight: 24, app: APP });
   assert.ok(!anon.includes("multibot.auth.token"));
   assert.ok(anon.includes("--android-status-bar"));
 
   // Legacy hosts keep the token bootstrap.
-  const legacy = buildBootstrap({ token: "t0k", botId: "b1", statusBarHeight: 0, appVersion: "1.0.0" });
+  const legacy = buildBootstrap({ token: "t0k", botId: "b1", statusBarHeight: 0, app: APP });
   assert.ok(legacy.includes('localStorage.setItem("multibot.auth.token", "t0k")'));
   assert.ok(legacy.includes("#bot=b1"));
 });
 
 test("the join grant reaches the web UI through the fragment", () => {
-  const joining = buildBootstrap({ fragment: "#join=g-1", statusBarHeight: 0, appVersion: "1.0.0" });
+  const joining = buildBootstrap({ fragment: "#join=g-1", statusBarHeight: 0, app: APP });
   assert.ok(joining.includes('location.hash = "#join=g-1"'));
 
   // A notification tap wins: the user asked for that bot, not for a sign-in.
-  const both = buildBootstrap({ botId: "b1", fragment: "#join=g-1", statusBarHeight: 0, appVersion: "1.0.0" });
+  const both = buildBootstrap({ botId: "b1", fragment: "#join=g-1", statusBarHeight: 0, app: APP });
   assert.ok(both.includes("#bot=b1"));
   assert.ok(!both.includes("#join="));
 });

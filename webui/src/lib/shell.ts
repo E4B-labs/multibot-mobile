@@ -160,6 +160,22 @@ function awaitShellMessage<T>(type: string, host: ShellHost, timeoutMs = SHELL_R
   });
 }
 
+/** What this INSTALL is, injected as `window.__MULTIBOT_APP__` by the mobile
+ * shell's bootstrap (multibot-mobile `src/lib/host-logic.ts`, `buildBootstrap`).
+ * Absent in Electron and in a browser, where the app is not a separate artefact
+ * from the page. Never the server's version: different program, different
+ * machine, and the settings panel keeps them on separate lines. */
+export type AppInfo = {
+  version: string;
+  build: string;
+  runtimeVersion?: string;
+  /** Absent on an embedded launch: the APK's own bundle is running, with no
+   * OTA update on top of it. */
+  updateId?: string;
+  updateCreatedAt?: string;
+  channel?: string;
+};
+
 async function awaitNativeJoin(host: ShellHost): Promise<HostJoinOutcome> {
   const reply = await awaitShellMessage<{ ok?: boolean; error?: string }>("host.join.result", host);
   if (!reply) return { ok: false, error: "timeout" };

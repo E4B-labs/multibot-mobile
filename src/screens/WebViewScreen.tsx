@@ -6,7 +6,7 @@ import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
+import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, type AppInfo, type Host } from "../lib/host-logic";
 import { getHostToken } from "../lib/hosts";
 import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
@@ -174,10 +174,19 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         setFailed(problem);
         return;
       }
-      // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
-      // updatera.currentVersion() na desktopie).
-      const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
-      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
+      // multibot: co to za INSTALACJA — odpowiednik bridge'a
+      // updatera.currentVersion() na desktopie. Wersja serwera to zupełnie
+      // inna liczba (inny program, inna maszyna) i webui pokazuje ją osobno;
+      // tutaj idzie wyłącznie APK + paczka OTA, która na nim stoi.
+      const app: AppInfo = {
+        version: Application.nativeApplicationVersion ?? "",
+        build: Application.nativeBuildVersion ?? "",
+        ...(Updates.runtimeVersion ? { runtimeVersion: Updates.runtimeVersion } : {}),
+        ...(Updates.updateId ? { updateId: Updates.updateId } : {}),
+        ...(Updates.createdAt ? { updateCreatedAt: Updates.createdAt.toISOString() } : {}),
+        ...(Updates.channel ? { channel: Updates.channel } : {}),
+      };
+      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, app }));
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
