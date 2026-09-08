@@ -276,7 +276,11 @@ export function AdminPanel() {
               <button type="button" disabled={busy || !isServerName(name.trim()) || name.trim() === server.name} onClick={() => void renameServer()} className="shrink-0 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50">{polish ? "Zapisz nazwę" : "Save name"}</button>
             </div>
           )}
-          {overview?.server?.version && <Row label={polish ? "Wersja" : "Version"} value={overview.server.version} />}
+          {/* „Wersja serwera", nie „Wersja": to wersja PROGRAMU NA HOŚCIE.
+              Wersja aplikacji, z której się na niego patrzy, stoi w
+              „Aktualizacje aplikacji" i bywa zupełnie inna (telefon 0.5.2,
+              serwer 0.5.3) — samo „Wersja" czyta się jako ta pierwsza. */}
+          {overview?.server?.version && <Row label={polish ? "Wersja serwera" : "Server version"} value={overview.server.version} />}
           {overview?.server?.uptimeMs !== undefined && <Row label={polish ? "Czas pracy" : "Uptime"} value={uptimeText(overview.server.uptimeMs, polish)} />}
           {overview?.server?.connectionsActive !== undefined && <Row label={polish ? "Połączenia" : "Connections"} value={overview.server.connectionsActive} />}
           {address && (
