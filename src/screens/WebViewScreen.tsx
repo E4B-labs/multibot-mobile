@@ -136,6 +136,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   const nonce = useMemo(newBridgeNonce, []);
   const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Ta sama wartość dla sondy, która leci obok ładowania: jej `.then` domyka
+  // stan z chwili startu efektu, a ref widzi ten z chwili odpowiedzi.
+  const [status, setStatus] = useState("");
+  const loadedRef = useRef(false);
+  loadedRef.current = loaded;
   const [attempt, setAttempt] = useState(0);
   // How much of the page made it in before it stopped — "loading" means the
   // same at 0% and at 99% without this.
@@ -167,8 +172,12 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // also CLEARS the override for a normal host, so switching back from an
       // onion server cannot leave every LAN address routed into a dead proxy.
       try {
+        // Pierwszy start Tora to 10–30 s budowania obwodu. Bez tej linijki
+        // ekran jest przez ten czas pustym kółkiem i wygląda na zawieszony.
+        if (onion) setStatus("Łączę przez Tor — pierwszy obwód to zwykle 10–30 s…");
         await prepareTor(host.url);
         await setWebViewProxyFor(host.url);
+        setStatus("");
       } catch (error) {
         if (!cancelled) {
           setFailed(error instanceof Error ? error.message : `Could not start Tor for ${host.url}.`);
@@ -179,12 +188,15 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // Brak zapisanego tokenu to poprawny host: serwer ma własne konta
       // (protokół 2), więc interfejs webowy pokaże swój ekran logowania
       // (login + hasło) i sam zapisze sesję w localStorage tego origin.
-      const problem = await probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
-      if (cancelled) return;
-      if (problem) {
-        setFailed(problem);
-        return;
-      }
+      //
+      // Sonda NIE blokuje ładowania. Przez Tora to pełna dodatkowa podróż
+      // (rendezvous + TLS + HTTP) po świeżo zbudowanym obwodzie — sekundy
+      // czekania z pustym ekranem po to, żeby dowiedzieć się tego, co samo
+      // ładowanie powie chwilę później. Leci równolegle i służy już tylko za
+      // lepszy komunikat, gdy strona nie wstanie.
+      void probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS).then((problem) => {
+        if (!cancelled && problem && !loadedRef.current) setFailed(problem);
+      });
       // multibot: co to za INSTALACJA — odpowiednik bridge'a
       // updatera.currentVersion() na desktopie. Wersja serwera to zupełnie
       // inna liczba (inny program, inna maszyna) i webui pokazuje ją osobno;
@@ -538,6 +550,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#fcfcfc" />
+        {status ? <Text style={styles.errorBody}>{status}</Text> : null}
       </View>
     );
   }

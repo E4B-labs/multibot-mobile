@@ -111,7 +111,7 @@ test("only an onion host is routed through Tor, and the WebView proxy is set bot
   // Tor and the proxy come before the first probe/load, otherwise an onion
   // address is dialled while nothing can reach it.
   assert.ok(
-    webview.indexOf("setWebViewProxyFor(host.url)") < webview.indexOf("await probeHost(host.url"),
+    webview.indexOf("setWebViewProxyFor(host.url)") < webview.indexOf("probeHost(host.url"),
     "the WebView proxy must be applied before the host is probed",
   );
 
