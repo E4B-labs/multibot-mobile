@@ -140,7 +140,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
           {members.length > 0 ? (
             <div className="flex -space-x-2 shrink-0">
               {members.slice(0, 3).map((bot) => (
-                <MausAvatar key={bot.id} color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={GROUP_AVATAR_STATE} size={36} animated={false} />
+                <MausAvatar key={bot.id} color={bot.color} shape="blob" state={GROUP_AVATAR_STATE} size={36} animated={false} />
               ))}
             </div>
           ) : (
@@ -201,7 +201,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
               ) : (
                 <div key={entry.id} className="flex w-full justify-start gap-2.5">
                   {entryBot && (
-                    <MausAvatar color={entryBot.color} avatarUrl={entryBot.avatarUrl} shape={entryBot.mascotShape} state={GROUP_AVATAR_STATE} size={28} animated={false} />
+                    <MausAvatar color={entryBot.color} shape="blob" state={GROUP_AVATAR_STATE} size={28} animated={false} />
                   )}
                   {/* multibot: wypowiedź bota na całą szerokość, ale w dymku —
                       ten sam układ co w czacie 1:1 (patrz ChatView/Bubble). */}
