@@ -43,19 +43,45 @@ describe("awatar w nagłówku czatu", () => {
 // jakikolwiek `::-webkit-scrollbar` jest ostylowany.
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
+/** Linie opisujące sam dymek. Filtr łapie mobilny rozmiar (`py-2.5`), nie
+ *  desktopowy (`py-[5px]`), i pomija zaokrąglone elementy, które dymkiem nie są
+ *  (np. podgląd ekranu bota). */
+function bubbleLines(): string[] {
+  return chat
+    .split(/\r?\n/)
+    .filter((line) => line.includes("rounded-2xl") && line.includes("py-2.5"));
+}
+
 describe("czat nie przewija się w bok", () => {
-  // multibot (telefon): dymek bota idzie na CAŁĄ szerokość kolumny — desktopowe
+  // multibot (telefon): dymek bota sięga aż do krawędzi kolumny — desktopowe
   // `max-w-[90%] py-[5px]` zostawiało na ekranie telefonu pusty pas po prawej.
   // Zasada z desktopu zostaje w mocy: dymek ma się kurczyć i łamać długie
-  // tokeny. Filtr łapie więc mobilny rozmiar (`py-2.5`), nie desktopowy.
+  // tokeny.
   it("oba dymki kurczą się i łamią długie tokeny", () => {
-    const bubbles = chat
-      .split(/\r?\n/)
-      .filter((line) => line.includes("rounded-2xl") && line.includes("py-2.5"));
+    const bubbles = bubbleLines();
     expect(bubbles.length).toBeGreaterThanOrEqual(2);
     for (const line of bubbles) {
       expect(line, `dymek bez min-w-0: ${line.trim()}`).toContain("min-w-0");
       expect(line, `dymek bez break-words: ${line.trim()}`).toContain("break-words");
+    }
+  });
+
+  // multibot: pełna szerokość ma być SUFITEM, nie szerokością. `w-full`
+  // rozciągało każdy dymek bota na całą kolumnę, więc jednoliniowa odpowiedź
+  // („Sesja wygasła, loguję się ponownie.") wyglądała jak pas, a nie jak dymek
+  // (Kacper 08.09, zrzut z telefonu; zmierzone w headless Chrome przy kolumnie
+  // 400 px: `w-full` 400 px, `max-w-full` 267 px). Z samym sufitem dymek jako
+  // element flexa kurczy się do treści, a długa wiadomość, tabela i blok kodu
+  // nadal dostają całe 100%.
+  it("dymki mają sufit szerokości, a nie sztywną pełną szerokość", () => {
+    // Gałąź bota w `Bubble` — szerokość stoi w ternarnym, nie we wspólnej klasie.
+    expect(chat, "dymek bota stracił sufit szerokości").toContain('"max-w-full bg-card text-ink"');
+    // Wspólna klasa i dymek strumieniowany: żadnego przypięcia na sztywno.
+    const bubbles = bubbleLines();
+    expect(bubbles.length).toBeGreaterThanOrEqual(2);
+    for (const line of bubbles) {
+      // `\b` nie wystarcza: w `max-w-full` przed „w" też stoi granica słowa.
+      expect(line, `dymek przypięty do pełnej szerokości: ${line.trim()}`).not.toMatch(/(?<![-\w])w-full\b/);
     }
   });
 
