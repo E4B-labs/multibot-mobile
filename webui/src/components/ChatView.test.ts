@@ -1,11 +1,29 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { setBotDraft } from "./ChatView";
 
 // multibot: awatar w pasku nad rozmową ma stać nieruchomo, gdy bot nie
 // pracuje. Wcześniej MausAvatar w nagłówku szedł własną ścieżką (stateForBot
 // + jednorazowy beat z `state.mascotMotion`, bez `animated`), więc bezczynny
 // bot mrugał i oddychał, choć ten sam bot w szufladzie już stał.
 const chat = readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
+
+describe("drafty composera per bot", () => {
+  it("przywraca tekst po powrocie do bota i czyści tylko wysłany draft", () => {
+    const withBotA = setBotDraft({}, "bot-a", "Wiadomość dla A");
+    const withBothBots = setBotDraft(withBotA, "bot-b", "Wiadomość dla B");
+
+    expect(withBothBots).toEqual({ "bot-a": "Wiadomość dla A", "bot-b": "Wiadomość dla B" });
+    expect(setBotDraft(withBothBots, "bot-a", "")).toEqual({ "bot-a": "", "bot-b": "Wiadomość dla B" });
+  });
+
+  it("przekazuje draft aktualnego bota do composera bez zmiany propsów reply", () => {
+    expect(chat).toContain('draft={drafts[bot.id] ?? ""}');
+    expect(chat).toContain("onDraftChange={(text) => updateDraft(bot.id, text)}");
+    expect(chat).toContain("replyToId={replyTo?.id}");
+    expect(chat).toContain("onClearReply={() => setReplyTo(null)}");
+  });
+});
 
 describe("awatar w nagłówku czatu", () => {
   it("liczy propsy tym samym helperem co szuflada", () => {

@@ -34,6 +34,9 @@ export default function App() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const checkingUpdateRef = useRef(false);
+  const downloadingUpdateRef = useRef(false);
+  const updateAvailableRef = useRef(false);
 
   const refresh = useCallback(() => {
     void listHosts().then((h) => {
@@ -163,21 +166,24 @@ export default function App() {
       if (showError) setUpdateError("Updates disabled in this build (isEnabled=false). Reinstall APK from EAS production.");
       return;
     }
-    if (checkingUpdate || downloadingUpdate) return;
+    if (checkingUpdateRef.current || downloadingUpdateRef.current) return;
+    checkingUpdateRef.current = true;
     setCheckingUpdate(true);
     if (showError) setUpdateError(null);
     try {
       const result = await Updates.checkForUpdateAsync();
+      updateAvailableRef.current = result.isAvailable;
       setUpdateAvailable(result.isAvailable);
       if (result.isAvailable) setUpdateError(null);
       else if (showError) setUpdateError("No update available — you are on latest version.");
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : "Could not check for update.";
-      if (showError || updateAvailable) setUpdateError(msg);
+      if (showError || updateAvailableRef.current) setUpdateError(msg);
     } finally {
+      checkingUpdateRef.current = false;
       setCheckingUpdate(false);
     }
-  }, [checkingUpdate, downloadingUpdate, updateAvailable]);
+  }, []);
 
   useEffect(() => {
     if (__DEV__ || !Updates.isEnabled) return;
@@ -186,23 +192,19 @@ export default function App() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active" && !cancelled) void checkForUpdate(false);
     });
-    // ponawiaj check co 60s gdy modal ukryty — naprawia „kliknął Later i już nie widzi aktualizacji"
-    const interval = setInterval(() => {
-      if (!cancelled && !updateAvailable && !checkingUpdate && !downloadingUpdate) void checkForUpdate(false);
-    }, 60_000);
     return () => {
       cancelled = true;
       sub.remove();
-      clearInterval(interval);
     };
-  }, [checkForUpdate, updateAvailable, checkingUpdate, downloadingUpdate]);
+  }, [checkForUpdate]);
 
   const applyUpdate = useCallback(async () => {
-    if (downloadingUpdate) return;
+    if (downloadingUpdateRef.current) return;
     if (!Updates.isEnabled) {
       setUpdateError("Updates disabled w tym buildzie. Zainstaluj APK z EAS production (runtime 1.0.0).");
       return;
     }
+    downloadingUpdateRef.current = true;
     setDownloadingUpdate(true);
     setUpdateError(null);
 
@@ -223,7 +225,9 @@ export default function App() {
           try {
             await Updates.reloadAsync();
           } catch {}
+          updateAvailableRef.current = false;
           setUpdateAvailable(false);
+          downloadingUpdateRef.current = false;
           setDownloadingUpdate(false);
           return;
         }
@@ -245,6 +249,7 @@ export default function App() {
     } else {
       setUpdateError(raw);
     }
+    downloadingUpdateRef.current = false;
     setDownloadingUpdate(false);
   }, [downloadingUpdate]);
 
