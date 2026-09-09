@@ -282,6 +282,14 @@ function withTlsPinning(config) {
     if (!queries.package.some((entry) => entry?.$?.["android:name"] === "com.termux")) {
       queries.package.push({ $: { "android:name": "com.termux" } });
     }
+
+    // Też nie TLS: pas bezpieczeństwa po OOM-ie z APK 29. Interfejs jedzie do
+    // WebView jako string, więc Chromium przy starcie robi z niego base64
+    // (×4/3), a z tego Stringa (×2) — kilka ciągłych tablic naraz. Właściwą
+    // naprawą jest mniejszy interfejs (limit w scripts/bundle-webui.mjs); to
+    // jest zapas na wypadek, gdyby znów podpełzł pod sufit domyślnej sterty.
+    const application = manifest.application?.[0];
+    if (application) (application.$ ??= {})["android:largeHeap"] = "true";
     return cfg;
   });
 
