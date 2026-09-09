@@ -4,6 +4,7 @@ import { visibleSettingsTabs } from "./AppSettingsPanel";
 
 const panel = readFileSync(new URL("./AppSettingsPanel.tsx", import.meta.url), "utf8");
 const card = readFileSync(new URL("./BotSettingsCard.tsx", import.meta.url), "utf8");
+const settings = readFileSync(new URL("./SettingsPanel.tsx", import.meta.url), "utf8");
 
 describe("mobile app settings parity", () => {
   it("exposes host-backed bot policy settings below the profile", () => {
@@ -74,5 +75,12 @@ describe("zakładka Admin zależy od roli", () => {
   it("nie rezerwuje pustego miejsca na admina podczas sprawdzania roli", () => {
     expect(panel).toContain("visibleSettingsTabs(role).map");
     expect(panel).not.toContain('return role === "loading" ? <Skeleton key={id} className="size-10" /> : null;');
+  });
+
+  it("wraca z obu paneli do menu botów przez drawer", () => {
+    expect(panel).toContain("openBotPicker();");
+    expect(settings).toContain("const closeToBotPicker = ()");
+    expect(settings.match(/onClick=\{closeToBotPicker\}/g)).toHaveLength(2);
+    expect(settings).toContain("openBotPicker();\n    dispatch({ type: \"toggleSettings\", open: false });");
   });
 });

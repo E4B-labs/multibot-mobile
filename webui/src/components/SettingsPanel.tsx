@@ -14,6 +14,7 @@ import { botDisplayName, botDisplayTitle } from "@/lib/botNames";
 import { AvatarCropper } from "./AvatarCropper";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { Spinner } from "./Loading";
+import { openBotPicker } from "@/lib/mobileNavigation";
 
 function Field({
   label,
@@ -158,6 +159,10 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "avatarUrl">
     >,
   ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
+  const closeToBotPicker = () => {
+    openBotPicker();
+    dispatch({ type: "toggleSettings", open: false });
+  };
   const activeState = pickerAvatarState(bot);
   // Na mobile panel idzie do document.body (createPortal), by na pewno był
   // warstwą najwyższą nad drawerem (z-[60]) — niezależnie od kontekstu
@@ -177,14 +182,14 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <button
-          onClick={() => dispatch({ type: "toggleSettings", open: false })}
+          onClick={closeToBotPicker}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
         >
           <ChevronLeft size={18} />
         </button>
         <span className="text-[15px] font-semibold text-ink">{polish ? "Ustawienia" : "Settings"}</span>
         <button
-          onClick={() => dispatch({ type: "toggleSettings", open: false })}
+          onClick={closeToBotPicker}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
         >
           <X size={18} />

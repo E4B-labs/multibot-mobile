@@ -229,8 +229,9 @@ body {
     min-width: 0;
     width: auto;
     max-height: 2rem;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: hidden;
+    font-size: 14px;
     white-space: nowrap;
   }
   [data-composer-row] > button > span,

@@ -1121,7 +1121,7 @@ export function Composer({
           // `max-h-64` przycina wzrost, `overflow-y-auto` daje pasek. Bez
           // liczenia sufitu w JS: styl wpisany na sztywno i tak jest zacięty
           // przez `max-height`.
-          className="max-h-64 min-w-0 flex-1 basis-0 resize-none self-center overflow-x-auto overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"        />
+          className="max-h-64 min-w-0 flex-1 basis-0 resize-none self-center overflow-x-hidden overflow-y-auto bg-transparent py-0 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"        />
         <div className="relative shrink-0">
           <button
             onClick={() => setReasoningOpen((open) => !open)}

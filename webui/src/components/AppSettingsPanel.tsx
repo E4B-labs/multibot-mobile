@@ -20,6 +20,7 @@ import { applyMotionMode, readMotionMode, type MotionMode } from "@/lib/motion";
 import { fetchUpdateLog, pageNumbers, type UpdateLogPage } from "@/lib/updateLog";
 import type { AppInfo } from "@/lib/shell";
 import { readDesktopNotifications, requestBrowserNotifications, setDesktopNotifications } from "@/lib/notifications";
+import { openBotPicker } from "@/lib/mobileNavigation";
 
 const slug = (value: string) =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
@@ -974,7 +975,10 @@ export function AppSettingsPanel() {
         <span className="w-6" />
         <span className="text-[15px] font-semibold text-ink">{polish ? "Ustawienia aplikacji" : "App Settings"}</span>
         <button
-          onClick={() => dispatch({ type: "toggleAppSettings", open: false })}
+          onClick={() => {
+            openBotPicker();
+            dispatch({ type: "toggleAppSettings", open: false });
+          }}
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
         >
           <X size={18} />

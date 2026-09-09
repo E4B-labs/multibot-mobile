@@ -61,6 +61,13 @@ describe("Android Back korzysta z aktualnego stanu WebUI", () => {
   it("po Back z grupy zamyka grupę i otwiera menu botów", () => {
     const groupBack = app.slice(app.indexOf("currentState.groupOpen"), app.indexOf("currentState.settingsOpen"));
     expect(groupBack).toContain('dispatch({ type: "toggleGroup", group: null })');
-    expect(groupBack).toContain('document.body.classList.add("mb-drawer-open")');
+    expect(groupBack).toContain("openBotPicker()");
+    expect(groupBack.indexOf("openBotPicker()")).toBeLessThan(groupBack.indexOf('dispatch({ type: "toggleGroup", group: null })'));
+  });
+
+  it("z Back z ustawień wraca do menu botów przed zamknięciem panelu", () => {
+    for (const panel of ["appSettingsOpen", "settingsOpen"]) {
+      expect(app).toMatch(new RegExp(`currentState\\.${panel}\\s*\\?\\s*\\(\\) => \\{\\s*openBotPicker\\(\\);\\s*dispatch`));
+    }
   });
 });

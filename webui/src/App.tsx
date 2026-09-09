@@ -26,6 +26,7 @@ import { CmdK } from "@/components/CmdK";
 import { authEventName, clearAuthToken, getAuthToken, refreshAccessToken } from "@/lib/auth";
 import { registerPushViaShell, shellPost } from "@/lib/shell";
 import { useLanguage } from "@/lib/language";
+import { openBotPicker } from "@/lib/mobileNavigation";
 
 function Shell() {
   const { state, dispatch } = useStore();
@@ -88,7 +89,10 @@ function Shell() {
         return;
       }
       const closePanel = currentState.appSettingsOpen
-        ? () => dispatch({ type: "toggleAppSettings", open: false })
+        ? () => {
+            openBotPicker();
+            dispatch({ type: "toggleAppSettings", open: false });
+          }
         : currentState.pluginsOpen
           ? () => dispatch({ type: "togglePlugins", open: false })
           : currentState.computerOpen
@@ -107,11 +111,14 @@ function Shell() {
                         ? () => dispatch({ type: "toggleRoom", room: null })
                         : currentState.groupOpen
                           ? () => {
+                              openBotPicker();
                               dispatch({ type: "toggleGroup", group: null });
-                              document.body.classList.add("mb-drawer-open");
                             }
                           : currentState.settingsOpen
-                            ? () => dispatch({ type: "toggleSettings", open: false })
+                            ? () => {
+                                openBotPicker();
+                                dispatch({ type: "toggleSettings", open: false });
+                              }
                             : null;
       if (closePanel) {
         closePanel();
