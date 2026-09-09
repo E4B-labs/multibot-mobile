@@ -86,14 +86,27 @@ object MultibotTor {
   )
 
   /**
-   * Starts tor (or returns the ports of the one already running) and does not
-   * come back until it has bootstrapped to 100%. Synchronized: two screens
-   * asking at once must get one tor, not two fighting over one data directory.
+   * Starts tor (or returns the ports of the one already running) and comes back
+   * as soon as its SOCKS listener is open — NOT when it has bootstrapped to
+   * 100%. Tor holds a SOCKS stream "unattached waiting for an appropriate
+   * circuit" (SocksTimeout, 2 minutes by default), so the first request through
+   * the bridge still lands; it simply no longer costs an empty screen.
+   *
+   * Waiting for the bootstrap here put every later step of a cold start —
+   * starting the WebView engine, parsing the bundled UI, running its own boot —
+   * AFTER the circuit instead of alongside it, which is most of why opening the
+   * app on mobile data felt hung.
+   *
+   * Synchronized: two screens asking at once must get one tor, not two fighting
+   * over one data directory.
    */
   @Synchronized
   fun start(context: Context, timeoutMs: Int): Map<String, Any> {
     val running = bridge
-    if (alive() && bootstrapped && socksPort > 0 && running != null && running.open) {
+    // Deliberately NOT `bootstrapped`: now that start() returns early, a second
+    // caller arriving mid-bootstrap would otherwise fall through to stop() and
+    // kill the very tor the first caller is waiting on.
+    if (alive() && socksPort > 0 && running != null && running.open) {
       return mapOf("socksPort" to socksPort, "bridgePort" to running.port)
     }
     stop()
@@ -121,6 +134,12 @@ object MultibotTor {
 
     // Rewritten every start: whatever a previous version wrote is not what this
     // version means, and there is nothing in here worth preserving.
+    // No AvoidDiskWrites: it is tor's "write to disk less frequently" switch
+    // (upstream default 0) and it defers writing the state file, entry guards
+    // among it. This process lives for as long as Android lets the app stay
+    // open and is then killed, so the deferred write never happens and every
+    // cold start picks its guards from scratch. Flash wear is not a real
+    // concern for a client opened a handful of times a day.
     // ponytail: no GeoIPFile — the AAR keeps geoip inside the APK's assets and
     // unpacking it only buys country statistics we never read. Tor logs one
     // notice about it and works. Add it when someone wants ExitNodes rules.
@@ -132,12 +151,10 @@ object MultibotTor {
       SocksPort auto
       ClientOnly 1
       Log notice stdout
-      AvoidDiskWrites 1
       """.trimIndent() + "\n",
     )
 
     val socksReady = CountDownLatch(1)
-    val bootstrapReady = CountDownLatch(1)
     bootstrapped = false
     socksPort = 0
 
@@ -164,10 +181,7 @@ object MultibotTor {
               socksReady.countDown()
             }
           }
-          if (line.contains(BOOTSTRAPPED)) {
-            bootstrapped = true
-            bootstrapReady.countDown()
-          }
+          if (line.contains(BOOTSTRAPPED)) bootstrapped = true
         }
       } catch (closed: IOException) {
         Log.w(TAG, "tor's output ended", closed)
@@ -176,21 +190,19 @@ object MultibotTor {
         // be counted down by a log line.
         bootstrapped = false
         socksReady.countDown()
-        bootstrapReady.countDown()
       }
     }
 
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
     awaitOrDie(socksReady, deadline, "Tor did not open its SOCKS port in time.")
-    awaitOrDie(bootstrapReady, deadline, "Tor could not build a circuit in time.")
-    if (socksPort <= 0 || !bootstrapped) {
+    if (socksPort <= 0) {
       stop()
       throw MultibotTorException("timeout", "Tor stopped before it finished starting.")
     }
 
     val opened = Bridge(socksPort)
     bridge = opened
-    Log.i(TAG, "tor is up: socks=$socksPort bridge=${opened.port}")
+    Log.i(TAG, "tor is listening: socks=$socksPort bridge=${opened.port} (circuit still building)")
     return mapOf("socksPort" to socksPort, "bridgePort" to opened.port)
   }
 
