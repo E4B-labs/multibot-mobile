@@ -906,7 +906,7 @@ export function Composer({
       <div className="relative mx-auto max-w-[900px]">
         {/* Pasek: maksymalnie jeden bot, animowany, i tylko gdy ma co pokazać. */}
         {strip && (
-          <div className="flex h-12 items-center pl-3 pr-2 pointer-events-auto" title={botDisplayName(bot, polish ? "pl" : "en")}>
+          <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none" title={botDisplayName(bot, polish ? "pl" : "en")}>
             {/* multibot: od 0.3.33 `stripMascotState` zwraca sam `BlobState`
                 — ruch niesie już silnik maskotki, nie osobne `motion`. */}
             <MausAvatar
