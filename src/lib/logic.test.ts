@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBootstrap, isOnionHost, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
 
 // A real v3 address is a 56-character base32 label plus `.onion`; the shape is
 // what matters here, not that this particular service exists.
@@ -206,4 +206,19 @@ test("the Tailscale hint is only for tailnet addresses", () => {
   assert.equal(isTailnetUrl("http://100.78.241.9:8799"), true);
   assert.equal(isTailnetUrl("https://random-words.trycloudflare.com"), false);
   assert.equal(isTailnetUrl("https://100things.example.com"), false);
+});
+
+test("the local-network hint covers RFC1918 and link-local, and nothing else", () => {
+  // The address this actually bit on: the phone talking to a server on the
+  // phone itself, by way of the Wi-Fi the phone is no longer on.
+  assert.equal(isPrivateLanUrl("https://192.168.1.223:8799"), true);
+  assert.equal(isPrivateLanUrl("https://10.0.0.5"), true);
+  assert.equal(isPrivateLanUrl("https://169.254.1.1"), true);
+  assert.equal(isPrivateLanUrl("https://172.16.0.1"), true);
+  // 172.32 is public: the private block stops at 172.31.
+  assert.equal(isPrivateLanUrl("https://172.32.0.1"), false);
+  // A tailnet address gets its OWN hint, because with Tailscale up it works
+  // off-network — the one thing a 192.168 address can never do.
+  assert.equal(isPrivateLanUrl("https://100.78.241.9:8799"), false);
+  assert.equal(isPrivateLanUrl(`https://${ONION}`), false);
 });
