@@ -333,8 +333,10 @@ function PeerActivity({ messages, currentBotId }: { messages: Message[]; current
           setOpening(true);
           void openRoom(room.id, dispatch).finally(() => setOpening(false));
         }}
+        disabled={opening}
+        aria-busy={opening}
         title={polish ? "Otwórz pokój współpracy (tylko do odczytu)" : "Open collaboration room (read-only)"}
-        className="flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary hover:text-ink"
+        className="flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 py-1 text-[13px] text-ink-secondary transition-[color,transform] duration-150 hover:text-ink active:scale-[0.97] active:text-ink disabled:cursor-wait disabled:scale-[0.98] disabled:text-ink"
       >
         {content}
         {opening && <Spinner size={13} className="shrink-0" />}
