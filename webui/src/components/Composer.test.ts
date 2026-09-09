@@ -120,8 +120,8 @@ describe("pasek nad composerem", () => {
   it("ma dokładnie jeden animowany awatar", () => {
     // Pozostałe BotAvatar w pliku to ikonki wierszy palety „/" — stoją
     // nieruchomo (bez propa `animated`), więc liczy się właśnie ten prop.
-    expect(composer.match(/^\s*animated\s*$/gm) ?? []).toHaveLength(1);
-    const strip = composer.slice(composer.indexOf("{strip && ("));
+    expect(composer.match(/animated=\{strip/g) ?? []).toHaveLength(1);
+    const strip = composer.slice(composer.indexOf('strip ? "h-12 opacity-100"'));
     expect(strip.slice(0, strip.indexOf("</div>")).match(/<BotAvatar/g) ?? []).toHaveLength(1);
   });
 
@@ -131,7 +131,18 @@ describe("pasek nad composerem", () => {
 
   it("stan awatara liczy stripMascotState, nie samo `bot.busy`", () => {
     expect(composer).toContain("stripMascotState(");
-    expect(composer).toContain("state={strip}");
+    expect(composer).toContain("state={strip ?? lastStrip.current}");
+  });
+
+  // Maskotka odmontowana między stanami traci sprężynę silnika i przeskakuje
+  // twardo. Pasek zostaje w drzewie; na telefonie stoi w toku dokumentu, więc
+  // pusty zwija się do zera zamiast znikać.
+  it("nie odmontowuje maskotki — zwija ją wysokością i opacity", () => {
+    expect(composer).not.toContain("{strip && (");
+    expect(composer).toContain("transition-[height,opacity]");
+    expect(composer).toContain('strip ? "h-12 opacity-100" : "h-0 opacity-0"');
+    // pusty pasek stoi zapauzowany, więc nie kręci rAF-a bez powodu
+    expect(composer).toContain("animated={strip !== null}");
   });
 });
 

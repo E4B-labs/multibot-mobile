@@ -5,7 +5,7 @@ import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { BotAvatar } from "./Avatar";
-import { normalizeState, stripMascotState } from "@/lib/mascot";
+import { CELEBRATE_MS, normalizeState, stripMascotState } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
@@ -338,13 +338,16 @@ export function Composer({
   // wybiera czysta `stripMascotState`; `null` znaczy „pasek pusty".
   const runtime = state.runtime[bot.threadId] ?? null;
   // Wiersze zależne od czasu (loading po 10 s, celebrate gaśnie po 1 s) nie mają
-  // własnego eventu, więc przy żywej turze przeliczamy je co pół sekundy.
+  // własnego eventu, więc przy żywej turze przeliczamy je co pół sekundy. Faza
+  // `runtime` nigdy się nie kasuje, więc warunkiem NIE może być samo jej
+  // istnienie — inaczej zegar tykał do końca życia aplikacji.
   const [clock, setClock] = useState(() => Date.now());
+  const celebrating = runtime?.kind === "done" && clock - runtime.at < CELEBRATE_MS;
   useEffect(() => {
-    if (!bot.busy && !runtime) return;
+    if (!bot.busy && !celebrating) return;
     const timer = setInterval(() => setClock(Date.now()), 500);
     return () => clearInterval(timer);
-  }, [bot.busy, runtime]);
+  }, [bot.busy, celebrating]);
   const strip = stripMascotState({
     bot,
     runtime,
@@ -352,6 +355,12 @@ export function Composer({
     focused: typeof document === "undefined" || document.hasFocus(),
     now: clock,
   });
+  // Pusty pasek znika przenikaniem, więc przez te 200 ms jest jeszcze widoczny.
+  // Gdyby dostał wtedy „idle", ciało przeskoczyłoby twardo do innej geometrii w
+  // tej samej klatce, w której się zatrzymuje — dokładnie ten przeskok, którego
+  // pozbywamy się przy wejściu. Gaśnie więc na ostatniej minie, jaką miał.
+  const lastStrip = useRef<NonNullable<typeof strip>>("idle");
+  if (strip) lastStrip.current = strip;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -904,21 +913,31 @@ export function Composer({
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
-        {/* Pasek: maksymalnie jeden bot, animowany, i tylko gdy ma co pokazać. */}
-        {strip && (
-          <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none" title={botDisplayName(bot, polish ? "pl" : "en")}>
-            {/* multibot: od 0.3.33 `stripMascotState` zwraca sam `BlobState`
-                — ruch niesie już silnik maskotki, nie osobne `motion`. */}
-            <BotAvatar
-              color={bot.color}
-              avatarUrl={bot.avatarUrl}
-              shape={bot.mascotShape}
-              state={strip}
-              size={44}
-              animated
-            />
-          </div>
-        )}
+        {/* Pasek: maksymalnie jeden bot, animowany, i tylko gdy ma co pokazać.
+            Maskotka NIE odmontowuje się między stanami — silnik przechodzi
+            między nimi sprężyną, a odmontowanie zabijałoby ten przebieg i dawało
+            twarde przeskoki. Pasek jest tu w toku dokumentu (nie absolutnie jak
+            na desktopie), więc pusty zwija się do zera zamiast znikać z drzewa;
+            stoi wtedy zapauzowany, więc nie rysuje kolejnych klatek. */}
+        <div
+          aria-hidden
+          className={cn(
+            "flex items-center overflow-hidden pl-3 pr-2 pointer-events-none transition-[height,opacity] duration-200",
+            strip ? "h-12 opacity-100" : "h-0 opacity-0",
+          )}
+          title={botDisplayName(bot, polish ? "pl" : "en")}
+        >
+          {/* multibot: od 0.3.33 `stripMascotState` zwraca sam `BlobState`
+              — ruch niesie już silnik maskotki, nie osobne `motion`. */}
+          <BotAvatar
+            color={bot.color}
+            avatarUrl={bot.avatarUrl}
+            shape={bot.mascotShape}
+            state={strip ?? lastStrip.current}
+            size={44}
+            animated={strip !== null}
+          />
+        </div>
         <input ref={cameraRef} hidden type="file" accept="image/*" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={photosRef} hidden type="file" accept="image/*" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
         <input ref={filesRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
