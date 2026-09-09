@@ -60,10 +60,12 @@ describe("wiersz grupy w Sidebarze", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const row = sidebar.slice(start, end);
-    expect(row).toContain("relative flex min-h-14 shrink-0 items-center gap-1");
+    expect(row).toContain("relative flex min-h-14 shrink-0 items-center");
+    expect(row).toContain("shown.length > 1 && \"-space-x-1\"");
     expect(row).toContain("{shown.map((member) => (");
-    expect(row).toContain("size={shown.length === 1 ? 56 : 36}");
-    expect(row).toContain("ring-2 ring-app");
+    expect(row).toContain("size={shown.length === 1 ? 56 : 20}");
+    expect(row).not.toContain("ring-2 ring-app");
+    expect(row).not.toContain("rounded-full ring");
     expect(row).not.toContain("+{plus}");
     expect(row).not.toContain("absolute left-0 top-0");
     expect(row).not.toContain("absolute bottom-0 right-0");

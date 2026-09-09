@@ -736,18 +736,17 @@ function GroupRow({
       )}
     >
       {/* Skład grupy zamiast jednej szarej ikony: wszystkie znane avatary
-          stoją obok siebie w jednym poziomym stosie. Nie pokazujemy `+N`,
-          bo użytkownik powinien od razu widzieć każdego znanego członka. */}
+          stoją obok siebie w jednym poziomym stosie. Dla wielu członków są
+          małe i lekko nachodzą na siebie, bez dodatkowych oprawek. */}
       {members.length > 0 ? (
-        <span className="relative flex min-h-14 shrink-0 items-center gap-1">
+        <span className={cn("relative flex min-h-14 shrink-0 items-center", shown.length > 1 && "-space-x-1")}>
           {shown.map((member) => (
-            <span key={member.id} className="flex shrink-0 rounded-full ring-2 ring-app">
-              <MausAvatar
-                color={member.color}
-                size={shown.length === 1 ? 56 : 36}
-                {...groupMemberAvatarProps(member)}
-              />
-            </span>
+            <MausAvatar
+              key={member.id}
+              color={member.color}
+              size={shown.length === 1 ? 56 : 20}
+              {...groupMemberAvatarProps(member)}
+            />
           ))}
           {attention && (
             <span
