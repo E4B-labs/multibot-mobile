@@ -1013,9 +1013,10 @@ export function AppSettingsPanel() {
                   "relative flex size-11 items-center justify-center rounded-xl",
                   "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.92]",
                   "before:absolute before:left-0 before:h-5 before:w-0.5 before:rounded-full",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70",
                   active
-                    ? "bg-white/[0.07] text-ink before:bg-accent"
-                    : "text-ink-secondary hover:bg-white/[0.04] hover:text-ink before:bg-transparent",
+                    ? "bg-white/[0.07] text-accent before:bg-accent"
+                    : "text-ink-secondary hover:bg-white/[0.04] hover:text-ink focus-visible:bg-white/[0.04] before:bg-transparent",
                 )}
               >
                 {/* key = numer kliknięcia: przemontowanie puszcza animację od

@@ -134,6 +134,14 @@ function BotSharing({ bot }: { bot: Bot }) {
 
 type AppearanceMode = "closed" | "bot" | "photo";
 
+const settingsChoiceClass = (selected: boolean) => cn(
+  "relative rounded-lg transition-[background-color,color,transform] duration-150",
+  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70",
+  selected
+    ? "bg-white/[0.07] text-ink before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-accent"
+    : "text-ink-secondary hover:bg-white/[0.04] hover:text-ink focus-visible:bg-white/[0.04]",
+);
+
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
   const polish = useLanguage() === "pl";
@@ -141,6 +149,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   // filtruje istniejące karty po ich tekście; zero nowej struktury sekcji.
   const [query, setQuery] = useState("");
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("closed");
+  const appearanceSelected = (mode: AppearanceMode) => appearanceMode === mode;
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,8 +240,12 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             type="button"
             onClick={() => setAppearanceMode((mode) => (mode === "closed" ? "bot" : "closed"))}
             aria-expanded={appearanceMode !== "closed"}
+            aria-pressed={appearanceMode !== "closed"}
             title={polish ? "Dodaj lub zmień zdjęcie profilowe" : "Add or change profile photo"}
-            className="group relative rounded-full transition-transform duration-200 hover:scale-[1.03] focus:outline-none"
+            className={cn(
+              "group relative rounded-full transition-[background-color,transform] duration-200 hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70",
+              appearanceMode !== "closed" && "bg-white/[0.07] p-1",
+            )}
           >
             <MausAvatar
               color={bot.color}
@@ -253,8 +266,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <div className="animate-panel-in overflow-hidden rounded-xl border border-hairline/40 bg-card">
               <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
                 <div className="flex gap-1">
-                  <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white">Bot</button>
-                  <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
+                  <button type="button" onClick={() => setAppearanceMode("bot")} aria-pressed={appearanceSelected("bot")} className={cn(settingsChoiceClass(appearanceSelected("bot")), "px-2.5 py-1 text-[13px] font-medium")}>Bot</button>
+                  <button type="button" onClick={() => setAppearanceMode("photo")} aria-pressed={appearanceSelected("photo")} className={cn(settingsChoiceClass(appearanceSelected("photo")), "flex items-center gap-1 px-2.5 py-1 text-[13px] font-medium")}><ImagePlus size={14} className={appearanceSelected("photo") ? "text-accent" : undefined} /> {polish ? "Prześlij" : "Upload"}</button>
                 </div>
                 <button type="button" onClick={() => patch({ color: "green", mascotExpression: null, mascotShape: "blob" })} className="rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-raised hover:text-ink">{polish ? "Resetuj" : "Reset"}</button>
               </div>
@@ -262,14 +275,17 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kształt ikony" : "Icon shape"}</div>
                 <div className="grid grid-cols-5 gap-1.5">
                   {MASCOT_SHAPES.map((shape) => (
-                    <button type="button" key={shape} onClick={() => patch({ mascotShape: shape })} className={cn("flex h-[46px] items-center justify-center rounded-lg bg-inset transition-colors hover:bg-raised", (bot.mascotShape ?? "blob") === shape && "ring-2 ring-accent-border")} title={shape} aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}>
+                    <button type="button" key={shape} onClick={() => patch({ mascotShape: shape })} aria-pressed={(bot.mascotShape ?? "blob") === shape} className={cn("flex h-[46px] items-center justify-center bg-inset", settingsChoiceClass((bot.mascotShape ?? "blob") === shape))} title={shape} aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}>
                       <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} animated={false} trackPointer={false} showFace={false} />
                     </button>
                   ))}
                 </div>
                 <div className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
                 <div className="flex flex-wrap gap-2">
-                  {MAUS_COLOR_NAMES.map((color) => <button type="button" key={color} onClick={() => patch({ color })} className={cn("size-7 rounded-full border-2 border-transparent transition-transform hover:scale-110", bot.color === color && "ring-2 ring-accent-border ring-offset-2 ring-offset-card")} style={{ backgroundColor: MAUS_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />)}
+                  {MAUS_COLOR_NAMES.map((color) => {
+                    const selected = bot.color === color;
+                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-0 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: MAUS_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
+                  })}
                 </div>
               </div>
             </div>
@@ -278,8 +294,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <div className="overflow-hidden rounded-xl border border-hairline/40 bg-card">
               <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
                 <div className="flex gap-1">
-                  <button type="button" onClick={() => setAppearanceMode("bot")} className="rounded-lg px-2.5 py-1 text-[13px] font-medium text-ink-secondary hover:bg-raised hover:text-ink">Bot</button>
-                  <button type="button" onClick={() => setAppearanceMode("photo")} className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1 text-[13px] font-medium text-white"><ImagePlus size={14} /> {polish ? "Prześlij" : "Upload"}</button>
+                  <button type="button" onClick={() => setAppearanceMode("bot")} aria-pressed={appearanceSelected("bot")} className={cn(settingsChoiceClass(appearanceSelected("bot")), "px-2.5 py-1 text-[13px] font-medium")}>Bot</button>
+                  <button type="button" onClick={() => setAppearanceMode("photo")} aria-pressed={appearanceSelected("photo")} className={cn(settingsChoiceClass(appearanceSelected("photo")), "flex items-center gap-1 px-2.5 py-1 text-[13px] font-medium")}><ImagePlus size={14} className={appearanceSelected("photo") ? "text-accent" : undefined} /> {polish ? "Prześlij" : "Upload"}</button>
                 </div>
                 {bot.avatarUrl ? (
                   <button

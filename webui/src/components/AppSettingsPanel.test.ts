@@ -51,6 +51,22 @@ describe("mobile app settings parity", () => {
     expect(panel).not.toContain("Nowsze");
     expect(panel).not.toContain("Starsze");
   });
+  it("wyrĂłĹĽnia aktywnÄ… sekcjÄ™ bez obwĂłdki i ma spĂłjny focus", () => {
+    expect(panel).toContain('aria-current={active ? "page" : undefined}');
+    expect(panel).toContain('active\n                    ? "bg-white/[0.07] text-accent before:bg-accent"');
+    expect(panel).toContain("focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70");
+    expect(panel).not.toContain("ring-2 ring-accent-border");
+  });
+
+  it("ma aktywne stany wszystkich wyborĂłw wyglÄ…du awatara", () => {
+    expect(settings).toContain("const settingsChoiceClass = (selected: boolean)");
+    expect(settings.match(/aria-pressed=\{appearanceSelected\("bot"\)\}/g)).toHaveLength(2);
+    expect(settings.match(/aria-pressed=\{appearanceSelected\("photo"\)\}/g)).toHaveLength(2);
+    expect(settings).toContain("aria-pressed={(bot.mascotShape ?? \"blob\") === shape}");
+    expect(settings).toContain("aria-pressed={selected}");
+    expect(settings).toContain("before:bg-accent");
+    expect(settings).not.toContain("ring-2 ring-accent-border");
+  });
 });
 
 // Zakładka admina pokazuje cudze konta i rotuje hasło serwera. Widzi ją
