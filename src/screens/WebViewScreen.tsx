@@ -6,7 +6,7 @@ import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, rememberedEntryOf, type AppInfo, type Host } from "../lib/host-logic";
+import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, probeServer, rememberedEntryOf, type AppInfo, type Host } from "../lib/host-logic";
 import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
 import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
@@ -547,6 +547,13 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         {/* Most common cause isn't an app bug: the phone and host are on
             different networks. A 100.x address only lives inside the tailnet,
             so without Tailscale on the connection just sits until the timeout. */}
+        {isPrivateLanUrl(host.url) && (
+          <Text style={styles.errorHint}>
+            This is a local-network address — it only exists on that Wi-Fi. On mobile data the phone
+            holds no address on that network, so the connection isn&apos;t refused, it just waits out
+            the timeout. Sign in to this server&apos;s .onion address to reach it from any network.
+          </Text>
+        )}
         {isTailnetUrl(host.url) && (
           <Text style={styles.errorHint}>
             A 100.x address only works with Tailscale on. Check that this phone is connected to the same

@@ -164,6 +164,17 @@ export function isTailnetUrl(url: string): boolean {
   return /^https?:\/\/100\.\d/.test(url.trim());
 }
 
+/** A private (RFC1918) or link-local address, which exists only on the network
+ * it was saved from. Worth its own hint because of HOW it fails: on mobile data
+ * the phone holds no address on that network, so the connection is not refused
+ * — it leaves by the cellular default route and sits there until the timeout,
+ * which from the outside looks like the app being slow to start rather than
+ * like the wrong address. Kept apart from `isTailnetUrl` because a 100.x
+ * address CAN work off its own network, with Tailscale up; this one never can. */
+export function isPrivateLanUrl(url: string): boolean {
+  return /^https?:[/][/](10[.]|192[.]168[.]|169[.]254[.]|172[.](1[6-9]|2[0-9]|3[01])[.])/.test(url.trim());
+}
+
 /** What this INSTALL is, as opposed to what the server is. The web UI is the
  * same bundle on every host, so without this it has nothing to show but the
  * server's version — which is a different program on a different machine.
