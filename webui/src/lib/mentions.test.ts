@@ -19,10 +19,6 @@ const paragraph = (value: string) => ({ type: "root", children: [{ type: "paragr
 const kinds = (tree: any) => tree.children[0].children.map((c: any) => c.type);
 const mentionNames = (tree: any) =>
   tree.children[0].children.filter((c: any) => c.type === "mention").map((c: any) => c.data.hProperties.dataMention);
-const mentionLabels = (tree: any) =>
-  tree.children[0].children
-    .filter((c: any) => c.type === "mention")
-    .map((c: any) => c.children[0].value);
 
 describe("wzmianki @bot", () => {
   it("przechodzi przez listę wtyczek tak, jak wywoła ją unified", () => {
@@ -32,8 +28,6 @@ describe("wzmianki @bot", () => {
     const tree = runPlugins(mentionPlugins(remarkGfm, bots), paragraph("hej @New Bot zrób to"));
     expect(kinds(tree)).toEqual(["text", "mention", "text"]);
     expect(mentionNames(tree)).toEqual(["New Bot"]);
-    expect(mentionLabels(tree)).toEqual(["New Bot"]);
-    expect(mentionLabels(tree)[0]).not.toContain("@");
   });
 
   it("bez botów nie dokłada wtyczki wzmianek", () => {

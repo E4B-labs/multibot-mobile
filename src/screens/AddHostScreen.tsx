@@ -13,11 +13,11 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as IntentLauncher from "expo-intent-launcher";
 
-import { isOnionHost, newHostId, normalizeHostUrl, type Host } from "../lib/host-logic";
-import { saveHost } from "../lib/hosts";
-import { joinErrorField, joinErrorMessage, type JoinErrorCode, type JoinField } from "../lib/join";
+import { isOnionHost, newHostId, normalizeHostUrl, rememberedEntryOf, type Host } from "../lib/host-logic";
+import { forgetRemembered, readRemembered, rememberServer, saveHost, type RememberedEntry } from "../lib/hosts";
+import { joinErrorField, joinErrorMessage, loginErrorMessage, type JoinErrorCode, type JoinField, type LoginErrorCode } from "../lib/join";
 import { installTermux } from "../lib/mobile-release";
-import { forgetServer, joinHost, LOCAL_SERVER_URL, probeLocalServer } from "../lib/tls";
+import { forgetServer, joinHost, LOCAL_SERVER_URL, probeLocalServer, signInRemembered } from "../lib/tls";
 
 interface Props {
   onDone: (host: Host, fragment?: string) => void;
@@ -43,6 +43,11 @@ export default function AddHostScreen({ onDone }: Props) {
   const [serverPassword, setServerPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<{ field: JoinField; code: JoinErrorCode } | null>(null);
+  // „Zapamiętaj mnie" domyślnie WŁĄCZONE. Pięć wartości leży w SecureStore
+  // (Keychain/Keystore), nigdy w localStorage strony i nigdy w logu.
+  const [remember, setRemember] = useState(true);
+  const [saved, setSaved] = useState<RememberedEntry | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
 
   // A `.onion` address has to wait for Tor to build a circuit before anything
   // else happens, so the button says so instead of spinning silently for half a
@@ -60,6 +65,18 @@ export default function AddHostScreen({ onDone }: Props) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+    };
+  }, []);
+
+  // Zapamiętany wpis czytamy raz, przy wejściu. Nie ma w nim żadnego hasła —
+  // tylko tyle, ile trzeba, żeby napisać na przycisku, kto i gdzie.
+  useEffect(() => {
+    let alive = true;
+    void readRemembered()
+      .then((record) => alive && setSaved(rememberedEntryOf(record)))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
     };
   }, []);
 
@@ -172,6 +189,13 @@ export default function AddHostScreen({ onDone }: Props) {
         setError({ field: joinErrorField(code), code });
         return;
       }
+      // Połowa serwerowa „zapamiętaj mnie". Drugą (nazwa i hasło profilu)
+      // dokłada strona przez most, gdy logowanie profilu się uda. Odznaczony
+      // haczyk KASUJE poprzedni wpis: logowanie bez zapamiętania nie ma prawa
+      // zostawić starych haseł w SecureStore.
+      await rememberServer(
+        remember ? { url: result.url!, serverName: serverName.trim(), serverPassword } : null,
+      ).catch(() => undefined);
       await openHost(result.url!, serverName.trim() || result.url!, result.fragment);
     } catch {
       // saveHost, SecureStore or anything else throwing must not leave the
@@ -180,6 +204,49 @@ export default function AddHostScreen({ onDone }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Jedno stuknięcie: join i logowanie profilu robi powłoka, a WebView wstaje
+   * z gotową sesją we fragmencie. Strona nie widzi po drodze żadnego hasła. */
+  async function submitRemembered() {
+    setBusy(true);
+    setSavedError(null);
+    setError(null);
+    try {
+      const record = await readRemembered();
+      if (!record?.username || !record.password) {
+        await forgetRemembered().catch(() => undefined);
+        setSaved(null);
+        return;
+      }
+      const result = await signInRemembered({
+        url: record.url,
+        serverName: record.serverName,
+        serverPassword: record.serverPassword,
+        username: record.username,
+        password: record.password,
+      });
+      if (!result.ok) {
+        const code = result.error ?? "failed";
+        setSavedError(
+          code === "no_such_profile" || code === "wrong_profile_password" || code === "join_grant_invalid"
+            ? loginErrorMessage(code as LoginErrorCode)
+            : joinErrorMessage(code as JoinErrorCode),
+        );
+        return;
+      }
+      await openHost(result.url!, record.serverName || result.url!, result.fragment);
+    } catch {
+      setSavedError("The saved sign-in did not work. Enter the three values again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forgetSaved() {
+    await forgetRemembered().catch(() => undefined);
+    setSaved(null);
+    setSavedError(null);
   }
 
   async function trustNewCertificate() {
@@ -203,6 +270,21 @@ export default function AddHostScreen({ onDone }: Props) {
         {mode === "choice" && (
           <View style={styles.cards}>
             <Text style={styles.title}>Get started</Text>
+            {saved && (
+              // Zapamiętany wpis stoi PRZED wyborem: po wylogowaniu to jest ta
+              // jedna rzecz, którą użytkownik chce stuknąć.
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Welcome back</Text>
+                <Text style={styles.cardBody}>Signed in here before as {saved.username} on {saved.serverName || saved.url}.</Text>
+                {savedError ? <Text style={styles.error}>{savedError}</Text> : null}
+                <Pressable style={[styles.primaryButton, busy && styles.primaryDisabled]} disabled={busy} onPress={() => void submitRemembered()}>
+                  {busy ? <ActivityIndicator color="#070707" /> : <Text style={styles.primaryButtonText}>Sign in as {saved.username}</Text>}
+                </Pressable>
+                <Pressable style={styles.linkButton} disabled={busy} onPress={() => void forgetSaved()}>
+                  <Text style={styles.linkText}>Forget this saved sign-in</Text>
+                </Pressable>
+              </View>
+            )}
             {Platform.OS === "android" ? (
               <Pressable style={styles.card} disabled={busy} onPress={() => void startSetup()}>
                 <Text style={styles.cardTitle}>Set up a server</Text>
@@ -332,6 +414,18 @@ export default function AddHostScreen({ onDone }: Props) {
             {fieldError("form")}
 
             <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: remember }}
+              onPress={() => setRemember((on) => !on)}
+              style={styles.rememberRow}
+            >
+              <View style={[styles.checkbox, remember && styles.checkboxOn]}>
+                {remember ? <Text style={styles.checkboxMark}>{"✓"}</Text> : null}
+              </View>
+              <Text style={styles.rememberText}>Remember me on this phone</Text>
+            </Pressable>
+
+            <Pressable
               style={[styles.primaryButton, (busy || !url.trim() || !serverName.trim() || !serverPassword) && styles.primaryDisabled]}
               disabled={busy || !url.trim() || !serverName.trim() || !serverPassword}
               onPress={() => void submitSignIn()}
@@ -377,6 +471,11 @@ const styles = StyleSheet.create({
   eyeButton: { alignItems: "center", justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
   eyeText: { color: "#fcfcfc99", fontSize: 14, fontWeight: "600" },
   error: { color: "#ff8080", fontSize: 13, marginTop: 6 },
+  rememberRow: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: 14, minHeight: 44 },
+  checkbox: { alignItems: "center", borderColor: "#3a3a3a", borderRadius: 5, borderWidth: 1.5, height: 20, justifyContent: "center", width: 20 },
+  checkboxOn: { backgroundColor: "#38d591", borderColor: "#38d591" },
+  checkboxMark: { color: "#070707", fontSize: 13, fontWeight: "800", lineHeight: 15 },
+  rememberText: { color: "#fcfcfc99", fontSize: 14 },
   notice: { color: "#fcfcfc99", fontSize: 13, marginTop: 10 },
   buttonRow: { alignItems: "center", flexDirection: "row", gap: 10 },
   primaryButton: { alignItems: "center", backgroundColor: "#fcfcfc", borderRadius: 10, marginTop: 16, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },

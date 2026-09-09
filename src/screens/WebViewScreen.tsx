@@ -6,9 +6,9 @@ import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isOnionHost, isTailnetUrl, probeServer, type Host } from "../lib/host-logic";
-import { getHostToken } from "../lib/hosts";
-import { joinErrorMessage, type JoinErrorCode } from "../lib/join";
+import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, probeServer, rememberedEntryOf, type AppInfo, type Host } from "../lib/host-logic";
+import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
+import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
 import { forgetServer, prepareTor } from "../lib/tls";
 import { setWebViewProxyFor } from "../lib/tor";
@@ -24,7 +24,11 @@ interface Props {
   onBotVisible?: (botId: string | null) => void;
   /** Sign-in started from inside the web UI: the shell resolves the address and
    * swaps hosts, because the page cannot reach another origin itself. */
-  onJoinHost?: (url: string, serverName: string, serverPassword: string) => Promise<{ ok: boolean; error?: JoinErrorCode }>;
+  onJoinHost?: (url: string, serverName: string, serverPassword: string, remember?: boolean) => Promise<{ ok: boolean; error?: JoinErrorCode }>;
+  /** One-tap sign-in from inside the web UI, after a sign-out: the shell holds
+   * the five remembered values, joins AND logs the profile in natively, then
+   * remounts this screen with a ready session in the fragment. */
+  onSignInRemembered?: () => Promise<{ ok: boolean; error?: JoinErrorCode | LoginErrorCode }>;
 }
 
 // W Android WebView `env(safe-area-inset-top)` nie obejmuje paska stanu (tylko
@@ -47,7 +51,11 @@ const PROBE_TIMEOUT_MS = 8_000;
 // first one after a cold bootstrap is seconds, not milliseconds — the LAN
 // budgets above would fail a perfectly healthy server.
 const ONION_LOAD_TIMEOUT_MS = 90_000;
-const ONION_PROBE_TIMEOUT_MS = 45_000;
+// Same budget as the load, because the probe now starts at the same moment: Tor
+// no longer holds the screen until it has a circuit, so this one request has to
+// cover the bootstrap as well as the trip through it. 45 s used to be enough
+// only because nothing dialled anything until the circuit already existed.
+const ONION_PROBE_TIMEOUT_MS = 90_000;
 
 // Anything running in this WebView can call `postMessage`, including a frame the
 // page embeds (the bot-computer noVNC view is one). The privileged messages —
@@ -60,6 +68,13 @@ const ONION_PROBE_TIMEOUT_MS = 45_000;
 // gate a page inside it could open the camera or pull the clipboard.
 const PRIVILEGED = new Set([
   "host.join",
+  // Zapamiętane logowanie: „daj wpis" i „zaloguj" sięgają do SecureStore,
+  // „zapamiętaj profil" wkłada tam hasło. Wszystkie trzy za bramką nonce'a —
+  // bez niej ramka noVNC mogłaby o nie poprosić.
+  "remember.get",
+  "remember.signin",
+  "remember.profile",
+  "remember.forget",
   "tls.forget",
   "push.request",
   "app.update.check",
@@ -107,7 +122,7 @@ async function probeHost(url: string, timeoutMs: number): Promise<string | null>
   }
 }
 
-export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost }: Props) {
+export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisible, onJoinHost, onSignInRemembered }: Props) {
   const webRef = useRef<WebView>(null);
   const updateLogControllers = useRef(new Map<string, AbortController>());
   useEffect(() => () => {
@@ -125,6 +140,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   const nonce = useMemo(newBridgeNonce, []);
   const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Ta sama wartość dla sondy, która leci obok ładowania: jej `.then` domyka
+  // stan z chwili startu efektu, a ref widzi ten z chwili odpowiedzi.
+  const [status, setStatus] = useState("");
+  const loadedRef = useRef(false);
+  loadedRef.current = loaded;
   const [attempt, setAttempt] = useState(0);
   // How much of the page made it in before it stopped — "loading" means the
   // same at 0% and at 99% without this.
@@ -136,6 +156,8 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   const nativeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cameraRequest, setCameraRequest] = useState<{ requestId: string; purpose: "attachment" | "avatar" } | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   // Domyślnie włączony: widok pełnoekranowy (WebView edge-to-edge, bez
@@ -156,8 +178,12 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // also CLEARS the override for a normal host, so switching back from an
       // onion server cannot leave every LAN address routed into a dead proxy.
       try {
+        // Pierwszy start Tora to 10–30 s budowania obwodu. Bez tej linijki
+        // ekran jest przez ten czas pustym kółkiem i wygląda na zawieszony.
+        if (onion) setStatus("Łączę przez Tor — pierwszy obwód to zwykle 10–30 s…");
         await prepareTor(host.url);
         await setWebViewProxyFor(host.url);
+        setStatus("");
       } catch (error) {
         if (!cancelled) {
           setFailed(error instanceof Error ? error.message : `Could not start Tor for ${host.url}.`);
@@ -168,16 +194,40 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // Brak zapisanego tokenu to poprawny host: serwer ma własne konta
       // (protokół 2), więc interfejs webowy pokaże swój ekran logowania
       // (login + hasło) i sam zapisze sesję w localStorage tego origin.
-      const problem = await probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
-      if (cancelled) return;
-      if (problem) {
-        setFailed(problem);
-        return;
-      }
-      // multibot: wersja aplikacji dla webui (odpowiednik bridge'a
-      // updatera.currentVersion() na desktopie).
-      const appVersion = Application.nativeApplicationVersion ?? Updates.runtimeVersion ?? "";
-      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, appVersion }));
+      //
+      // Sonda NIE blokuje ładowania. Przez Tora to pełna dodatkowa podróż
+      // (rendezvous + TLS + HTTP) po świeżo zbudowanym obwodzie — sekundy
+      // czekania z pustym ekranem po to, żeby dowiedzieć się tego, co samo
+      // ładowanie powie chwilę później. Leci równolegle i służy już tylko za
+      // lepszy komunikat, gdy strona nie wstanie.
+      //
+      // `loaded` means the BUNDLED html finished parsing, and that html is
+      // local — over Tor it now happens while the circuit is still building, so
+      // it proves nothing about the network. For an onion host the probe is the
+      // only thing that can tell a circuit that is coming from one that never
+      // will, so there it reports regardless of `loaded`.
+      void probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS).then((problem) => {
+        if (!cancelled && problem && (onion || !loadedRef.current)) setFailed(problem);
+      });
+      // multibot: co to za INSTALACJA — odpowiednik bridge'a
+      // updatera.currentVersion() na desktopie. Wersja serwera to zupełnie
+      // inna liczba (inny program, inna maszyna) i webui pokazuje ją osobno;
+      // tutaj idzie wyłącznie APK + paczka OTA, która na nim stoi.
+      const app: AppInfo = {
+        version: Application.nativeApplicationVersion ?? "",
+        build: Application.nativeBuildVersion ?? "",
+        ...(Updates.runtimeVersion ? { runtimeVersion: Updates.runtimeVersion } : {}),
+        ...(Updates.updateId ? { updateId: Updates.updateId } : {}),
+        // `toISOString()` rzuca RangeError na Invalid Date, a rzut z tego
+        // miejsca leci w `catch` efektu i podmienia CAŁY ekran na „nie mogę
+        // odczytać tokenu". Data z popsutego manifestu ma kosztować jedną
+        // linijkę w panelu, nie aplikację.
+        ...(Number.isFinite(Updates.createdAt?.getTime())
+          ? { updateCreatedAt: Updates.createdAt!.toISOString() }
+          : {}),
+        ...(Updates.channel ? { channel: Updates.channel } : {}),
+      };
+      setBootstrap(buildBootstrap({ token, botId, fragment, bridgeNonce: nonce, statusBarHeight: STATUS_BAR_HEIGHT, app }));
     }, (e: unknown) => {
       if (!cancelled) setFailed(e instanceof Error ? e.message : "Could not read the saved token.");
     });
@@ -293,7 +343,34 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     });
   }
 
-  async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown }) {
+  // Zapamiętane logowanie. Strona dostaje z niego WYŁĄCZNIE adres, nazwę
+  // serwera i nazwę profilu — dokładnie tyle, ile trzeba na przycisk. Żadne
+  // hasło nie przechodzi przez most w tę stronę.
+  async function handleRememberGet() {
+    const record = await readRemembered().catch(() => null);
+    sendToPage({ type: "remember.entry", entry: rememberedEntryOf(record) });
+  }
+
+  async function handleRememberSignIn() {
+    let result: { ok: boolean; error?: JoinErrorCode | LoginErrorCode };
+    try {
+      result = onSignInRemembered ? await onSignInRemembered() : { ok: false, error: "failed" };
+    } catch {
+      result = { ok: false, error: "failed" };
+    }
+    // Sukces przeładowuje WebView z nową sesją, więc nie ma już komu odpowiadać.
+    if (result.ok) return;
+    const code = result.error ?? "failed";
+    const login = code === "no_such_profile" || code === "wrong_profile_password" || code === "join_grant_invalid";
+    sendToPage({
+      type: "remember.signin.result",
+      ok: false,
+      error: code,
+      message: login ? loginErrorMessage(code as LoginErrorCode) : joinErrorMessage(code as JoinErrorCode),
+    });
+  }
+
+  async function handleJoinHost(msg: { url?: unknown; serverName?: unknown; serverPassword?: unknown; remember?: unknown }) {
     if (typeof msg.url !== "string" || typeof msg.serverName !== "string" || typeof msg.serverPassword !== "string") {
       sendToPage({ type: "host.join.result", ok: false, error: "invalid_address" });
       return;
@@ -304,7 +381,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     }
     let result: { ok: boolean; error?: JoinErrorCode };
     try {
-      result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword);
+      result = await onJoinHost(msg.url, msg.serverName, msg.serverPassword, msg.remember === true);
     } catch {
       // A page left waiting on a reply that never comes looks like a hang. Any
       // throw becomes an answer.
@@ -408,8 +485,10 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         sendUpdateState({ status: "downloaded", version: Updates.updateId?.slice(0, 8) || "OTA" });
         return;
       }
+      setInstalling(true);
       await Updates.reloadAsync();
     } catch (error) {
+      setInstalling(false);
       sendUpdateState({
         status: "error",
         message: error instanceof Error ? error.message : "Could not update the app.",
@@ -420,6 +499,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   async function takeNativePhoto() {
     if (!cameraRequest || !cameraPermission?.granted || !cameraReady) return;
     const request = cameraRequest;
+    setCapturing(true);
     try {
       const picture = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.86 });
       if (!picture?.base64) throw new Error("The camera did not return an image.");
@@ -432,6 +512,8 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       setCameraRequest(null);
     } catch (error) {
       sendNativeError(request.requestId, request.purpose, error instanceof Error ? error.message : "Could not take a photo.");
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -465,6 +547,13 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         {/* Most common cause isn't an app bug: the phone and host are on
             different networks. A 100.x address only lives inside the tailnet,
             so without Tailscale on the connection just sits until the timeout. */}
+        {isPrivateLanUrl(host.url) && (
+          <Text style={styles.errorHint}>
+            This is a local-network address — it only exists on that Wi-Fi. On mobile data the phone
+            holds no address on that network, so the connection isn&apos;t refused, it just waits out
+            the timeout. Sign in to this server&apos;s .onion address to reach it from any network.
+          </Text>
+        )}
         {isTailnetUrl(host.url) && (
           <Text style={styles.errorHint}>
             A 100.x address only works with Tailscale on. Check that this phone is connected to the same
@@ -485,6 +574,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#fcfcfc" />
+        {status ? <Text style={styles.errorBody}>{status}</Text> : null}
       </View>
     );
   }
@@ -537,6 +627,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
             if (msg?.type === "host.join") void handleJoinHost(msg);
+            if (msg?.type === "remember.get") void handleRememberGet();
+            if (msg?.type === "remember.signin") void handleRememberSignIn();
+            // Druga połowa wpisu, po udanym logowaniu profilu. Bez czekającej
+            // połowy serwerowej to nic nie robi — haczyk był odznaczony.
+            if (msg?.type === "remember.profile" && typeof msg.username === "string" && typeof msg.password === "string") {
+              void rememberProfile(msg.username, msg.password).catch(() => undefined);
+            }
+            if (msg?.type === "remember.forget") void forgetRemembered().catch(() => undefined);
             if (msg?.type === "push.request") void handlePushRequest();
             if (
               msg?.type === "update-log.request" &&
@@ -604,7 +702,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               facing="back"
               onCameraReady={() => setCameraReady(true)}
             />
-          ) : (
+          ) : null}
+          {capturing && (
+            <View style={styles.captureOverlay}>
+              <ActivityIndicator color="#fcfcfc" />
+              <Text style={styles.errorBody}>Saving photo…</Text>
+            </View>
+          )}
+          {cameraPermission?.granted ? null : (
             <View style={styles.cameraPermission}>
               <Text style={styles.cameraTitle}>Camera access is required</Text>
               <Text style={styles.cameraBody}>Allow camera access to take a photo for this message.</Text>
@@ -618,11 +723,17 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               <Text style={styles.cameraCancelText}>Cancel</Text>
             </Pressable>
             {cameraPermission?.granted && (
-              <Pressable style={[styles.cameraButton, !cameraReady && styles.cameraButtonDisabled]} disabled={!cameraReady} onPress={() => void takeNativePhoto()}>
-                <Text style={styles.cameraButtonText}>Take photo</Text>
+              <Pressable style={[styles.cameraButton, (!cameraReady || capturing) && styles.cameraButtonDisabled]} disabled={!cameraReady || capturing} onPress={() => void takeNativePhoto()}>
+                <Text style={styles.cameraButtonText}>{capturing ? "Saving…" : "Take photo"}</Text>
               </Pressable>
             )}
           </View>
+        </View>
+      )}
+      {installing && (
+        <View style={styles.captureOverlay}>
+          <ActivityIndicator color="#fcfcfc" />
+          <Text style={styles.errorBody}>Installing update…</Text>
         </View>
       )}
     </View>
@@ -662,6 +773,7 @@ const styles = StyleSheet.create({
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
   backButton: { marginTop: 12, backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   backButtonText: { color: "#070707", fontWeight: "700" },
+  captureOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#070707cc", gap: 10 },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10, backgroundColor: "#070707", padding: 16 },
   cameraPreview: { flex: 1, borderRadius: 18, overflow: "hidden" },
   cameraPermission: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },

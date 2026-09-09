@@ -10,7 +10,7 @@
 import { requireOptionalNativeModule } from "expo";
 
 import { isOnionHost, normalizeHostUrl, probeServer, tlsKey } from "./host-logic";
-import { joinFragment, parseJoinResponse, type JoinErrorCode, type JoinResponse } from "./join";
+import { joinFragment, parseJoinResponse, parseLoginResponse, sessionFragment, type JoinErrorCode, type JoinResponse, type LoginErrorCode, type LoginResponse } from "./join";
 import { ensureTor, ONION_TIMEOUT_MS } from "./tor";
 
 interface NativeTls {
@@ -149,6 +149,55 @@ export async function joinHost(rawUrl: string, serverName: string, serverPasswor
     hasUsers: response.hasUsers,
     fragment: joinFragment(response.joinGrant),
   };
+}
+
+export interface RememberedSignInOutcome {
+  ok: boolean;
+  url?: string;
+  fragment?: string;
+  /** A join failure (address, server name/password) or a login failure
+   * (profile name/password). One field, because the screen shows one line. */
+  error?: JoinErrorCode | LoginErrorCode;
+}
+
+/**
+ * One tap: join the server AND log the profile in, both natively, and hand the
+ * web UI a ready session in the fragment. The profile login has to happen out
+ * here for the same reason the join does — the page is not loaded yet, and once
+ * it is, it is in the server's origin with no way back to these credentials.
+ *
+ * `x-multibot-client: native` so the server returns a session token in the
+ * body: a WebView keeps no cookie, and without it the page would be signed out
+ * again at the first token refresh.
+ */
+export async function signInRemembered(record: {
+  url: string;
+  serverName: string;
+  serverPassword: string;
+  username: string;
+  password: string;
+}): Promise<RememberedSignInOutcome> {
+  const joined = await joinHost(record.url, record.serverName, record.serverPassword);
+  if (!joined.ok || !joined.url || !joined.joinGrant) return { ok: false, url: joined.url, error: joined.error ?? "failed" };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutFor(joined.url, JOIN_TIMEOUT_MS));
+  let response: LoginResponse;
+  try {
+    const res = await fetch(`${joined.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-multibot-client": "native" },
+      body: JSON.stringify({ joinGrant: joined.joinGrant, username: record.username, password: record.password, deviceName: "MultiBot phone" }),
+      signal: controller.signal,
+    });
+    response = parseLoginResponse(res.status, await res.json().catch(() => ({})));
+  } catch {
+    return { ok: false, url: joined.url, error: controller.signal.aborted ? "timeout" : "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!response.ok) return { ok: false, url: joined.url, error: response.error };
+  return { ok: true, url: joined.url, fragment: sessionFragment(response.accessToken, response.sessionToken) };
 }
 
 /** The native module rejects with a `code`. Matching on message text would

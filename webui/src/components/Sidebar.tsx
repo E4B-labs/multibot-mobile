@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
+import { Skeleton } from "./Loading";
 import { MausAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
 import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
@@ -36,7 +37,7 @@ import { getLanguage, useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
-import { groupAvatarSplit, groupRowTitle } from "@/lib/groupRow";
+import { groupAvatarStack, groupRowTitle } from "@/lib/groupRow";
 // multibot: kolejność sekcji i podział wierszy — czysta logika, testowana osobno
 import { moveSectionTo, orderSections, sectionRows } from "@/lib/sidebarSections";
 
@@ -709,7 +710,9 @@ function GroupRow({
     .map((id) => bots.find((b) => engineBotId(b.threadId) === id))
     .filter((b): b is Bot => b != null);
   const selected = state.groupOpen?.id === group.id;
-  const { shown, overflow } = groupAvatarSplit(members, 2, group.bot_ids.length);
+  const { shown, plus } = groupAvatarStack(members, group.bot_ids.length);
+  // sam członek nie ma z czym się krzyżować, więc siada na środku kafelka
+  const solo = shown.length === 1 && plus === 0;
   // Czas ostatniej wiadomości bierzemy z wątku grupy, jeśli serwer go dosłał —
   // gdy grupa przyszła bez wiadomości, po prawej nie ma nic (żadnej liczby).
   const lastAt = group.messages?.[group.messages.length - 1]?.at;
@@ -734,28 +737,32 @@ function GroupRow({
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      {/* Skład grupy zamiast jednej szarej ikony: nachodzące na siebie
-          awatary botów (wzorem Groka) mówią od razu, kto w grupie siedzi.
-          Bez pierścienia-oddzielnika: czarna obwódka znika na tle drawera,
-          ale na podświetleniu zaznaczonego wiersza wychodziła jako ciemny
-          okrąg. Przy botach nieznanych aplikacji zostaje dawne koło, żeby
-          wiersz nie był pusty. Widoczni są najwyżej dwaj członkowie, reszta
-          idzie na plakietkę `+N` w prawym dolnym rogu stosu. */}
+      {/* Skład grupy zamiast jednej szarej ikony: wiersz 1:1 jak w
+          komunikatorze — tylny awatar w lewym górnym rogu, przedni w prawym
+          dolnym z cienką obwódką w kolorze tła. Powyżej dwóch członków przedni
+          awatar zastępuje zielone kółko `+N` (N = wszyscy oprócz tylnego).
+          Kafelek ma 56 px, tyle co awatar bota, żeby wiersze botów i grup
+          miały tę samą wysokość i to samo wcięcie tekstu. Przy botach
+          nieznanych aplikacji zostaje dawne koło, żeby wiersz nie był pusty. */}
       {members.length > 0 ? (
-        <span className="relative flex shrink-0 items-center">
-          {shown.map((b, i) => (
-            <span key={b.id} className={cn("shrink-0", i > 0 && "-ml-3")}>
-              <MausAvatar
-                color={b.color}
-                size={40}
-                {...groupMemberAvatarProps(b)}
-              />
-            </span>
-          ))}
-          {overflow > 0 && (
-            <span className="absolute -bottom-0.5 -right-1 flex min-w-4 items-center justify-center rounded-full bg-control px-1 text-[10px] font-semibold text-ink">
-              +{overflow}
-            </span>
+        <span className="relative size-14 shrink-0">
+          {solo ? (
+            <MausAvatar color={shown[0].color} size={56} {...groupMemberAvatarProps(shown[0])} />
+          ) : (
+            <>
+              <span className="absolute left-0 top-0 flex">
+                <MausAvatar color={shown[0].color} size={32} {...groupMemberAvatarProps(shown[0])} />
+              </span>
+              {plus > 0 ? (
+                <span className="absolute bottom-0 right-0 flex size-10 items-center justify-center rounded-full bg-success text-[13px] font-semibold leading-none text-app ring-2 ring-app">
+                  +{plus}
+                </span>
+              ) : (
+                <span className="absolute bottom-0 right-0 flex rounded-full ring-2 ring-app">
+                  <MausAvatar color={shown[1].color} size={38} {...groupMemberAvatarProps(shown[1])} />
+                </span>
+              )}
+            </>
           )}
           {attention && (
             <span
@@ -783,7 +790,7 @@ function GroupRow({
           {groupRowTitle(members.map((b) => botDisplayName(b, polish ? "pl" : "en"))) || group.name || group.id}
         </span>
         {lastAt != null && (
-          <span className="shrink-0 text-[11px] text-ink-secondary">{formatTime(lastAt)}</span>
+          <span className="shrink-0 text-xs text-ink-secondary">{formatTime(lastAt)}</span>
         )}
       </div>
     </button>
@@ -1249,11 +1256,14 @@ export function Sidebar() {
             do krawędzi ekranu), wcięcie zostaje po prawej, gdzie stoi godzina. */}
         <div className="flex-1 overflow-y-auto pr-2">
           <div className="flex flex-col gap-0.5">
+            {!state.hydrated && state.bots.length === 0 &&
+              [0, 1, 2, 3, 4].map((i) => <Skeleton key={`bot-skeleton-${i}`} className="h-9 w-full" />)}
             {unsectionedBots.map((b) => (
               <BotRow key={b.id} bot={b} onMenu={openBotMenu} />
             ))}
             {/* Grupa jest zwykłym wierszem listy, nie osobną zwijaną sekcją:
                 stoi tam, gdzie wskazuje jej `section`, dokładnie jak bot. */}
+            {groups === null && state.hydrated && <Skeleton className="h-9 w-full" />}
             {rows.unsectioned.groups.map((g) => (
               <GroupRow key={g.id} group={g} bots={state.bots} onMenu={openGroupMenu} />
             ))}

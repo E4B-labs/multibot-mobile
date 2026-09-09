@@ -209,6 +209,8 @@ export interface FleetEnvironment {
 
 interface AppState {
   bots: Bot[];
+  /** false until GET /api/bots answers once — tells an empty fleet from an unloaded one */
+  hydrated: boolean;
   environment: FleetEnvironment | null;
   instances: InstanceInfo[];
   config: ConfigStatus | null;
@@ -386,7 +388,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
               : b.firstUnreadId,
         };
       });
-      return { ...state, bots, selectedId };
+      return { ...state, bots, selectedId, hydrated: true };
     }
     case "instances":
       return { ...state, instances: action.instances };
@@ -784,6 +786,7 @@ function reducer(state: AppState, action: Action): AppState {  switch (action.ty
 
 const initialState: AppState = {
   bots: [],
+  hydrated: false,
   environment: null,
   instances: [],
   config: null,

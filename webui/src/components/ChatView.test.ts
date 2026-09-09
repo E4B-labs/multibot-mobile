@@ -7,6 +7,7 @@ import { setBotDraft } from "./ChatView";
 // + jednorazowy beat z `state.mascotMotion`, bez `animated`), więc bezczynny
 // bot mrugał i oddychał, choć ten sam bot w szufladzie już stał.
 const chat = readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
+const roomPanel = readFileSync(new URL("./RoomPanel.tsx", import.meta.url), "utf8");
 
 describe("drafty composera per bot", () => {
   it("przywraca tekst po powrocie do bota i czyści tylko wysłany draft", () => {
@@ -149,6 +150,9 @@ describe("karta bot↔bot otwiera pokój", () => {
 
   it("kliknięcie otwiera pokój, a nie rozwija karty", () => {
     expect(card).toContain("openRoom(room.id, dispatch)");
+    expect(card).toContain('disabled={opening}');
+    expect(card).toContain('aria-busy={opening}');
+    expect(card).toContain("active:scale-[0.97]");
     for (const drawer of ["setExpanded", "aria-expanded", "ChevronDown"]) {
       expect(card, `karta znowu rozwija się w dół: ${drawer}`).not.toContain(drawer);
     }
@@ -171,8 +175,9 @@ describe("karta bot↔bot otwiera pokój", () => {
     for (const status of ["status", "Completed", "Uko\u0144czone", "Failed", "B\u0142\u0105d", "Working", "W toku"]) {
       expect(card, `PeerActivity still contains status: ${status}`).not.toContain(status);
     }
-    for (const pillClass of ["border", "bg-", "rounded-"]) {
-      expect(card, `PeerActivity still has pill class: ${pillClass}`).not.toContain(pillClass);
+    const buttonClass = card.match(/className="flex w-full min-w-0 cursor-pointer[^"]+"/)?.[0] ?? "";
+    for (const pillClass of ["border", "bg-panel", "rounded-"]) {
+      expect(buttonClass, `PeerActivity still has pill class: ${pillClass}`).not.toContain(pillClass);
     }
   });
 
@@ -185,5 +190,16 @@ describe("karta bot↔bot otwiera pokój", () => {
   it("obie karty wchodzą do pokoju tym samym helperem", () => {
     expect(chat).toContain('dispatch({ type: "toggleRoom", room: full })');
     expect((chat.match(/openRoom\(room\.id, dispatch\)/g) ?? []).length).toBe(2);
+  });
+});
+
+describe("małe awatary rozmów botów", () => {
+  it("oddziela stos avatarów w karcie aktywności", () => {
+    const card = chat.slice(chat.indexOf("function PeerActivity"), chat.indexOf("function RoomChip"));
+    expect(card).toContain("bg-app ring-2 ring-app");
+  });
+
+  it("oddziela avatary nagłówka i nadawcy w temporary chacie", () => {
+    expect(roomPanel).toContain("bg-app ring-2 ring-app");
   });
 });

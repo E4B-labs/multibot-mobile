@@ -9,7 +9,7 @@
 // SSE `room` odświeżają panel w trakcie tury. `group.messages` zostaje jako
 // zapas dla grup sprzed tej zmiany, które pokoju jeszcze nie mają.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Loader2, Monitor, Users } from "lucide-react";
+import { ArrowDown, Monitor, Users } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { MausAvatar } from "./Avatar";
@@ -20,6 +20,7 @@ import { authFetch } from "@/lib/auth";
 import { DrawerToggle } from "./DrawerToggle";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
+import { Skeleton, Spinner } from "./Loading";
 
 // Ten sam lokalny helper co RoutinesPanel: silnik zwraca błędy jako `{detail}`
 // (FastAPI), przelotka jako `{error}`.
@@ -47,6 +48,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
   const { state, dispatch } = useStore();
   const polish = useLanguage() === "pl";
   const [legacy, setLegacy] = useState<Entry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -54,10 +56,12 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
 
   useEffect(() => {
     let alive = true;
+    setHistoryLoading(true);
     api(`/api/groups/${group.id}`)
       .then((saved: { messages?: Array<{ id?: string; from: string; text: string; at: number }> }) =>
         alive && setLegacy((saved.messages ?? []).map((m, i) => ({ id: m.id ?? `legacy-${i}`, from: m.from, text: m.text, at: m.at }))))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (alive) setHistoryLoading(false); });
     return () => { alive = false; };
   }, [group.id]);
 
@@ -179,7 +183,14 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
           onScroll={() => { if (!follow && atEnd()) setFollow(true); }}
         >
           <div className="flex w-full flex-col gap-1 pb-10">
-            {entries.length === 0 && (
+            {entries.length === 0 && historyLoading && (
+              <div className="mt-4 flex flex-col gap-3">
+                <Skeleton className="h-10 w-[60%] self-end" />
+                <Skeleton className="h-14 w-[75%]" />
+                <Skeleton className="h-10 w-[50%] self-end" />
+              </div>
+            )}
+            {entries.length === 0 && !historyLoading && (
               <div className="mt-8 flex flex-col items-center gap-2 px-6 text-center text-ink-secondary">
                 <Users size={22} />
                 <div className="text-[13px] font-medium text-ink">{polish ? "Brak wiadomości" : "No messages yet"}</div>
@@ -210,10 +221,13 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
                       <span className="text-[13px] font-semibold text-ink">{nameOf(entry.from)}</span>
                       <span className="text-[11px] text-ink-secondary">{formatTime(entry.at)}</span>
                     </div>
-                    <div className="rounded-2xl bg-card px-2 py-[5px] text-[14px] leading-[1.45] text-ink">
-                      {/* multibot (telefon): bez `compact` — ten wariant to samo
-                          zdrobnienie czcionki pod desktop, a mobilny ChatMarkdown
-                          trzyma się rozmiarów telefonu (tak samo jak ChatView). */}
+                    {/* multibot (telefon): dymek wzięty z ChatView — poprzednie
+                        `px-2 py-[5px] text-[14px]` przyszło z portu pulpitu
+                        i robiło z wypowiedzi w grupie mniejszy tekst niż ta
+                        sama wypowiedź w czacie 1:1. Bez `compact`: ten wariant
+                        to znowu zdrobnienie pod pulpit, a mobilny ChatMarkdown
+                        trzyma się rozmiarów telefonu. */}
+                    <div className="rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                       <ChatMarkdown text={formatPeerEnvelope(entry.text)} />
                     </div>
                   </div>
@@ -224,7 +238,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
                 czatem 1:1, a jego strumień nie jest treścią grupy. */}
             {busy && answering && state.streaming[answering.threadId] !== undefined && (
               <div className="flex w-full justify-start">
-                <div className="max-w-[90%] rounded-2xl bg-card px-2 py-[5px] text-[14px] leading-[1.45] text-ink">
+                <div className="max-w-[90%] rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                   <ChatMarkdown text={state.streaming[answering.threadId]} streaming />
                   <span className="ml-0.5 inline-block h-[13px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
                 </div>
@@ -232,7 +246,7 @@ export function GroupPanel({ group }: { group: EngineGroup }) {
             )}
             {busy && !answering?.busy && (
               <div className="flex items-center gap-2 px-1 text-[12px] text-ink-secondary">
-                <Loader2 size={12} className="animate-spin" />
+                <Spinner size={12} />
                 {polish ? "Wysyłam do grupy…" : "Sending to the group…"}
               </div>
             )}

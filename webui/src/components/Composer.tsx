@@ -1,6 +1,6 @@
 import { track } from "@/lib/analytics";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, Shield, SlidersHorizontal, Square, Wand2, Wrench, X, Zap } from "lucide-react";
+import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader2, Mic, Plus, Puzzle, Shield, SlidersHorizontal, Wand2, Wrench, X, Zap } from "lucide-react";
 import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -1187,16 +1187,8 @@ export function Composer({
         )}
         {/* multibot: szybki przełącznik dostępu bota, obok poziomu rozumowania */}
         <ComposerAccessPill bot={bot} collapsed={pillsCollapsed} />
-        {bot.busy ? (
-          <button
-            onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink"
-            title={polish ? "Zatrzymaj" : "Stop"}
-          >
-            <Square size={14} className="fill-current" />
-          </button>
-        ) : (
-          <button
+        {/* hidden per Kacper 07.09.2026, panels kept */}
+        <button
             onClick={toggleMic}
             disabled={!voiceAvailable || bot.busy || uploading}
             className={cn(
@@ -1216,7 +1208,6 @@ export function Composer({
           >
             <Mic size={18} />
           </button>
-        )}
         {/* multibot Zad2: przycisk Send taki sam jak na PC (niebieskie koło z białą strzałką) - po prawej od mikrofonu, prawy dolny róg paska */}
         <button
           type="button"

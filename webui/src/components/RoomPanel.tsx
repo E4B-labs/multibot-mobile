@@ -74,7 +74,9 @@ export function RoomPanel() {
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex shrink-0 items-center -space-x-2">
                 {members.slice(0, 5).map((bot) => (
-                  <MausAvatar key={bot.id} color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={stateForBot(bot)} size={24} animated={false} />
+                  <span key={bot.id} className="relative inline-flex shrink-0 rounded-full bg-app ring-2 ring-app">
+                    <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape={bot.mascotShape} state={stateForBot(bot)} size={24} animated={false} />
+                  </span>
                 ))}
               </span>
               <span className="truncate text-[15px] font-semibold text-ink">
@@ -137,13 +139,21 @@ export function RoomPanel() {
                         title={polish ? `Otwórz czat ${nameOf(entry.from)}` : `Open ${nameOf(entry.from)}'s chat`}
                       >
                         {entryBot && (
-                          <MausAvatar color={entryBot.color} avatarUrl={entryBot.avatarUrl} shape={entryBot.mascotShape} state={stateForBot(entryBot)} size={28} animated={false} />
+                          <span className="relative inline-flex shrink-0 rounded-full bg-app ring-2 ring-app">
+                            <MausAvatar color={entryBot.color} avatarUrl={entryBot.avatarUrl} shape={entryBot.mascotShape} state={stateForBot(entryBot)} size={28} animated={false} />
+                          </span>
                         )}
                         <span className="text-[12.5px] font-semibold text-accent">{nameOf(entry.from)}</span>
                       </button>
                       <span className="text-[11px] text-ink-secondary">{formatTime(entry.at)}</span>
                     </div>
-                    <div className="rounded-2xl rounded-tl-md bg-card px-3.5 py-2 text-[14px] leading-relaxed text-ink">
+                    {/* multibot: ta sama wypowiedź bota ma wyglądać tak samo
+                        w czacie 1:1, w grupie i tutaj. Pokój stał przy
+                        `px-3.5 py-2`, a grupa przy przyciętych pod pulpit
+                        `px-2 py-[5px] text-[14px]` — te same zdania miały
+                        więc na telefonie trzy różne dymki. Wzorcem jest dymek
+                        z ChatView (patrz `Bubble` i `StreamingBubble`). */}
+                    <div className="rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
                       <ChatMarkdown text={formatPeerEnvelope(entry.text)} />
                     </div>
                   </div>

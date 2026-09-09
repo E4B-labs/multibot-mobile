@@ -34,17 +34,14 @@ export function remarkMentions({ bots }: { bots: MentionBot[] }) {
       re.lastIndex = 0;
       for (let m = re.exec(node.value); m; m = re.exec(node.value)) {
         const at = m.index + m[1].length;
-        // Keep the @ only in the source syntax. The renderer presents a
-        // mention as an avatar plus the bot name, so the visual label must not
-        // duplicate the trigger character.
-        const label = m[2];
+        const label = `@${m[2]}`;
         if (at > last) out.push({ type: "text", value: node.value.slice(last, at) });
         out.push({
           type: "mention",
           data: { hName: "span", hProperties: { dataMention: m[2] } },
           children: [{ type: "text", value: label }],
         });
-        last = at + m[2].length + 1;
+        last = at + label.length;
       }
       if (!out.length) return [node];
       if (last < node.value.length) out.push({ type: "text", value: node.value.slice(last) });
