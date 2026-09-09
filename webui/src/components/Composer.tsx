@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
 import { BotAvatar } from "./Avatar";
 import { CELEBRATE_MS, normalizeState, stripMascotState } from "@/lib/mascot";
+import { isEngagedInPeerChat } from "@/lib/botChatAnimation";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { parseSchedule, type PresetOrUnknown } from "@/lib/routineSchedule";
@@ -348,10 +349,20 @@ export function Composer({
     const timer = setInterval(() => setClock(Date.now()), 500);
     return () => clearInterval(timer);
   }, [bot.busy, celebrating]);
+  // Rozmowa bot↔bot toczy się na WŁASNYCH wątkach uczestników, więc w widoku
+  // oglądanego bota nie widać po niej ani `busy`, ani żadnej fazy `runtime`,
+  // dopóki nie wypadnie jego kolej. Prawdę o niej trzyma pokój i tylko stamtąd
+  // da się ją wziąć.
+  const botsById = useMemo(() => Object.fromEntries(state.bots.map((b) => [b.id, b])), [state.bots]);
+  const engaged = useMemo(
+    () => isEngagedInPeerChat(state.rooms, bot.id, botsById),
+    [state.rooms, bot.id, botsById],
+  );
   const strip = stripMascotState({
     bot,
     runtime,
     streaming: state.streaming[bot.threadId] !== undefined,
+    engaged,
     focused: typeof document === "undefined" || document.hasFocus(),
     now: clock,
   });
