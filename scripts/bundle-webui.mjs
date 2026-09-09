@@ -10,10 +10,17 @@
 // Efekt uboczny, świadomy: interfejs jedzie w paczce, więc `eas update`
 // dostarcza zmiany w nim bez wgrywania czegokolwiek na serwer.
 //
-// ponytail: plik wychodzi duży (rzędu 11 MB), bo `shiki` wnosi komplet gramatyk
-// kolorowania składni. Każda zmiana interfejsu to nowy taki plik w historii
-// gita i cięższy start aplikacji. Gdy zacznie boleć: przytnij `shiki` do kilku
-// języków w webui/, tutaj nic się nie zmieni.
+// UWAGA NA ROZMIAR — patrz LIMIT_MB niżej. `baseUrl` znaczy
+// `loadDataWithBaseURL`, a Chromium koduje podany string do base64 w JEDNEJ
+// tablicy bajtów (×4/3), po czym robi z niej Stringa (×2 na UTF-16). Przy
+// 11,7 MB interfejsu to jest ~48 MB przejściowo i APK 29 wywracał się na
+// starcie na każdym telefonie:
+//   OutOfMemoryError: Failed to allocate a 15771976 byte allocation
+//     at android.util.Base64.encodeToString
+//     at WebViewChromium.loadDataWithBaseURL
+// Winowajcą był pełny pakiet `shiki` (~9,7 MB gramatyk i motywów, wklejony tu
+// przez viteSingleFile). Od tego czasu webui/src/lib/highlighter.ts ładuje
+// kilkanaście języków zamiast dwustu.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -47,6 +54,20 @@ const external = [...html.matchAll(/<(?:script|link)[^>]*?(?:src|href)="(?!data:
 if (external.length > 0) {
   console.error("Build nie jest samodzielny, odwołuje się do:", external.map((m) => m[1]).join(", "));
   console.error("Sprawdź, czy viteSingleFile jest w webui/vite.config.ts.");
+  process.exit(1);
+}
+
+// Hamulec, nie próg awarii: 6 MB to wciąż ~8 MB base64 i ~16 MB Stringa, więc
+// mieści się w domyślnej stercie z zapasem, a jednocześnie łapie każdy powrót
+// do „wklejmy tu jeszcze jeden komplet gramatyk". Build ma paść tutaj, a nie
+// dopiero na telefonie Kacpra.
+const LIMIT_MB = 6;
+if (html.length > LIMIT_MB * 1024 * 1024) {
+  console.error(
+    `Interfejs ma ${(html.length / 1024 / 1024).toFixed(1)} MB, limit to ${LIMIT_MB} MB. ` +
+      "WebView na Androidzie koduje go do base64 przy starcie i pada na OutOfMemoryError. " +
+      "Zobacz, co urosło (najczęściej gramatyki shiki w webui/src/lib/highlighter.ts).",
+  );
   process.exit(1);
 }
 
