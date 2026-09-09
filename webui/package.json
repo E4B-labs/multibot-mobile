@@ -15,8 +15,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@shikijs/langs": "4.4.3",
-    "@shikijs/themes": "4.4.3",
+    "@shikijs/langs": "^4.4.3",
+    "@shikijs/themes": "^4.4.3",
     "@trycua/cua-driver": "^0.19.3",
     "clsx": "^2.1.1",
     "katex": "0.18.7",

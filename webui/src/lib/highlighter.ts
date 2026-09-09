@@ -11,9 +11,10 @@
 //
 // Silnik regexpów: `createJavaScriptRegexEngine`, nie oniguruma. Oniguruma to
 // dodatkowe 600 KB WASM-a, którego build jednoplikowy i tak nie umie dołożyć
-// (osobny plik obok index.html = 404 w WebView). `forgiving` sprawia, że
-// wzorzec, którego silnik JS nie umie skompilować, jest pomijany zamiast
-// wysadzać całe kolorowanie.
+// (osobny plik obok index.html = 404 w WebView). Wszystkie języki z listy
+// kompilują się na silniku JS — sprawdzone, więc bez `forgiving`: gdyby dopisany
+// kiedyś język się nie skompilował, ma to być widać jako brak kolorowania,
+// a nie ciche gubienie połowy wzorców.
 //
 // Język spoza tej listy rzuca `ShikiError`, ChatMarkdown to łapie i zostaje
 // zwykły <pre> — dokładnie to samo, co dla nieznanego języka wcześniej.
@@ -22,11 +23,15 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 const THEME = "github-dark-default";
 
+// Zapamiętany jest tylko udany start. Gdyby pamięć akurat się skończyła — a to
+// jest aplikacja, która przed chwilą padała na OOM — zapamiętana odrzucona
+// obietnica wyłączyłaby kolorowanie do końca sesji, po cichu, bo ChatMarkdown
+// łyka błąd. Więc przy porażce zerujemy i następny blok kodu próbuje znowu.
 let pending: Promise<HighlighterCore> | null = null;
 
 const highlighter = () =>
   (pending ??= createHighlighterCore({
-    engine: createJavaScriptRegexEngine({ forgiving: true }),
+    engine: createJavaScriptRegexEngine(),
     themes: [import("@shikijs/themes/github-dark-default")],
     // Aliasy (js, py, sh, md, dockerfile…) niesie sama gramatyka, więc nie ma
     // ich tutaj. Dopisanie języka = jedna linia + kilkadziesiąt KB w paczce;
@@ -55,6 +60,9 @@ const highlighter = () =>
       import("@shikijs/langs/docker"),
       import("@shikijs/langs/powershell"),
     ],
+  }).catch((err) => {
+    pending = null;
+    throw err;
   }));
 
 /** Zwraca HTML z kolorowaniem albo rzuca — wołający zostawia wtedy goły <pre>. */

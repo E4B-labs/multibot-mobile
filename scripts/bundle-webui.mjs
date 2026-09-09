@@ -62,9 +62,10 @@ if (external.length > 0) {
 // do „wklejmy tu jeszcze jeden komplet gramatyk". Build ma paść tutaj, a nie
 // dopiero na telefonie Kacpra.
 const LIMIT_MB = 6;
-if (html.length > LIMIT_MB * 1024 * 1024) {
+const bytes = Buffer.byteLength(html);
+if (bytes > LIMIT_MB * 1024 * 1024) {
   console.error(
-    `Interfejs ma ${(html.length / 1024 / 1024).toFixed(1)} MB, limit to ${LIMIT_MB} MB. ` +
+    `Interfejs ma ${(bytes / 1024 / 1024).toFixed(2)} MB, limit to ${LIMIT_MB} MB. ` +
       "WebView na Androidzie koduje go do base64 przy starcie i pada na OutOfMemoryError. " +
       "Zobacz, co urosło (najczęściej gramatyki shiki w webui/src/lib/highlighter.ts).",
   );
@@ -80,5 +81,5 @@ writeFileSync(
   "utf8",
 );
 
-const mb = (html.length / 1024 / 1024).toFixed(1);
+const mb = (bytes / 1024 / 1024).toFixed(2);
 console.log(`OK: src/webui-html.ts, ${mb} MB`);

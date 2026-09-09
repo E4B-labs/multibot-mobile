@@ -289,7 +289,7 @@ function withTlsPinning(config) {
     // naprawą jest mniejszy interfejs (limit w scripts/bundle-webui.mjs); to
     // jest zapas na wypadek, gdyby znów podpełzł pod sufit domyślnej sterty.
     const application = manifest.application?.[0];
-    if (application) application.$["android:largeHeap"] = "true";
+    if (application) (application.$ ??= {})["android:largeHeap"] = "true";
     return cfg;
   });
 
