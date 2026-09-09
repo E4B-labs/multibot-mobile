@@ -201,3 +201,30 @@ test("the tor binary is packaged so it can actually be executed", () => {
   assert.ok(native.includes("ClientOnly 1"));
   assert.ok(native.includes("SocksPort auto"));
 });
+
+test("Tor stops holding the whole cold start behind its first circuit", () => {
+  const native = readFileSync(
+    "modules/multibot-tor/android/src/main/java/expo/modules/multibottor/MultibotTor.kt",
+    "utf8",
+  );
+  // Blocking start() on "Bootstrapped 100%" put the WebView engine, the bundled
+  // UI and its own boot AFTER the circuit instead of alongside it — on mobile
+  // data that is the difference between a slow open and one that looks hung.
+  // Tor holds a SOCKS stream "unattached waiting for an appropriate circuit"
+  // (SocksTimeout, 2 min), so the first request still lands.
+  assert.ok(!native.includes("bootstrapReady"), "start() waits out the bootstrap again");
+  // The reuse check must not demand `bootstrapped` any more: a second caller
+  // arriving mid-bootstrap would fall through to stop() and kill the tor the
+  // first one is waiting on.
+  assert.ok(native.includes("if (alive() && socksPort > 0 && running != null && running.open)"));
+  // AvoidDiskWrites defers the state file (entry guards included) past the point
+  // Android kills this process, so every cold start re-picked its guards.
+  assert.ok(!native.includes("AvoidDiskWrites 1"), "tor is told to defer disk writes again");
+
+  // With the page mounting before the circuit exists, onLoadEnd fires off the
+  // LOCAL bundle and no longer says anything about the network — so the probe
+  // has to stay able to report a circuit that never came.
+  assert.ok(webview.includes("(onion || !loadedRef.current)"));
+  // And its budget has to cover the bootstrap it now runs alongside.
+  assert.match(webview, /ONION_PROBE_TIMEOUT_MS = 90_000/);
+});

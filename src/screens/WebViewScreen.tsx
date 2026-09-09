@@ -51,7 +51,11 @@ const PROBE_TIMEOUT_MS = 8_000;
 // first one after a cold bootstrap is seconds, not milliseconds — the LAN
 // budgets above would fail a perfectly healthy server.
 const ONION_LOAD_TIMEOUT_MS = 90_000;
-const ONION_PROBE_TIMEOUT_MS = 45_000;
+// Same budget as the load, because the probe now starts at the same moment: Tor
+// no longer holds the screen until it has a circuit, so this one request has to
+// cover the bootstrap as well as the trip through it. 45 s used to be enough
+// only because nothing dialled anything until the circuit already existed.
+const ONION_PROBE_TIMEOUT_MS = 90_000;
 
 // Anything running in this WebView can call `postMessage`, including a frame the
 // page embeds (the bot-computer noVNC view is one). The privileged messages —
@@ -196,8 +200,14 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       // czekania z pustym ekranem po to, żeby dowiedzieć się tego, co samo
       // ładowanie powie chwilę później. Leci równolegle i służy już tylko za
       // lepszy komunikat, gdy strona nie wstanie.
+      //
+      // `loaded` means the BUNDLED html finished parsing, and that html is
+      // local — over Tor it now happens while the circuit is still building, so
+      // it proves nothing about the network. For an onion host the probe is the
+      // only thing that can tell a circuit that is coming from one that never
+      // will, so there it reports regardless of `loaded`.
       void probeHost(host.url, onion ? ONION_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS).then((problem) => {
-        if (!cancelled && problem && !loadedRef.current) setFailed(problem);
+        if (!cancelled && problem && (onion || !loadedRef.current)) setFailed(problem);
       });
       // multibot: co to za INSTALACJA — odpowiednik bridge'a
       // updatera.currentVersion() na desktopie. Wersja serwera to zupełnie
