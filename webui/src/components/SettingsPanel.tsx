@@ -2,8 +2,8 @@ import { ChevronLeft, ImagePlus, Pencil, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
-import { MausAvatar } from "./Avatar";
-import { MAUS_COLORS, MAUS_COLOR_NAMES, pickerAvatarState } from "@/lib/mascot";
+import { BotAvatar } from "./Avatar";
+import { BOT_COLORS, BOT_COLOR_NAMES, pickerAvatarState } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { EngineAutonomy } from "./EngineAutonomy"; // multibot: F4 — autonomia + reguły narzędzi
 import { cn } from "@/lib/cn";
@@ -145,7 +145,7 @@ const settingsChoiceClass = (selected: boolean) => cn(
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
   const polish = useLanguage() === "pl";
-  // multibot: szukajka po kartach ustawień (port z OpenMausBot #418) —
+  // multibot: szukajka po kartach ustawień (port z upstreamu #418) —
   // filtruje istniejące karty po ich tekście; zero nowej struktury sekcji.
   const [query, setQuery] = useState("");
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("closed");
@@ -247,7 +247,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               appearanceMode !== "closed" && "bg-white/[0.07] p-1",
             )}
           >
-            <MausAvatar
+            <BotAvatar
               color={bot.color}
               shape={bot.mascotShape}
               avatarUrl={bot.avatarUrl}
@@ -276,15 +276,15 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 <div className="grid grid-cols-5 gap-1.5">
                   {MASCOT_SHAPES.map((shape) => (
                     <button type="button" key={shape} onClick={() => patch({ mascotShape: shape })} aria-pressed={(bot.mascotShape ?? "blob") === shape} className={cn("flex h-[46px] items-center justify-center bg-inset", settingsChoiceClass((bot.mascotShape ?? "blob") === shape))} title={shape} aria-label={`${polish ? "Użyj kształtu ikony" : "Use"} ${shape}`}>
-                      <MausAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} animated={false} trackPointer={false} showFace={false} />
+                      <BotAvatar color={bot.color} shape={shape} avatarUrl={null} state={activeState} size={32} animated={false} trackPointer={false} showFace={false} />
                     </button>
                   ))}
                 </div>
                 <div className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
                 <div className="flex flex-wrap gap-2">
-                  {MAUS_COLOR_NAMES.map((color) => {
+                  {BOT_COLOR_NAMES.map((color) => {
                     const selected = bot.color === color;
-                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-0 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: MAUS_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
+                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-0 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
                   })}
                 </div>
               </div>

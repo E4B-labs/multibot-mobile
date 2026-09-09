@@ -6,20 +6,20 @@ import { Spinner } from "./Loading";
 import { EventChip } from "./EventChip";
 import { SkillRef } from "./SkillRef";
 import { AttachmentCard } from "./AttachmentCard";
-// multibot: lightbox załączników-obrazków (port z OpenMausBot #436)
+// multibot: lightbox załączników-obrazków (port z upstreamu #436)
 import { AttachmentPreviewDialog } from "./AttachmentPreview";
-// multibot: pasek szukania w transkrypcie (port z OpenMausBot #437)
+// multibot: pasek szukania w transkrypcie (port z upstreamu #437)
 import { ChatFindBar } from "./ChatFindBar";
 // multibot: menu „⋮" z animowaną sekwencją otwierania (port PC 91b8892d)
 import { ChatHeaderMenu } from "./ChatHeaderMenu";
-// multibot: flat replies — cytowanie wiadomości (port z OpenMausBot #437)
+// multibot: flat replies — cytowanie wiadomości (port z upstreamu #437)
 import { ReplyQuote, replyTargetOf } from "./ReplyQuote";
 import { routineStartName, slashCommandLabel } from "@/lib/transcriptChips";
 import { useStore, type Bot, type Message } from "@/state/store";
 import { formatPeerEnvelope, parsePeerEnvelope } from "@/lib/peerEnvelope";
 import { PeerBadge } from "./PeerBadge";
 import { formatChatSessionTime, shouldStartChatSession } from "@/lib/chatSessions";
-import { MausAvatar } from "./Avatar";
+import { BotAvatar } from "./Avatar";
 import { sidebarAvatarProps, stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CopyMessageButton } from "./CopyMessageButton";
@@ -320,7 +320,7 @@ function PeerActivity({ messages, currentBotId }: { messages: Message[]; current
       <span className="flex shrink-0 -space-x-1">
         {avatars.filter((bot): bot is Bot => Boolean(bot)).slice(0, 3).map((bot) => (
           <span key={bot.id} className="relative inline-flex shrink-0 rounded-full bg-app ring-2 ring-app">
-            <MausAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape="blob" state={stateForBot(bot)} size={20} animated={false} />
+            <BotAvatar color={bot.color} avatarUrl={bot.avatarUrl} shape="blob" state={stateForBot(bot)} size={20} animated={false} />
           </span>
         ))}
       </span>
@@ -399,7 +399,7 @@ function RoomChip({ message }: { message: Message }) {
         {opening && <Spinner size={13} />}
         <span className="flex items-center gap-1 font-medium text-ink">
           {owner && (
-            <MausAvatar color={owner.color} avatarUrl={owner.avatarUrl} shape="blob" state={stateForBot(owner)} size={18} animated={false} />
+            <BotAvatar color={owner.color} avatarUrl={owner.avatarUrl} shape="blob" state={stateForBot(owner)} size={18} animated={false} />
           )}
           {owner ? botDisplayName(owner, polish ? "pl" : "en") : room.ownerBotId}
         </span>
@@ -408,7 +408,7 @@ function RoomChip({ message }: { message: Message }) {
         </span>
         {peers.map((peer) => (
           <span key={peer.id} className="flex items-center gap-1 font-medium text-ink">
-            <MausAvatar color={peer.color} avatarUrl={peer.avatarUrl} shape="blob" state={stateForBot(peer)} size={18} animated={false} />
+            <BotAvatar color={peer.color} avatarUrl={peer.avatarUrl} shape="blob" state={stateForBot(peer)} size={18} animated={false} />
             {botDisplayName(peer, polish ? "pl" : "en")}
           </span>
         ))}
@@ -605,7 +605,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             onClick={() => dispatch({ type: "toggleSettings" })}
             className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-raised/50"
             title={polish ? "Ustawienia bota" : "Bot settings"}
-          >            <MausAvatar
+          >            <BotAvatar
               color={bot.color} avatarUrl={bot.avatarUrl}
               shape={bot.mascotShape}
               size={44}

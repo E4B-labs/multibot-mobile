@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { Skeleton } from "./Loading";
-import { MausAvatar } from "./Avatar";
+import { BotAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
 import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
@@ -438,7 +438,7 @@ function SectionPicker({
   );
 }
 
-// multibot: awatar bota przywrócony do oryginalnego MausAvatar (kształt +
+// multibot: awatar bota przywrócony do oryginalnego BotAvatar (kształt +
 // wyraz z poprzedniego drawera), zamiast uproszczonej blob-twarzy.
 function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }) {
   const { state, dispatch } = useStore();
@@ -467,7 +467,7 @@ function BotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => void }
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      <MausAvatar
+      <BotAvatar
         color={bot.color} avatarUrl={bot.avatarUrl}
         shape={bot.mascotShape}
         state={avatar.state}
@@ -522,7 +522,7 @@ function HiddenBotRow({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => 
         style={{ WebkitTouchCallout: "none" }}
         className="flex min-w-0 flex-1 select-none items-center gap-3 py-2 pl-2 text-left"
       >
-        <MausAvatar
+        <BotAvatar
           color={bot.color}
           avatarUrl={bot.avatarUrl}
           shape={bot.mascotShape}
@@ -741,7 +741,7 @@ function GroupRow({
       {members.length > 0 ? (
         <span className={cn("relative flex min-h-14 shrink-0 items-center", shown.length > 1 && "-space-x-1")}>
           {shown.map((member) => (
-            <MausAvatar
+            <BotAvatar
               key={member.id}
               color={member.color}
               size={shown.length === 1 ? 56 : 20}
@@ -909,7 +909,7 @@ function GroupCreateSheet({
                   on ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
                 )}
               >
-                <MausAvatar
+                <BotAvatar
                   color={b.color} avatarUrl={b.avatarUrl}
                   shape={b.mascotShape}
                   size={32}
@@ -1221,7 +1221,7 @@ export function Sidebar() {
                     isSelected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
                   )}
                 >
-                  <MausAvatar
+                  <BotAvatar
                     color={b.color} avatarUrl={b.avatarUrl}
                     shape={b.mascotShape}
                     size={avatarSize}

@@ -89,7 +89,7 @@ export interface ScraperPreset {
    * Czy wolno zainstalować preset SAM, bez tapnięcia użytkownika.
    *
    * Domyślnie `false` i to nie jest ostrożnościowy ozdobnik. Rejestr
-   * konektorów leży w `~/.openmausbot/config.json` — tym samym pliku, w którym
+   * konektorów leży w `~/.multibot/config.json` — tym samym pliku, w którym
    * są klucze API użytkownika — a transport `stdio` znaczy, że host uruchomi
    * podany proces (`npx -y …`) z pełnymi prawami użytkownika. Cichy zapis
    * takiego wpisu to wykonanie cudzego kodu na maszynie właściciela hosta bez

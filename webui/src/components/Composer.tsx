@@ -4,7 +4,7 @@ import { ArrowUp, Brain, CalendarClock, Camera, File as FileIcon, Images, Loader
 import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
-import { MausAvatar } from "./Avatar";
+import { BotAvatar } from "./Avatar";
 import { normalizeState, stripMascotState } from "@/lib/mascot";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
@@ -575,7 +575,7 @@ export function Composer({
         label: botDisplayName(peer, polish ? "pl" : "en"),
         hint: peer.id === bot.id ? (polish ? "Bieżący" : "Current") : (polish ? "Przełącz" : "Switch to bot"),
         kind: "agent" as const,
-        icon: <MausAvatar color={peer.color} avatarUrl={peer.avatarUrl} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} animated={false} />,
+        icon: <BotAvatar color={peer.color} avatarUrl={peer.avatarUrl} shape={peer.mascotShape} state={normalizeState(peer.mascotExpression) ?? "happy"} size={20} animated={false} />,
         run: () => dispatch({ type: "select", id: peer.id }),
       })),
       ...(slashRoutines?.rows ?? []).map((routine) => ({
@@ -909,7 +909,7 @@ export function Composer({
           <div className="flex h-12 items-center pl-3 pr-2 pointer-events-none" title={botDisplayName(bot, polish ? "pl" : "en")}>
             {/* multibot: od 0.3.33 `stripMascotState` zwraca sam `BlobState`
                 — ruch niesie już silnik maskotki, nie osobne `motion`. */}
-            <MausAvatar
+            <BotAvatar
               color={bot.color}
               avatarUrl={bot.avatarUrl}
               shape={bot.mascotShape}
@@ -966,7 +966,7 @@ export function Composer({
               >
                 {row.type === "bot" ? (
                   <>
-                    <MausAvatar color={row.peer.color} shape={row.peer.mascotShape} state={normalizeState(row.peer.mascotExpression) ?? "happy"} size={24} animated={false} />
+                    <BotAvatar color={row.peer.color} shape={row.peer.mascotShape} state={normalizeState(row.peer.mascotExpression) ?? "happy"} size={24} animated={false} />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{botDisplayName(row.peer, polish ? "pl" : "en")}</span>
                     <span className="shrink-0 text-xs text-ink-secondary">{polish ? "Bot" : "Agent"}</span>
                   </>
