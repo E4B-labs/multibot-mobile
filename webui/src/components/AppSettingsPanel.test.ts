@@ -70,4 +70,9 @@ describe("zakładka Admin zależy od roli", () => {
     expect(ids("member")).toEqual(["general", "other", "update"]);
     expect(ids("owner")).toEqual(["general", "other", "admin", "update"]);
   });
+
+  it("nie rezerwuje pustego miejsca na admina podczas sprawdzania roli", () => {
+    expect(panel).toContain("visibleSettingsTabs(role).map");
+    expect(panel).not.toContain('return role === "loading" ? <Skeleton key={id} className="size-10" /> : null;');
+  });
 });

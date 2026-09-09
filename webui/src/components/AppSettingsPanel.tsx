@@ -986,9 +986,7 @@ export function AppSettingsPanel() {
           aria-label={polish ? "Sekcje ustawień" : "Settings sections"}
           className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-hairline/40 bg-panel px-2 py-2"
         >
-          {settingsTabs.map(({ id, Icon, pl, en }) => {
-            // Admin needs /api/auth/me: hold its slot instead of popping in late.
-            if (id === "admin" && role !== "owner") return role === "loading" ? <Skeleton key={id} className="size-10" /> : null;
+          {visibleSettingsTabs(role).map(({ id, Icon, pl, en }) => {
             const label = polish ? pl : en;
             const active = tab === id;
             return (

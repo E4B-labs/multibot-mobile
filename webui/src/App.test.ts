@@ -57,4 +57,10 @@ describe("Android Back korzysta z aktualnego stanu WebUI", () => {
       expect(app).toContain(`currentState.${panel}`);
     }
   });
+
+  it("po Back z grupy zamyka grupę i otwiera menu botów", () => {
+    const groupBack = app.slice(app.indexOf("currentState.groupOpen"), app.indexOf("currentState.settingsOpen"));
+    expect(groupBack).toContain('dispatch({ type: "toggleGroup", group: null })');
+    expect(groupBack).toContain('document.body.classList.add("mb-drawer-open")');
+  });
 });

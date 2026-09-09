@@ -12,16 +12,16 @@ describe("groupRowTitle", () => {
 
 describe("groupAvatarStack", () => {
   it("stacks both members when the group has exactly two", () => {
-    expect(groupAvatarStack(["a", "b"])).toEqual({ shown: ["a", "b"], plus: 0 });
+    expect(groupAvatarStack(["a", "b"])).toEqual(["a", "b"]);
   });
-  it("keeps one avatar and counts the rest behind a +N badge", () => {
-    expect(groupAvatarStack(["a", "b", "c", "d"])).toEqual({ shown: ["a"], plus: 3 });
+  it("shows every known member instead of collapsing the rest into +N", () => {
+    expect(groupAvatarStack(["a", "b", "c", "d"])).toEqual(["a", "b", "c", "d"]);
   });
-  it("counts bots this app does not know via the total", () => {
-    // Grupa ma pięciu członków w `bot_ids`, ale tylko trzech jest znanych.
-    expect(groupAvatarStack(["a", "b", "c"], 5)).toEqual({ shown: ["a"], plus: 4 });
+  it("returns only known members when the group has unknown bots", () => {
+    // Grupa może mieć boty spoza tej aplikacji, ale stos pokazuje każdego znanego.
+    expect(groupAvatarStack(["a", "b", "c"])).toEqual(["a", "b", "c"]);
   });
   it("shows a single avatar for a one-member group", () => {
-    expect(groupAvatarStack(["a"])).toEqual({ shown: ["a"], plus: 0 });
+    expect(groupAvatarStack(["a"])).toEqual(["a"]);
   });
 });

@@ -710,9 +710,7 @@ function GroupRow({
     .map((id) => bots.find((b) => engineBotId(b.threadId) === id))
     .filter((b): b is Bot => b != null);
   const selected = state.groupOpen?.id === group.id;
-  const { shown, plus } = groupAvatarStack(members, group.bot_ids.length);
-  // sam członek nie ma z czym się krzyżować, więc siada na środku kafelka
-  const solo = shown.length === 1 && plus === 0;
+  const shown = groupAvatarStack(members);
   // Czas ostatniej wiadomości bierzemy z wątku grupy, jeśli serwer go dosłał —
   // gdy grupa przyszła bez wiadomości, po prawej nie ma nic (żadnej liczby).
   const lastAt = group.messages?.[group.messages.length - 1]?.at;
@@ -737,33 +735,20 @@ function GroupRow({
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      {/* Skład grupy zamiast jednej szarej ikony: wiersz 1:1 jak w
-          komunikatorze — tylny awatar w lewym górnym rogu, przedni w prawym
-          dolnym z cienką obwódką w kolorze tła. Powyżej dwóch członków przedni
-          awatar zastępuje zielone kółko `+N` (N = wszyscy oprócz tylnego).
-          Kafelek ma 56 px, tyle co awatar bota, żeby wiersze botów i grup
-          miały tę samą wysokość i to samo wcięcie tekstu. Przy botach
-          nieznanych aplikacji zostaje dawne koło, żeby wiersz nie był pusty. */}
+      {/* Skład grupy zamiast jednej szarej ikony: wszystkie znane avatary
+          stoją obok siebie w jednym poziomym stosie. Nie pokazujemy `+N`,
+          bo użytkownik powinien od razu widzieć każdego znanego członka. */}
       {members.length > 0 ? (
-        <span className="relative size-14 shrink-0">
-          {solo ? (
-            <MausAvatar color={shown[0].color} size={56} {...groupMemberAvatarProps(shown[0])} />
-          ) : (
-            <>
-              <span className="absolute left-0 top-0 flex">
-                <MausAvatar color={shown[0].color} size={32} {...groupMemberAvatarProps(shown[0])} />
-              </span>
-              {plus > 0 ? (
-                <span className="absolute bottom-0 right-0 flex size-10 items-center justify-center rounded-full bg-success text-[13px] font-semibold leading-none text-app ring-2 ring-app">
-                  +{plus}
-                </span>
-              ) : (
-                <span className="absolute bottom-0 right-0 flex rounded-full ring-2 ring-app">
-                  <MausAvatar color={shown[1].color} size={38} {...groupMemberAvatarProps(shown[1])} />
-                </span>
-              )}
-            </>
-          )}
+        <span className="relative flex min-h-14 shrink-0 items-center gap-1">
+          {shown.map((member) => (
+            <span key={member.id} className="flex shrink-0 rounded-full ring-2 ring-app">
+              <MausAvatar
+                color={member.color}
+                size={shown.length === 1 ? 56 : 36}
+                {...groupMemberAvatarProps(member)}
+              />
+            </span>
+          ))}
           {attention && (
             <span
               title={attention}

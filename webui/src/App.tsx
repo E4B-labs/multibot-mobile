@@ -106,7 +106,10 @@ function Shell() {
                       : currentState.roomOpen
                         ? () => dispatch({ type: "toggleRoom", room: null })
                         : currentState.groupOpen
-                          ? () => dispatch({ type: "toggleGroup", group: null })
+                          ? () => {
+                              dispatch({ type: "toggleGroup", group: null });
+                              document.body.classList.add("mb-drawer-open");
+                            }
                           : currentState.settingsOpen
                             ? () => dispatch({ type: "toggleSettings", open: false })
                             : null;

@@ -54,25 +54,19 @@ describe("GroupMembersPanel", () => {
 });
 
 describe("wiersz grupy w Sidebarze", () => {
-  // multibot (telefon): ten sam wiersz co na desktopie, ale w rozmiarach
-  // szuflady. Desktop rysuje kafelek 48 px, telefon 56 px — cała szuflada stoi
-  // na 56 px, bo w to trzeba trafić palcem. Tworzenie grupy to dolna szuflada
-  // `GroupCreateSheet`, nie desktopowy formularz `GroupCreateForm`, więc koniec
-  // wiersza wypada na innej nazwie funkcji. Zasada, której test pilnuje, jest
-  // ta sama: awatary są STATYCZNE (`sidebarAvatarProps` daje `animated:false`),
-  // leżą w skosie, a powyżej dwóch członków przedni ustępuje plakietce `+N`.
-  it("układa awatary w skos w rozmiarze szuflady i zastępuje przedni kółkiem +N", () => {
+  it("renders every known group avatar in one horizontal stack", () => {
     const start = sidebar.indexOf("groupAvatarStack(members");
     const end = sidebar.indexOf("function GroupCreateSheet", start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const row = sidebar.slice(start, end);
-    expect(row).toContain("relative size-14 shrink-0");
-    expect(row).toContain("absolute left-0 top-0");
-    expect(row).toContain("size={32}");
-    expect(row).toContain("absolute bottom-0 right-0");
+    expect(row).toContain("relative flex min-h-14 shrink-0 items-center gap-1");
+    expect(row).toContain("{shown.map((member) => (");
+    expect(row).toContain("size={shown.length === 1 ? 56 : 36}");
     expect(row).toContain("ring-2 ring-app");
-    expect(row).toContain("+{plus}");
-    expect(row).toContain("{...groupMemberAvatarProps(shown[0])}");
+    expect(row).not.toContain("+{plus}");
+    expect(row).not.toContain("absolute left-0 top-0");
+    expect(row).not.toContain("absolute bottom-0 right-0");
+    expect(row).toContain("{...groupMemberAvatarProps(member)}");
   });
 });
