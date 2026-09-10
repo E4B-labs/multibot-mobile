@@ -446,10 +446,14 @@ function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
       {/* multibot: ta sama szerokość i ten sam dymek co w `Bubble` —
-          inaczej tekst przeskakiwałby po zakończeniu strumienia. */}
-      <div className="max-w-full min-w-0 break-words rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+          inaczej tekst przeskakiwałby po zakończeniu strumienia. Wrapper-kolumna
+          identyczny jak w `Bubble`, żeby sufit szerokości liczył się w tym
+          samym miejscu w obu ścieżkach. */}
+      <div className="flex min-w-0 max-w-full flex-col">
+      <div className="min-w-0 break-words rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
         <ChatMarkdown text={text} streaming />
         <span className="ml-0.5 inline-block h-[14px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
+      </div>
       </div>
     </div>
   );
