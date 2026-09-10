@@ -162,6 +162,11 @@ function Bubble({
         highlighted ? "ring-2 ring-accent/70" : "",
       )}
     >
+      {/* multibot: kolumna dymek+stopka — stopka (TTS, kopiuj) wyszła z dymka
+          na tło czatu, ale stoi w tym samym miejscu pod nim. Sufity szerokości
+          (max-w) i min-w-0 przeniesione z dymka na wrapper, żeby stopka nie
+          rozpychała kolumny. */}
+      <div className={cn("flex min-w-0 flex-col", user ? "max-w-[70%]" : "max-w-full")}>
       <div
         className={cn(
           // multibot: dymek bota sięga aż do krawędzi kolumny — wcześniejsze
@@ -185,8 +190,8 @@ function Bubble({
           // nie zawija.
           "min-w-0 break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
           user
-            ? "max-w-[70%] whitespace-pre-wrap bg-bubble-user text-ink"
-            : "max-w-full bg-card text-ink",
+            ? "whitespace-pre-wrap bg-bubble-user text-ink"
+            : "bg-card text-ink",
           message.pending && "opacity-60",
         )}
       >
@@ -221,23 +226,18 @@ function Bubble({
         ) : (
           <ChatMarkdown text={text} />
         )}
-        {/* multibot: stopka dymka — godzina i sterowania (TTS, Odpowiedz) stoją
-            w JEDNYM rzędzie. Wcześniej `SpeakButton` i rząd „Odpowiedz" miały
-            tylko `opacity-0`, więc dalej zajmowały miejsce w układzie i między
-            treścią a godziną robiła się pusta linijka (na telefonie nawet dwie,
-            bo hover tam nie działa i przyciski nigdy się nie pokazują).
-            Widoczność samych przycisków zostaje bez zmian. */}
-        {/* multibot: sterilowana stopka dymka — sterowania (TTS, Odpowiedz)
-            w JEDNYM rzędzie; czas sesji renderuje się osobno między
-            wiadomościami (patrz SessionSeparator). */}
-        {!user && (
-          <div className="mt-1.5 flex items-center justify-start gap-1.5">
-            {/* TTS renders null when the provider does not support it. */}
-            <SpeakButton text={text} />
-            {/* multibot: kopiuje zrodlo wiadomosci - patrz CopyMessageButton.tsx */}
-            <CopyMessageButton text={text} />
-          </div>
-        )}
+      </div>
+      {/* multibot: stopka POD dymkiem, na tle czatu — sterowania (TTS, kopiuj)
+          w JEDNYM rzędzie. Hover dalej łapie `group/msg` na całym wierszu, więc
+          mechanika pokazywania przycisków bez zmian (na dotyku na stałe). */}
+      {!user && (
+        <div className="mt-1 flex items-center justify-start gap-1.5">
+          {/* TTS renders null when the provider does not support it. */}
+          <SpeakButton text={text} />
+          {/* multibot: kopiuje zrodlo wiadomosci - patrz CopyMessageButton.tsx */}
+          <CopyMessageButton text={text} />
+        </div>
+      )}
       </div>
     </div>
   );
