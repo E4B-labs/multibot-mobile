@@ -75,11 +75,12 @@ describe("czat nie przewija się w bok", () => {
   // element flexa kurczy się do treści, a długa wiadomość, tabela i blok kodu
   // nadal dostają całe 100%.
   it("dymki mają sufit szerokości, a nie sztywną pełną szerokość", () => {
-    // Sufit stoi na kolumnie dymek+stopka, odkąd stopka (TTS, kopiuj) wyszła
-    // z dymka na tło czatu — inaczej rząd przycisków rozpychałby kolumnę.
-    // Sama reguła bez zmian: bot dostaje `max-w-full`, użytkownik `max-w-[70%]`.
-    expect(chat, "kolumna dymka straciła sufit szerokości").toContain(
-      'cn("flex min-w-0 flex-col", user ? "max-w-[70%]" : "max-w-full")',
+    // Sufit stoi na WIERSZU dymek+stopka, odkąd stopka (TTS, kopiuj) wyszła
+    // z dymka na PRAWO od niego (`items-end gap-1`) — inaczej rząd przycisków
+    // rozpychałby wiersz. Sama reguła bez zmian: bot dostaje `max-w-full`,
+    // użytkownik `max-w-[70%]`.
+    expect(chat, "wiersz dymka stracił sufit szerokości").toContain(
+      'cn("flex min-w-0 items-end gap-1", user ? "max-w-[70%]" : "max-w-full")',
     );
     // Wspólna klasa i dymek strumieniowany: żadnego przypięcia na sztywno.
     const bubbles = bubbleLines();

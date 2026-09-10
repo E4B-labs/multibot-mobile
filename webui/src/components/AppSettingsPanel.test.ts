@@ -14,7 +14,12 @@ describe("mobile app settings parity", () => {
     expect(bot).toBeGreaterThan(profile);
     expect(card).toContain("Strefa czasowa");
     expect(card).toContain("Autoweryfikacja");
-    expect(card).toContain("Gdy MultiBot chce:");
+    // Karta wozi DWIE nastawy hosta: wybór strefy i przełącznik
+    // autoweryfikacji. Sekcja ręcznych reguł („Gdy MultiBot chce:…") wyleciała
+    // świadomie (0afc17f), więc guard pilnuje tego, co zostało — same napisy
+    // przeszłyby też na martwej karcie bez sterowania.
+    expect(card, "karta bota straciła wybór strefy czasowej").toContain("<TimeZonePicker");
+    expect(card, "karta bota straciła przełącznik autoweryfikacji").toContain("onClick={toggleAutoVerify}");
   });
 
   it("does not expose the desktop-only Electron GPU switch", () => {
