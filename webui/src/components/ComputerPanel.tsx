@@ -510,7 +510,14 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </SidePanel>
 
       {fullscreen && (
+        // K6: na komputerze duży panel na środku, nie cały ekran — MultiBot pod
+        // spodem zostaje widoczny (lekko przyciemnione tło).
+        // `data-shell-overlay`: w oknie bez ramki nakładka zaczyna się poniżej
+        // pasa tytułowego i nie jest uchwytem do przeciągania — bez tego rząd
+        // ucz/steruj/„X" (`p-[5%]` ≈ 45 px) wypadał w środku pasa i klik
+        // przesuwał okno zamiast wcisnąć przycisk (styles.css, 5).
         <div
+          data-shell-overlay
           className={cn(
             "fixed inset-0 flex flex-col",
             // Na telefonie pełny ekran nad szufladą i z odsunięciem od pasków

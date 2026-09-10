@@ -94,4 +94,35 @@ describe("sidebar group row avatars", () => {
     expect(sidebar).not.toContain("className=\"absolute left-0 top-0 flex\"");
     expect(sidebar.match(/\{\.\.\.sidebarAvatarProps\(/g)?.length).toBe(3);
   });
+
+  // Klaster ma się NAKŁADAĆ: sąsiednie sloty stoją co 20 px przy elemencie 28 px,
+  // czyli części wspólne po 8 px, a cały klaster 48×48 siedzi wyśrodkowany w
+  // kafelku 56 px. Wcześniej sloty stały po rogach kafelka, więc nakładania nie
+  // było wcale, a od czterech botów zostawał pusty prawy górny róg.
+  it("overlaps the cluster slots and centres them in the tile", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    const slots = sidebar.slice(
+      sidebar.indexOf("const GROUP_AVATAR_SLOTS"),
+      sidebar.indexOf("function GroupRow"),
+    );
+    expect(slots).toContain('pair: ["left-1 top-3.5", "left-6 top-3.5"]');
+    expect(slots).toContain('trio: ["left-1 top-1", "left-6 top-1", "left-3.5 top-6"]');
+    // Układ „stack" zniknął — od czterech botów klaster ma te same trzy sloty co
+    // trójka, więc wiersz nie zmienia kształtu między 3 a 12 botami.
+    expect(slots).not.toContain("stack:");
+    // `flex` na slocie jest obowiązkowe: inline slot łapie zejście linii pod
+    // awatarem, więc awatar 28 px zajmował 28×34 i rozjeżdżał się z plakietką.
+    expect(sidebar).toContain('cn("absolute flex", GROUP_AVATAR_SLOTS[layout][index])');
+  });
+
+  // Plakietka „+N" to kolejny element klastra: ten sam rozmiar 28 px co awatar i
+  // slot za ostatnim awatarem, a nie własny róg kafelka. Obwódka z `shadow`
+  // rysowała się NA ZEWNĄTRZ, przez co plakietka miała 32 px.
+  it("puts the overflow badge in the slot after the last avatar", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    expect(sidebar).toContain("GROUP_AVATAR_SLOTS[layout][shown.length]");
+    expect(sidebar).toContain("size-7 items-center justify-center rounded-full border border-hairline");
+    expect(sidebar).not.toContain("shadow-[0_0_0_2px_var(--color-app)]");
+    expect(sidebar).not.toContain('layout === "stack"');
+  });
 });

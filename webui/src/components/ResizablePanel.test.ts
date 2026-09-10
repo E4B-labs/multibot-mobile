@@ -101,6 +101,9 @@ describe("panele boczne montowane przez powłokę", () => {
     "InspectorPanel",
     "ComputerPanel",
     "RoutinesPanel",
+    // Po #167 przypomnienia też idą przez `SidePanel` — wcześniej były jedyną
+    // sztywną kolumną w tym slocie.
+    "RemindersPanel",
     "SkillsPanel",
     "GroupMembersPanel",
     "AppSettingsPanel",

@@ -1,6 +1,8 @@
 // Model picker: an instance rail + model list, backed by /api/instances.
 // Routing is by exact instanceId only — an entry is never inferred from a
 // driver kind, and unavailable instances render disabled with the reason.
+// An installed but signed-out CLI is dimmed with a shortcut to App Settings —
+// see lib/instanceGate.ts.
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Search } from "lucide-react";
 import { useStore, type Bot, type InstanceInfo } from "@/state/store";
@@ -9,6 +11,7 @@ import { ApiKeyRow } from "./ApiKeys";
 import { cn } from "@/lib/cn";
 import { useLanguage } from "@/lib/language";
 import { groupOpenCodeModels, isFreeModel, modelLabel } from "@/lib/opencodeModels";
+import { instanceGate } from "@/lib/instanceGate";
 
 // Nagłówkowa pigułka nigdy nie pokazuje surowego id: gdy katalog nie podał
 // `name` (fallbacki go nie mają), zostaje czytelny człon po ukośniku.
@@ -48,6 +51,17 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
       .map((group) => ({ ...group, options: group.options.filter((option) => matchesModel(option, normalizedModelQuery)) }))
       .filter((group) => group.options.length > 0)
     : [];
+  const signInHint = polish
+    ? "CLI jest zainstalowany, ale niezalogowany — zaloguj w Ustawieniach aplikacji"
+    : "CLI is installed but signed out — sign in from App Settings";
+  const railGate = railInstance ? instanceGate(railInstance.snapshot, railInstance.driverKind) : "ok";
+  // Pigułka w nagłówku czatu jest jedyną rzeczą widoczną bez otwierania listy —
+  // na telefonie (poniżej `sm`) zostaje z niej sam znak dostawcy. Bez tego trzeba
+  // było otworzyć picker, żeby się dowiedzieć, że wybrany dostawca nie ma logowania.
+  const activeGate = active ? instanceGate(active.snapshot, active.driverKind) : "ok";
+  const activeNote = activeGate === "missing"
+    ? (active?.snapshot.reason ?? undefined)
+    : activeGate === "signin" ? signInHint : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -86,22 +100,26 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
     opts: { indent?: boolean; needsKey?: boolean } = {},
   ) => {
     const current = selection.instanceId === instance.instanceId && selection.model === option.id;
-    const disabled = instance.snapshot.state !== "available";
+    const gate = instanceGate(instance.snapshot, instance.driverKind);
+    const disabled = gate === "missing";
     const keyHint = polish ? "wymaga wspólnego klucza OpenCode Go" : "needs the shared OpenCode Go key";
+    const dimmed = gate === "signin" || Boolean(opts.needsKey);
+    const hint = gate === "signin" ? signInHint : opts.needsKey ? keyHint : undefined;
     return (
       <button
         key={option.id}
         disabled={disabled}
         // Powód siedzi na całym wierszu, nie tylko na ikonce — 12 px kłódki to
         // za mały cel dla myszy i nic dla klawiatury.
-        title={disabled ? (instance.snapshot.reason ?? undefined) : opts.needsKey ? keyHint : undefined}
+        title={disabled ? (instance.snapshot.reason ?? undefined) : hint}
         onClick={() => pick(instance, option.id)}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]",
           opts.indent && "pl-6",
           disabled ? "cursor-not-allowed text-ink-secondary/50" : "text-ink hover:bg-raised/60",
-          // brak klucza nie blokuje wiersza, tylko go przygasza — klik otwiera pole klucza
-          !disabled && opts.needsKey && "opacity-60",
+          // brak klucza ani brak logowania nie blokuje wiersza, tylko go przygasza —
+          // klik otwiera pole klucza, a logowanie może wejść bez restartu pickera
+          !disabled && dimmed && "opacity-60",
           current && "bg-raised",
         )}
       >
@@ -109,8 +127,8 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
           <span className="truncate">{modelLabel(option.id, option.label)}</span>
           {option.id === instance.models.default && badge(polish ? "domyślny" : "default")}
           {isFreeModel(option.id) && badge(polish ? "darmowy" : "free")}
-          {opts.needsKey && (
-            <span className="shrink-0 text-ink-secondary" role="img" aria-label={keyHint} title={keyHint}>
+          {hint && (
+            <span className="shrink-0 text-ink-secondary" role="img" aria-label={hint} title={hint}>
               <KeyRound size={12} aria-hidden />
             </span>
           )}
@@ -132,9 +150,18 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
           });
         }}
         className="flex items-center gap-1.5 rounded-full border border-hairline/40 bg-raised/60 py-2.5 pl-2 pr-2.5 text-[14px] text-ink hover:bg-raised sm:py-1"
-        title={activeLabel || selection.model}
+        // Bez podpisu nazwa modelu musi być choć w dymku — inaczej nie da się
+        // sprawdzić, na czym bot pracuje, bez otwierania listy. Powód braku
+        // logowania dopisujemy tam samo, bo pigułki nikt nie klika po ciemku.
+        title={[activeLabel || selection.model, activeNote].filter(Boolean).join(" — ")}
       >
-        {active && <ProviderMark driverKind={active.driverKind} size={18} />}
+        {active && (
+          <ProviderMark
+            driverKind={active.driverKind}
+            size={18}
+            className={cn(activeGate === "missing" && "opacity-40", activeGate === "signin" && "opacity-60")}
+          />
+        )}
         {/* Na wąskim ekranie nazwa modelu wypychała pigułkę poza nagłówek —
             zostaje sam znak dostawcy, pełna nazwa wraca od `sm`. */}
         <span className="hidden max-w-[190px] truncate sm:inline">
@@ -152,7 +179,7 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
               widoczne, przewijanie w poziomie), na desktopie pionowy z lewej */}
           <div className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-hairline/40 bg-panel p-2 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r">
             {visibleInstances.map((instance) => {
-              const unavailable = instance.snapshot.state !== "available";
+              const gate = instanceGate(instance.snapshot, instance.driverKind);
               const onRail = instance.instanceId === railInstance?.instanceId;
               return (
                 <button
@@ -163,14 +190,17 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                     setPendingGoModel(null);
                   }}
                   title={
-                    unavailable
+                    gate === "missing"
                       ? `${instance.displayName} — ${instance.snapshot.reason ?? "unavailable"}`
-                      : instance.displayName
+                      : gate === "signin"
+                        ? `${instance.displayName} — ${signInHint}`
+                        : instance.displayName
                   }
                   className={cn(
                     "flex size-9 items-center justify-center rounded-lg",
                     onRail ? "bg-raised" : "hover:bg-raised/60",
-                    unavailable && "opacity-40",
+                    gate === "missing" && "opacity-40",
+                    gate === "signin" && "opacity-60",
                   )}
                 >
                   <ProviderMark driverKind={instance.driverKind} size={18} />
@@ -186,15 +216,18 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                 <div className="shrink-0 px-2 pb-1 pt-1">
                   <div className="text-[13px] font-semibold text-ink">{railInstance.displayName}</div>
                   <div className="truncate text-[11px] text-ink-secondary">
-                    {railInstance.snapshot.state === "available"
-                      ? railInstance.models.updatedAt
-                        ? `${polish ? "modele zaktualizowane" : "models updated"} · ${new Date(railInstance.models.updatedAt).toLocaleString()}`
-                        : (railInstance.snapshot.version ?? "ready")
-                      : (railInstance.snapshot.reason ?? "unavailable")}
+                    {railGate === "missing"
+                      ? (railInstance.snapshot.reason ?? "unavailable")
+                      : railGate === "signin"
+                        ? (polish ? "niezalogowany" : "not signed in")
+                        : railInstance.models.updatedAt
+                          ? `${polish ? "modele zaktualizowane" : "models updated"} · ${new Date(railInstance.models.updatedAt).toLocaleString()}`
+                          : (railInstance.snapshot.version ?? "ready")}
                   </div>
-                  {/* Bez CLI cały wiersz jest martwy, a instalator siedzi w
-                      Ustawieniach aplikacji — daj skrót zamiast ślepej szarości. */}
-                  {railInstance.snapshot.state !== "available" && (
+                  {/* Bez CLI cały wiersz jest martwy, a bez logowania tura pada
+                      dopiero po wysłaniu — instalator i logowanie siedzą oba
+                      w Ustawieniach aplikacji, więc daj skrót zamiast ślepej szarości. */}
+                  {railGate !== "ok" && (
                     <button
                       type="button"
                       onClick={() => {
@@ -203,7 +236,9 @@ export function ModelPicker({ bot, className }: { bot: Bot; className?: string }
                       }}
                       className="mt-1 text-[11px] text-accent hover:underline"
                     >
-                      {polish ? "Zainstaluj w Ustawieniach aplikacji" : "Install in App Settings"}
+                      {railGate === "signin"
+                        ? (polish ? "Zaloguj w Ustawieniach aplikacji" : "Sign in from App Settings")
+                        : (polish ? "Zainstaluj w Ustawieniach aplikacji" : "Install in App Settings")}
                     </button>
                   )}
                 </div>

@@ -133,7 +133,7 @@ function BotContextMenu({
   if (!bot) return null;
   // keep the menu on-screen near the click
   const top = Math.min(menu.y, window.innerHeight - 340);
-  const left = Math.min(menu.x, window.innerWidth - 240);
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 240));
 
   const item = (
     icon: React.ReactNode,
@@ -294,7 +294,7 @@ function SectionMenu({
   }, [onClose]);
 
   const top = Math.min(menu.y, window.innerHeight - 120);
-  const left = Math.min(menu.x, window.innerWidth - 216);
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 216));
   const item = (icon: React.ReactNode, label: string, enabled: boolean, delta: -1 | 1) => (
     <button
       disabled={!enabled}
@@ -619,7 +619,7 @@ function GroupContextMenu({
   };
 
   const top = Math.min(menu.y, window.innerHeight - 200);
-  const left = Math.min(menu.x, window.innerWidth - 240);
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 240));
 
   return createPortal(
     <div
@@ -686,16 +686,21 @@ function useEngineGroups(workspaceVersion: unknown) {
   return [groups, setGroups] as const;
 }
 
-// Cztery ułożenia awatarów w kafelku 56 px (tyle ma awatar bota na telefonie;
-// na komputerze ten sam układ siedzi w kafelku 48 px): jeden awatar na cały
-// kafelek, dwa obok siebie, trzy w trójkącie, a od czterech w górę dwa jeden
-// pod drugim plus plakietka +N w prawym dolnym rogu. 3.5 = 14 px, czyli
-// wyśrodkowanie awatara 28 px w kafelku 56 px.
-const GROUP_AVATAR_SLOTS: Record<"solo" | "pair" | "trio" | "stack", string[]> = {
+/** Pozycje elementów klastra w kafelku 56 px wiersza grupy (tyle ma awatar bota
+ *  na telefonie; na komputerze ten sam układ siedzi w pudełku 48 px) — indeks
+ *  wybiera slot, plakietka „+N" bierze slot za ostatnim awatarem. Kafelek jest
+ *  ten sam co przy bocie, więc wiersze mają równą wysokość.
+ *
+ *  Klaster ma się NAKŁADAĆ: element ma 28 px, sąsiedzi stoją co 20 px, więc
+ *  części wspólne mają po 8 px. Cały klaster (48×48) siedzi wyśrodkowany w
+ *  kafelku — stąd margines 4 px (`left-1`/`top-1`) z każdej strony, a 3.5 = 14 px
+ *  to wyśrodkowanie pojedynczego elementu 28 px w tych 48 px kolumny. Kolejność
+ *  w DOM = kolejność malowania, więc dalszy element zawsze leży NA bliższym;
+ *  żadnego `z-*` tu nie trzeba. */
+const GROUP_AVATAR_SLOTS: Record<"solo" | "pair" | "trio", string[]> = {
   solo: ["inset-0"],
-  pair: ["left-0 top-3.5", "right-0 top-3.5"],
-  trio: ["left-0 top-0", "right-0 top-0", "bottom-0 left-3.5"],
-  stack: ["left-0 top-0", "bottom-0 left-0"],
+  pair: ["left-1 top-3.5", "left-6 top-3.5"],
+  trio: ["left-1 top-1", "left-6 top-1", "left-3.5 top-6"],
 };
 
 // Wiersz grupy trzyma styl `BotRow` (`rounded-2xl pl-2 pr-3`, 8 px wcięcia
@@ -750,7 +755,10 @@ function GroupRow({
       {members.length > 0 ? (
         <span className="relative size-14 shrink-0">
           {shown.map((member, index) => (
-            <span key={member.id} className={cn("absolute", GROUP_AVATAR_SLOTS[layout][index])}>
+            // `flex` nie jest ozdobą: bez niego slot jest inline i łapie zejście
+            // linii pod awatarem, więc awatar 28 px zajmuje 28×34 i rozjeżdża
+            // się z plakietką, która jest blokowa.
+            <span key={member.id} className={cn("absolute flex", GROUP_AVATAR_SLOTS[layout][index])}>
               <BotAvatar
                 color={member.color}
                 avatarUrl={member.avatarUrl}
@@ -760,10 +768,17 @@ function GroupRow({
               />
             </span>
           ))}
-          {layout === "stack" && hiddenCount > 0 && (
+          {hiddenCount > 0 && (
             <span
               aria-label={polish ? `${hiddenCount} dodatkowych botów` : `${hiddenCount} more bots`}
-              className="absolute bottom-0 right-0 z-10 flex size-7 items-center justify-center rounded-full bg-[#303030] text-[11px] font-semibold text-white shadow-[0_0_0_2px_var(--color-app)]"
+              // Plakietka jest kolejnym elementem klastra, więc stoi w slocie za
+              // ostatnim awatarem i ma dokładnie jego 28 px. Obwódka z `shadow`
+              // rysowała się NA ZEWNĄTRZ, przez co plakietka miała 32 px i kreskę,
+              // której żaden awatar nie ma; `border` mieści się w tych 28 px.
+              className={cn(
+                "absolute flex size-7 items-center justify-center rounded-full border border-hairline bg-[#303030] text-[11px] font-semibold text-white",
+                GROUP_AVATAR_SLOTS[layout][shown.length],
+              )}
             >
               +{hiddenCount}
             </span>

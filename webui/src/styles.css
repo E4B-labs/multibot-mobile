@@ -80,6 +80,21 @@ body {
   --color-app:#dfeceb; --color-panel:#ecf4f3; --color-raised:#fff; --color-raised-hover:#cfe4e1; --color-card:#fff; --color-inset:#d5e8e5; --color-control:#c3dcd9; --color-hairline:#aebfbd; --color-ink:#14201f; --color-ink-secondary:#4d5c5b; --color-accent:#11736d; --color-accent-border:#14807a; --color-accent-text:#0d5f5a; --color-accent-ink:#fff; --color-bubble-user:#cfe4e1; --color-success:#2f6b4f; --color-danger:#a8382f; --color-danger-ink:#fff; --color-warning:#7a5a2a; --color-focus:#0d5f5a; --color-scrollbar:#a6b8b6; --color-bot-line:#4d5c5b;
 }
 
+/* multibot (desktop #167): nakładki na całą powłokę (konektory, mapa zespołu,
+   pełny ekran podglądu komputera, paleta poleceń) zaczynają się PONIŻEJ pasa
+   tytułowego okna bez ramki (72 px) i nie są uchwytem do przeciągania — inaczej
+   ich „X" i odświeżanie tylko przesuwały okno, bo Chromium składa regiony
+   w kolejności drzewa, a nie po tym, co leży wyżej wizualnie.
+
+   Na telefonie te reguły nic nie robią: klasy `multibot-frameless` nie ma tu
+   kto założyć (App.tsx stawia samo `multibot-shell`), a WebView nie zna
+   `-webkit-app-region`. Stoją, żeby znaczniki `data-shell-overlay` w komponentach
+   dzielonych z pulpitem znaczyły w obu repo dokładnie to samo. Nakładka
+   montowana PRZED nagłówkiem czatu (ScoutTeamModal z szyny botów) i tak tego
+   regionu nie zdejmie — jej przyciski ratuje sam odstęp od góry. */
+.multibot-frameless [data-shell-overlay] { padding-top: 72px; }
+.multibot-frameless [data-shell-overlay] { -webkit-app-region: no-drag; }
+
 /* multibot: G5 — phone layout. The sidebar is a slide-in drawer toggled by the
    hamburger in MobileDrawerToggle (App.tsx) via `mb-drawer-open` on <body>; the
    chat/panel takes the full screen. Desktop (wide) layout is untouched. */
@@ -240,6 +255,45 @@ body {
   /* Hamburger (DrawerToggle) lives inline as the first element of the chat/
      group header now, so no corner reservation is needed and it shares the
      bar's height. The drawer itself keeps its own top (traffic lights / +). */
+}
+
+/* == multibot: seria dymków (iMessage/Grok) ==============================
+   Kilka wiadomości pod rząd od tej samej strony ma się czytać jak JEDEN
+   blok: rogi, którymi dwa dymki serii się stykają, robią się ostrzejsze
+   (6 px zamiast 16 px z `rounded-2xl`), rogi zewnętrzne zostają pełne,
+   a odstęp w środku serii schodzi z 4 px (`gap-1` listy) do 2 px. Odstęp
+   MIĘDZY nadawcami zostaje bez zmian.
+
+   Serię wyznacza sąsiedztwo w DOM, nie indeks wiadomości — `+` i `:has(+)`.
+   To celowo: między dymkami stają pigułki zdarzeń, chipy pokoju, karty
+   opcji, podglądy ekranu, karta SKILL.md i separatory sesji, a wszystkie
+   przerywają serię już przez to, że stoją pomiędzy. Mapa liczona w JS
+   musiałaby powtórzyć całą logikę „czy ta wiadomość w ogóle coś rysuje"
+   z pętli w ChatView i rozjeżdżałaby się przy każdym nowym rodzaju wiersza.
+   Wymaga `:has()` (Chromium 105+) — ten plik i tak korzysta z Highlight API
+   (105) i color-mix (111), więc próg się nie podnosi.
+
+   Reguły stoją POZA warstwami, więc biją `rounded-2xl` z `@layer utilities`
+   Tailwinda niezależnie od specyficzności (tak samo jak nagłówki paneli
+   wyżej biją swoje utility). Znacznikami są `data-mb-side` (wiersz) i
+   `data-mb-bubble` (sam dymek) — patrz src/components/ChatView.tsx. */
+[data-mb-side="bot"] + [data-mb-side="bot"],
+[data-mb-side="user"] + [data-mb-side="user"] {
+  margin-top: -2px;
+}
+/* dymek, nad którym stoi dymek tej samej strony — ostry róg GÓRNY wewnętrzny */
+[data-mb-side="bot"] + [data-mb-side="bot"] [data-mb-bubble] {
+  border-top-left-radius: 6px;
+}
+[data-mb-side="user"] + [data-mb-side="user"] [data-mb-bubble] {
+  border-top-right-radius: 6px;
+}
+/* dymek, pod którym stoi dymek tej samej strony — ostry róg DOLNY wewnętrzny */
+[data-mb-side="bot"]:has(+ [data-mb-side="bot"]) [data-mb-bubble] {
+  border-bottom-left-radius: 6px;
+}
+[data-mb-side="user"]:has(+ [data-mb-side="user"]) [data-mb-bubble] {
+  border-bottom-right-radius: 6px;
 }
 
 ::-webkit-scrollbar {

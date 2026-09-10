@@ -41,11 +41,21 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `2577c1ac` w repo `multibot`
-// (PR #104, wciągnięte tutaj 2026-09-07: karta bot↔bot znowu otwiera pokój
-// zamiast rozwijać w dół listę członków — wspólny `openRoom()` w
-// `ChatView.tsx`).
-// Poprzednia baza: `a27b03a4` (0.5.1, kierunkowa aktywność bot↔bot,
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `13e9ad7e` w repo
+// `multibot-desktop` (fala 0.5.35, wciągnięta tutaj 2026-09-11: PR #166
+// poprawki historii zmian, #167 nakładka z wtyczkami, #170 chip peera,
+// #171 klaster awatarów grupy, #172 seria dymków, #173 bramka pickera
+// modeli + `lib/instanceGate.ts`, #174 przycięcie kafelka hovera,
+// #175 wiersze GPU w Adminie + `components/ErrorBoundary.tsx`).
+// ŹRÓDŁO PORTU: dla każdego pliku BASE→THEIRS liczone było Z OSOBNA per PR
+// (`<sha>^` → `<sha>`), bo hash bazy nie był podbijany przy portach
+// z września — delta desktopu `2577c1ac..13e9ad7e` poza tymi PR-ami
+// (#148–#164, wciągnięte tutaj wcześniej PR-ami mobilnymi #67–#77) jest
+// już w tym repo.
+// Świadomie POMINIĘTE z tej fali: #168 (odstęp w nagłówku okna bez ramki,
+// CSS pod `.multibot-frameless` — Electron nie istnieje w WebView).
+// Poprzednia baza: `2577c1ac` (PR #104, karta bot↔bot otwiera pokój),
+// wcześniej `a27b03a4` (0.5.1, kierunkowa aktywność bot↔bot,
 // `lib/peerActivity.ts` + `PeerActivity`, `room.event` z wariantem
 // `received`), wcześniej `bbaad38c` (0.4.0) i `6f8e61e6` (0.3.39).
 //

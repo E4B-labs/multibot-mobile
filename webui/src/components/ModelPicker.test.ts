@@ -25,12 +25,26 @@ describe("switcher modeli", () => {
     // klucz przygasza wiersz, ale go nie blokuje — klik otwiera pole klucza
     expect(picker).toContain("wymaga wspólnego klucza OpenCode Go");
     expect(picker).toContain("<KeyRound size={12}");
-    expect(picker).toContain('!disabled && opts.needsKey && "opacity-60"');
-    // powód siedzi na całym wierszu: niedostępność albo brakujący klucz
-    expect(picker).toContain("title={disabled ? (instance.snapshot.reason ?? undefined) : opts.needsKey ? keyHint : undefined}");
-    expect(picker).toContain('role="img" aria-label={keyHint}');
+    // Po #173 przygaszenie ma dwa powody — brakujący klucz ORAZ niezalogowane
+    // CLI (`lib/instanceGate.ts`) — więc decyduje wspólne `dimmed`/`hint`.
+    expect(picker).toContain('const dimmed = gate === "signin" || Boolean(opts.needsKey);');
+    expect(picker).toContain('const hint = gate === "signin" ? signInHint : opts.needsKey ? keyHint : undefined;');
+    expect(picker).toContain('!disabled && dimmed && "opacity-60"');
+    // powód siedzi na całym wierszu: niedostępność, brak logowania albo brak klucza
+    expect(picker).toContain("title={disabled ? (instance.snapshot.reason ?? undefined) : hint}");
+    expect(picker).toContain('role="img" aria-label={hint}');
     // licznik grupy z jednostką, nie goła liczba
     expect(picker).toContain('{group.options.length} {polish ? "modeli" : "models"}');
+  });
+
+  // #173: zainstalowane, ale WYLOGOWANE CLI nie ma udawać gotowego — wiersz
+  // przygasa i kieruje do Ustawień, zamiast wywalić się dopiero po wysłaniu tury.
+  it("bramkuje picker na `instanceGate`, nie na samym `state`", () => {
+    expect(picker).toContain('import { instanceGate } from "@/lib/instanceGate";');
+    expect(picker).toContain("instanceGate(instance.snapshot, instance.driverKind)");
+    expect(picker).toContain('const disabled = gate === "missing";');
+    // pigułka w nagłówku (jedyne, co widać w trybie `compact`) też niesie powód
+    expect(picker).toContain('activeGate === "missing" && "opacity-40", activeGate === "signin" && "opacity-60"');
   });
 
   it("zostaje przy telefonowej szufladzie od dołu, nie desktopowym dropdownie", () => {

@@ -9,6 +9,9 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { PluginsPanel } from "@/components/PluginsPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
+// multibot: jedna granica błędu pod wszystkimi panelami — awaria renderowania
+// pokazuje kartę z przyciskiem zamiast kasować całą aplikację (QA 10.09.2026).
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TeamMapPanel } from "@/components/TeamMapPanel";
 import { InspectorPanel } from "@/components/InspectorPanel";
 // multibot: F6 — panel rutyn bota
@@ -140,6 +143,7 @@ function Shell() {
       {/* multibot: Cmd/Ctrl+K command palette — fixed overlay, renders null until opened */}
       <CmdK />
       <div className="relative flex min-h-0 flex-1">
+        <ErrorBoundary>
       <Sidebar />
       {state.roomsOpen ? (
         <RoomsPanel />
@@ -181,6 +185,7 @@ function Shell() {
           klucz per grupę = świeży mount */}
       {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
+        </ErrorBoundary>
       </div>
     </div>
   );
