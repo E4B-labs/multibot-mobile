@@ -6,6 +6,7 @@ import { FileDown, Loader2, Plus, Trash2, X } from "lucide-react";
 // ich części na kliknięcie (suwaki jeżdżą, strzałki się kręcą, klucz dokręca).
 import { RefreshTabIcon, ShieldTabIcon, SlidersTabIcon, WrenchTabIcon } from "./SettingsTabIcons";
 import { AdminPanel } from "./AdminPanel";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/state/store";
 import { ApiKeyRow } from "./ApiKeys";
@@ -18,7 +19,7 @@ import { copyText } from "@/lib/shell";
 import { BotSettingsCard } from "./BotSettingsCard";
 import { Skeleton, Spinner } from "./Loading";
 import { applyMotionMode, readMotionMode, type MotionMode } from "@/lib/motion";
-import { fetchUpdateLog, pageNumbers, type UpdateLogPage } from "@/lib/updateLog";
+import { fetchUpdateLog, pageNumbers, type UpdateLogError, type UpdateLogPage } from "@/lib/updateLog";
 import type { AppInfo } from "@/lib/shell";
 import { readDesktopNotifications, requestBrowserNotifications, setDesktopNotifications } from "@/lib/notifications";
 import { openBotPicker } from "@/lib/mobileNavigation";
@@ -385,6 +386,16 @@ function CommandLineTools({ cliLogin }: { cliLogin: string | null }) {
   // dowieźć na ekran, inaczej „Odśwież logowanie” wygląda na nic nie robiące.
   const manualRef = useRef<HTMLDivElement>(null);
   const polish = useLanguage() === "pl";
+  // Instalacja i logowanie zmieniają `state`/`authenticated` w snapshotcie
+  // instancji, a picker modeli przygasza na tym niezalogowane CLI
+  // (lib/instanceGate.ts). Bez tego odświeżenia „niezalogowany" wisiałby
+  // w pickerze do najbliższej ramki `config`, reconnectu SSE albo
+  // 12-godzinnej ankiety klienta.
+  const { dispatch } = useStore();
+  const syncInstances = () =>
+    api("/api/instances")
+      .then(({ instances }) => dispatch({ type: "instances", instances }))
+      .catch(() => {});
   const deviceLogin = (() => {
     if (login?.mode !== "device") return null;
     const output = login.output.join("\n").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
@@ -459,6 +470,7 @@ function CommandLineTools({ cliLogin }: { cliLogin: string | null }) {
       await followLogin(response.id, tool.id);
       const refreshed = await api("/api/cli-tools").catch(() => ({ tools: [] }));
       setCli(refreshed.tools ?? []);
+      syncInstances();
     } catch (error) {
       setLogin((current) => current ? { ...current, done: true, error: error instanceof Error ? error.message : String(error) } : null);
     }
@@ -534,6 +546,7 @@ function CommandLineTools({ cliLogin }: { cliLogin: string | null }) {
       setInstalling(null);
       const refreshed = await api("/api/cli-tools").catch(() => ({ tools: [] }));
       setCli(refreshed.tools ?? []);
+      syncInstances();
     }
   };
 
@@ -627,7 +640,7 @@ function CommandLineTools({ cliLogin }: { cliLogin: string | null }) {
       </div>
     </div>
     {login && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="presentation">
+      <div data-shell-overlay className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="presentation">
         <div
           role="dialog"
           aria-modal="true"
@@ -773,7 +786,10 @@ function UpdateLog({ repository, polish }: { repository: string; polish: boolean
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<UpdateLogPage | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Trzymamy SAM POWÓD, nie gotowe zdanie: przełączenie języka ma przetłumaczyć
+  // komunikat na miejscu, a nie odpytać GitHuba jeszcze raz (`polish` w liście
+  // zależności efektu robiło dokładnie to).
+  const [error, setError] = useState<{ retryAt?: number } | null>(null);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
@@ -783,16 +799,31 @@ function UpdateLog({ repository, polish }: { repository: string; polish: boolean
     void fetchUpdateLog(repository, page, controller.signal)
       .then(setResult)
       .catch((reason: unknown) => {
-        if (reason instanceof Error && reason.name === "AbortError") return;
-        setError(polish ? "Nie można pobrać historii zmian." : "Could not load update history.");
+        if (controller.signal.aborted) return;
+        setError({ retryAt: (reason as UpdateLogError | undefined)?.retryAt });
       })
-      .finally(() => setLoading(false));
+      // Przerwane żądanie NIE gasi kręcioła: sprzątanie starego efektu leci
+      // przed nowym, więc `finally` odrzuconej obietnicy zdejmowało `loading`
+      // już po tym, jak nowa strona je zapaliła — i przez moment widać było
+      // „Brak zmian na tej stronie" zamiast ładowania.
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
-  }, [page, polish, repository, retry]);
+  }, [page, repository, retry]);
 
   const current = result?.page === page ? result : null;
   const totalPages = Math.max(page, result?.totalPages ?? 1);
   const pages = pageNumbers(page, totalPages);
+  const errorText = !error
+    ? null
+    : error.retryAt
+      ? polish
+        ? `Limit zapytań GitHuba. Spróbuj po ${new Date(error.retryAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}.`
+        : `GitHub rate limit reached. Try again after ${new Date(error.retryAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}.`
+      : polish
+        ? "Nie można pobrać historii zmian."
+        : "Could not load update history.";
 
   return (
     <div data-update-log className="mt-4 rounded-xl bg-card p-4">
@@ -812,7 +843,7 @@ function UpdateLog({ repository, polish }: { repository: string; polish: boolean
         <div className="mt-4 text-[13px] text-ink-secondary">{polish ? "Ładowanie zmian…" : "Loading changes…"}</div>
       ) : error && !current ? (
         <div className="mt-4 flex items-center justify-between gap-3 text-[13px] text-danger">
-          <span>{error}</span>
+          <span>{errorText}</span>
           <button type="button" onClick={() => setRetry((value) => value + 1)} className="shrink-0 rounded-lg bg-raised px-2.5 py-1.5 text-ink hover:bg-raised-hover">
             {polish ? "Spróbuj ponownie" : "Retry"}
           </button>
@@ -837,7 +868,7 @@ function UpdateLog({ repository, polish }: { repository: string; polish: boolean
         <div className="mt-4 text-[13px] text-ink-secondary">{polish ? "Brak zmian na tej stronie." : "No changes on this page."}</div>
       )}
 
-      {error && current && <div className="mt-3 text-[12px] text-danger">{error}</div>}
+      {errorText && current && <div className="mt-3 text-[12px] text-danger">{errorText}</div>}
       {totalPages > 1 && (
         <nav aria-label={polish ? "Strony historii zmian" : "Update history pages"} className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-hairline/30 pt-3">
           {pages.map((item, index) => item === "…" ? (
@@ -1112,6 +1143,7 @@ export function AppSettingsPanel() {
         </nav>
 
         <div className="flex-1 overflow-y-auto px-5 pb-5">
+          <ErrorBoundary key={tab}>
           {tab === "general" && (
             <>
               <div className="mt-2 flex items-center justify-between gap-4 rounded-xl bg-card p-4">
@@ -1203,6 +1235,7 @@ export function AppSettingsPanel() {
               <DiagnosticsRow />
             </>
           )}
+          </ErrorBoundary>
         </div>
       </div>
     </SidePanel>

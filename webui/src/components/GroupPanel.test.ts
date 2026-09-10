@@ -69,7 +69,9 @@ describe("wiersz grupy w Sidebarze", () => {
     expect(row).toContain("groupAvatarLayout(members, group.bot_ids.length)");
     expect(row).not.toContain("groupAvatarLayout(members, members.length)");
     expect(row).toContain("+{hiddenCount}");
-    expect(row).toContain('layout === "stack" && hiddenCount > 0');
+    // Po #171 plakietka +N nie wisi już przy jednym układzie — pokazuje się
+    // zawsze, gdy klaster kogoś ukrył.
+    expect(row).toContain("hiddenCount > 0");
     expect(row).toContain("aria-label={polish ? `${hiddenCount} dodatkowych botów`");
     // Poprzedni układ: poziomy stos trzech awatarów rozpychający wiersz.
     expect(row).not.toContain("-space-x-1.5");
@@ -86,13 +88,18 @@ describe("wiersz grupy w Sidebarze", () => {
     expect(row).toContain('style={{ WebkitTouchCallout: "none" }}');
   });
 
-  it("cztery ułożenia siedzą w jednym miejscu i nie zachodzą na siebie", () => {
+  // Po #171 ułożenia są TRZY, nie cztery: „stack" zniknął, a klaster ma się
+  // NAKŁADAĆ — element 28 px co 20 px, więc części wspólne po 8 px, całość
+  // wyśrodkowana w kafelku (`left-1`/`top-1` = 4 px marginesu).
+  it("trzy ułożenia siedzą w jednym miejscu i nakładają się równo", () => {
     const slotsStart = sidebar.indexOf("const GROUP_AVATAR_SLOTS");
     const slots = sidebar.slice(slotsStart, sidebar.indexOf("function GroupRow", slotsStart));
+    expect(slotsStart).toBeGreaterThan(0);
+    expect(slots).toContain('Record<"solo" | "pair" | "trio", string[]>');
     expect(slots).toContain('solo: ["inset-0"]');
-    expect(slots).toContain('pair: ["left-0 top-3.5", "right-0 top-3.5"]');
-    expect(slots).toContain('trio: ["left-0 top-0", "right-0 top-0", "bottom-0 left-3.5"]');
-    expect(slots).toContain('stack: ["left-0 top-0", "bottom-0 left-0"]');
+    expect(slots).toContain('pair: ["left-1 top-3.5", "left-6 top-3.5"]');
+    expect(slots).toContain('trio: ["left-1 top-1", "left-6 top-1", "left-3.5 top-6"]');
+    expect(slots).not.toContain("stack:");
   });
 });
 

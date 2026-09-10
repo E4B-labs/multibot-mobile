@@ -511,28 +511,42 @@ export function PluginsPanel() {
     if (connector === "google-workspace" || connector === "mcp") setTab("yours");
   }, [connector]);
 
+  // `refreshing` NIE należy do tej funkcji: woła ją też odpytywanie po OAuth
+  // (co 5 s przez minutę) oraz połącz/odłącz, a wtedy jej `finally` gasiło
+  // ikonę w środku przeładowania katalogu i blokowało przycisk odświeżania na
+  // czas cudzego obiegu. Kręcenie ikoną ma jednego właściciela: `loadCatalog`.
+  // Postęp pojedynczej karty i tak widać po `waitingSlug` i `busySlug`.
   const refreshStatus = useCallback((slugs: string[]) => {
     if (!slugs.length) return Promise.resolve();
-    setRefreshing(true);
     return api(`/api/connectors?services=${slugs.join(",")}`)
       .then((r) => setStatus(r.services ?? {}))
-      .catch(() => {})
-      .finally(() => setRefreshing(false));
+      .catch(() => {});
   }, []);
 
   // multibot (F7): katalog przeładowuje się też po zapisie/usunięciu
   // własnego konektora, stąd useCallback zamiast gołego efektu. O status
   // pytamy tylko karty Composio — /api/connectors zna wyłącznie ich slugi.
+  //
+  // To JEST odświeżanie spod ikony w nagłówku: pełny obieg katalog → statusy.
+  // Wcześniej wisiało tam samo `refreshStatus(composioCards…)`, czyli statusy
+  // kart AKTUALNIE WIDOCZNYCH — przy wpisanej frazie albo pustym katalogu
+  // lista slugów była pusta, `refreshStatus` wychodziło pierwszą linią i klik
+  // nie robił nic, nawet nie zakręcił ikoną (0.5.33).
+  // Kręcenie ikoną trzyma ten sam `refreshing` co statusy i gaśnie DOPIERO po
+  // nich, stąd `return` w `then` zamiast `void`.
   const loadCatalog = useCallback(() => {
+    setRefreshing(true);
+    setError(null);
     return api("/api/connectors/catalog")
       .then((r) => {
         setCards(r.cards ?? []);
         setSource(r.source ?? "curated");
         setConfigured(Boolean(r.configured));
         const composio = (r.cards ?? []).filter((c: ToolkitCard) => c.source !== "custom");
-        if (r.configured) void refreshStatus(composio.map((c: ToolkitCard) => c.slug).slice(0, 100));
+        if (r.configured) return refreshStatus(composio.map((c: ToolkitCard) => c.slug).slice(0, 100));
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setRefreshing(false));
   }, [refreshStatus]);
 
   useEffect(() => {
@@ -650,6 +664,13 @@ export function PluginsPanel() {
       // Na mobile modal przykrywa cały ekran (fixed, wyższy niż drawer/scrim),
       // by nie kolidować z otwartym drawerem; na szerokim ekranie zostaje
       // absolute wewnątrz głównego obszaru (nie przykrywa paska bocznego).
+      //
+      // multibot: `data-shell-overlay` = w oknie bez ramki ten obszar NIE jest
+      // uchwytem do przeciągania (styles.css, punkt 5). Bez tego Chromium
+      // zostawiał tu region `drag` z nagłówka czatu spod spodu i górne 72 px
+      // nakładki — czyli cały ten nagłówek z „X" i odświeżaniem — zjadały
+      // każde kliknięcie (0.5.33).
+      data-shell-overlay
       className="plugins-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3 md:absolute md:inset-0 md:z-20"
       onClick={() => dispatch({ type: "togglePlugins", open: false })}
     >
@@ -664,7 +685,10 @@ export function PluginsPanel() {
         <div className="flex items-center justify-between">
           <div className="text-[17px] font-semibold text-ink">{polish ? "Wtyczki" : "Plugins"}</div>
           <button
+            type="button"
             onClick={() => dispatch({ type: "togglePlugins", open: false })}
+            aria-label={polish ? "Zamknij" : "Close"}
+            title={polish ? "Zamknij" : "Close"}
             className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
           >
             <X size={18} />
@@ -693,11 +717,24 @@ export function PluginsPanel() {
             ))}
           </div>
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
-            <RefreshCw
-              size={14}
-              className={cn("shrink-0 cursor-pointer text-ink-secondary hover:text-ink", refreshing && "animate-spin")}
-              onClick={() => refreshStatus(composioCards.map((c) => c.slug).slice(0, 100))}
-            />
+            {/* Prawdziwy <button>, nie samo <svg> z `onClick`: bez tego ikona
+                jest poza kolejnością tabulacji i nie da się jej wcisnąć
+                klawiaturą (na telefonie nie łapie jej też obszar dotyku), a
+                w oknie bez ramki nie łapie jej wyjątek `no-drag`.
+                Klik idzie w pełny `loadCatalog`, bo `refreshStatus` po slugach
+                kart AKTUALNIE WIDOCZNYCH przy wpisanej frazie albo pustym
+                katalogu dostawało pustą listę i wychodziło pierwszą linią —
+                klik nie robił nic, nawet nie zakręcił ikoną (0.5.33). */}
+            <button
+              type="button"
+              onClick={() => void loadCatalog()}
+              disabled={refreshing}
+              aria-label={polish ? "Odśwież" : "Refresh"}
+              title={polish ? "Odśwież" : "Refresh"}
+              className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={cn("shrink-0", refreshing && "animate-spin")} />
+            </button>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}

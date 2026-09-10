@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { Bell, Clock, Loader2, Trash2, X } from "lucide-react";
 
 import { BotAvatar } from "@/components/Avatar";
+import { SidePanel } from "./ResizablePanel";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { authFetch } from "@/lib/auth";
@@ -104,7 +105,18 @@ export function RemindersPanel() {
   };
 
   return (
-    <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
+    // multibot: przypomnienia dostały własny panel (#160) już po tym, jak
+    // każdy panel boczny przeszedł na `SidePanel` (#154) — jako jedyny został
+    // sztywny i nie dawał się ciągnąć za krawędź. Własny klucz, bo szerokość
+    // zapamiętuje się per panel, a rutyny stoją w tym samym slocie.
+    // Kopia mobilna: uchwyt chowa się na telefonie, tak samo jak w rutynach.
+    <SidePanel
+      storageKey="multibot.panelWidth.reminders"
+      defaultWidth={400}
+      label={polish ? "Zmień szerokość panelu przypomnień" : "Resize reminders panel"}
+      className="border-l border-hairline/40"
+      handleClassName="hidden min-[701px]:flex"
+    >
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-[52px]" />
         <span className="text-[15px] font-semibold text-ink">{polish ? "Przypomnienia" : "Reminders"}</span>
@@ -215,6 +227,6 @@ export function RemindersPanel() {
           </div>
         )}
       </div>
-    </aside>
+    </SidePanel>
   );
 }
