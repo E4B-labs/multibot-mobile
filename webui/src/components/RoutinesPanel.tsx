@@ -377,7 +377,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
       defaultWidth={400}
       label={polish ? "Zmień szerokość panelu rutyn" : "Resize routines panel"}
       className="border-l border-hairline/40"
-      handleClassName="hidden md:flex"
+      handleClassName="hidden min-[701px]:flex"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">

@@ -550,7 +550,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
         "border-l border-hairline/40",
         dragOver && "outline outline-2 outline-dashed outline-offset-[-6px] outline-accent/70",
       )}
-      handleClassName="hidden md:flex"
+      handleClassName="hidden min-[701px]:flex"
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();

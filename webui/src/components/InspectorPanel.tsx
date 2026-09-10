@@ -31,7 +31,7 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
       defaultWidth={400}
       label={polish ? "Zmień szerokość inspektora" : "Resize inspector panel"}
       className="border-l border-hairline/40"
-      handleClassName="hidden md:flex"
+      handleClassName="hidden min-[701px]:flex"
     >
       <div className="flex items-center justify-between px-4 py-3">
         <button type="button" onClick={close} className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink" aria-label={polish ? "Wstecz" : "Back"}><ChevronLeft size={18} /></button>

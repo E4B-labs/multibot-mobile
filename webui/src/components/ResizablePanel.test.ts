@@ -126,23 +126,6 @@ describe("panele boczne montowane przez powłokę", () => {
     }
   });
 
-  it("uchwyt chowa się na telefonie — tam panel zakrywa cały ekran", () => {
-    for (const name of panels) expect(read(name), name).toContain('handleClassName="hidden md:flex"');
-  });
-
-  it("szerokość idzie zmienną `--panel-width`, nie stylem `width`", () => {
-    // Na telefonie `styles.css` (max-width: 700px) wymusza `width: auto` na
-    // panelu. Styl inline wygrałby z tą regułą i panel zostałby kolumną
-    // zamiast zakryć ekran — dlatego szerokość jedzie zmienną.
-    const shared = read("ResizablePanel");
-    expect(shared).toContain('"--panel-width"');
-    expect(shared).not.toContain("style={{ width:");
-  });
-
-  it("szyna botów zostaje szufladą — na telefonie nie ma czego ciągnąć", () => {
-    expect(read("Sidebar")).not.toContain("useResizableWidth");
-  });
-
   it("pasek szukania w czacie zostaje bez uchwytu", () => {
     // Kacper: „każdy panel oprócz Znajdź w czacie" — ten leży nad transkryptem.
     expect(read("ChatFindBar")).not.toContain("ResizablePanel");

@@ -25,7 +25,7 @@ export function GroupMembersPanel({ group }: { group: EngineGroup }) {
       storageKey="multibot.panelWidth.groupMembers"
       defaultWidth={360}
       label={polish ? "Zmień szerokość listy członków" : "Resize members panel"}
-      handleClassName="hidden md:flex"
+      handleClassName="hidden min-[701px]:flex"
     >
       <div data-shell-header className="flex items-center justify-between px-5 py-3">
         <span className="text-[15px] font-semibold text-ink">{polish ? "Członkowie" : "Members"}</span>

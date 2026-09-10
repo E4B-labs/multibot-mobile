@@ -1050,7 +1050,7 @@ export function AppSettingsPanel() {
       defaultWidth={400}
       label={polish ? "Zmień szerokość ustawień aplikacji" : "Resize app settings panel"}
       className="border-l border-hairline/40"
-      handleClassName="hidden md:flex"
+      handleClassName="hidden min-[701px]:flex"
     >
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-6" />
