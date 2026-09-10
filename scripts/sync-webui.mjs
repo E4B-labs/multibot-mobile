@@ -66,6 +66,15 @@
 // `git merge-file`. Konflikt był tylko w importach — `ChevronDown` odpada
 // razem z szufladą, mobilne `DrawerToggle`/`Square`/`FileIcon` zostają.
 // Skryptu nadal się nie uruchamia.
+//
+// CZĘŚCIOWE ŚCIĄGNIĘCIE, 10.09.2026 (desktop PR #159, maskotka: morf kształtu,
+// paleta 14 barw, dopasowanie twarzy). Pliki `lib/mascot.ts`,
+// `lib/mascot.test.ts`, `lib/mascotShapes.ts`, `lib/mascotShapes.test.ts`,
+// `components/Avatar.tsx`, `components/BlobAvatar.tsx`,
+// `components/mascotFace.test.ts`, `mascot-preview.tsx`, `mascot-preview.css`
+// i `components/SettingsPanel.tsx` niosą już deltę desktopu `25cc3d86..2d01f7c3`.
+// Przy następnej pełnej synchronizacji z bazą `2577c1ac` te hunki wjadą po raz
+// drugi — dla TYCH plików bazą jest `2d01f7c3`, nie `2577c1ac`.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
