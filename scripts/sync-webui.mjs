@@ -17,8 +17,20 @@
 // Androida, dyktowanie niedostępne w WebView) siedzą także w kilkunastu innych
 // plikach — `ChatView.tsx`, `GroupPanel.tsx`, `ComputerPanel.tsx`,
 // `SettingsPanel.tsx`, `ModelPicker.tsx`, `Composer.tsx`, `App.tsx`,
-// `Onboarding.tsx`, `UpdateBanner.tsx`. Zwykłe przepisanie ich z oryginału
-// kasuje tamtą robotę w całości; commit `13f960b` zrobił dokładnie to.
+// `Onboarding.tsx`, `UpdateBanner.tsx`, a od 10.09 także `InspectorPanel.tsx`,
+// `RoutinesPanel.tsx`, `SkillsPanel.tsx`, `GroupMembersPanel.tsx`
+// i `AppSettingsPanel.tsx` (prop `handleClassName` przy `SidePanel` — chowa
+// uchwyt szerokości, dopóki panel zakrywa ekran). Zwykłe przepisanie ich
+// z oryginału kasuje tamtą robotę w całości; commit `13f960b` zrobił
+// dokładnie to.
+//
+// Dwa wyjątki od strony przeciwnej:
+//   `components/ResizablePanel.tsx`      — ma być KOPIĄ 1:1 desktopu, przy
+//                                          konflikcie bierz THEIRS w całości
+//   `components/ResizablePanel.test.ts`  — istnieje po obu stronach z inną
+//                                          treścią, zostaje OURS
+// Strażnik przeróbek `handleClassName` siedzi w `mobile-parity.test.ts`,
+// bo tego pliku nie ma po tamtej stronie — sync go nie ruszy.
 //
 // Dlatego synchronizację robi się TRZYSTRONNIE, plik po pliku:
 //   OURS   = wersja telefonu sprzed synchronizacji (`git show <HEAD>:webui/src/<plik>`)
@@ -54,6 +66,15 @@
 // `git merge-file`. Konflikt był tylko w importach — `ChevronDown` odpada
 // razem z szufladą, mobilne `DrawerToggle`/`Square`/`FileIcon` zostają.
 // Skryptu nadal się nie uruchamia.
+//
+// CZĘŚCIOWE ŚCIĄGNIĘCIE, 10.09.2026 (desktop PR #159, maskotka: morf kształtu,
+// paleta 14 barw, dopasowanie twarzy). Pliki `lib/mascot.ts`,
+// `lib/mascot.test.ts`, `lib/mascotShapes.ts`, `lib/mascotShapes.test.ts`,
+// `components/Avatar.tsx`, `components/BlobAvatar.tsx`,
+// `components/mascotFace.test.ts`, `mascot-preview.tsx`, `mascot-preview.css`
+// i `components/SettingsPanel.tsx` niosą już deltę desktopu `25cc3d86..2d01f7c3`.
+// Przy następnej pełnej synchronizacji z bazą `2577c1ac` te hunki wjadą po raz
+// drugi — dla TYCH plików bazą jest `2d01f7c3`, nie `2577c1ac`.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";

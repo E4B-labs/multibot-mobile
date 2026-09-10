@@ -72,8 +72,15 @@ export function configurePushNotifications(): void {
     // `handleNotification` odpala się WYŁĄCZNIE gdy aplikacja jest na
     // pierwszym planie — więc wystarczy porównać bota z tym na ekranie.
     handleNotification: async (notification) => {
-      const { botId } = extractBotTarget(notification.request.content.data as Record<string, unknown> | undefined);
-      const onScreen = Boolean(botId) && botId === visibleBotId;
+      const data = notification.request.content.data as Record<string, unknown> | undefined;
+      const { botId } = extractBotTarget(data);
+      // multibot 10.09.2026: przypomnienie ma dojść ZAWSZE. Wyciszanie tego,
+      // co dotyczy bota akurat na ekranie, ma sens dla relacji z pracy, ale
+      // przypomnienie o dentyście jest o dentyście, nie o bocie — człowiek
+      // prosił o brzęk na konkretną godzinę i ma go dostać także wtedy, gdy
+      // ten czat jest otwarty.
+      const alwaysAlert = data?.kind === "reminder";
+      const onScreen = !alwaysAlert && Boolean(botId) && botId === visibleBotId;
       return {
         shouldShowAlert: !onScreen,
         shouldShowBanner: !onScreen,

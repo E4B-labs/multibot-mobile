@@ -18,6 +18,7 @@ import { authFetch, getAuthToken } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { TeachCard } from "./SkillsPanel";
+import { SidePanel } from "./ResizablePanel";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await authFetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -423,7 +424,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
   const panel = (
     <>
-      <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+      <SidePanel
+        storageKey="multibot.panelWidth.computer"
+        defaultWidth={400}
+        label={polish ? "Zmień szerokość panelu komputera" : "Resize computer panel"}
+        className="fixed inset-0 z-[90] w-full border-l border-hairline/40 pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[var(--panel-width)] md:shrink-0 md:pt-0"
+        handleClassName="hidden md:flex"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -500,7 +507,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             onStopControl={releaseControl}
           />
         </div>
-      </aside>
+      </SidePanel>
 
       {fullscreen && (
         <div

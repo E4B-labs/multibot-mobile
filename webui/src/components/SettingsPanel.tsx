@@ -15,6 +15,7 @@ import { AvatarCropper } from "./AvatarCropper";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { Spinner } from "./Loading";
 import { openBotPicker } from "@/lib/mobileNavigation";
+import { SidePanel } from "./ResizablePanel";
 
 function Field({
   label,
@@ -187,7 +188,13 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   }, []);
 
   const panel = (
-    <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+    <SidePanel
+      storageKey="multibot.panelWidth.settings"
+      defaultWidth={400}
+      label={polish ? "Zmień szerokość panelu bota" : "Resize bot panel"}
+      className="fixed inset-0 z-[90] w-full border-l border-hairline/40 pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[var(--panel-width)] md:shrink-0 md:pt-0"
+      handleClassName="hidden md:flex"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <button
@@ -281,10 +288,14 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                   ))}
                 </div>
                 <div className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
-                <div className="flex flex-wrap gap-2">
+                {/* Siedem kolumn pod 14 barw z BOT_COLOR_NAMES — dwa pelne rzedy.
+                    Zawijany flex zostawial w drugim rzedzie dziury po brakujacych
+                    pozycjach. Obwodka, nie `border-0`: `bg-card` na jasnych motywach
+                    to biel, wiec biala probka bez niej znika. */}
+                <div className="grid grid-cols-7 justify-items-center gap-2">
                   {BOT_COLOR_NAMES.map((color) => {
                     const selected = bot.color === color;
-                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-0 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
+                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-2 border-hairline/70 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
                   })}
                 </div>
               </div>
@@ -433,7 +444,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           </div>
         </div>
       </div>
-    </aside>
+    </SidePanel>
   );
 
   return mobile ? createPortal(panel, document.body) : panel;
