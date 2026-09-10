@@ -281,10 +281,14 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                   ))}
                 </div>
                 <div className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-secondary">{polish ? "Kolor" : "Color"}</div>
-                <div className="flex flex-wrap gap-2">
+                {/* Siedem kolumn pod 14 barw z BOT_COLOR_NAMES — dwa pelne rzedy.
+                    Zawijany flex zostawial w drugim rzedzie dziury po brakujacych
+                    pozycjach. Obwodka, nie `border-0`: `bg-card` na jasnych motywach
+                    to biel, wiec biala probka bez niej znika. */}
+                <div className="grid grid-cols-7 justify-items-center gap-2">
                   {BOT_COLOR_NAMES.map((color) => {
                     const selected = bot.color === color;
-                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-0 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
+                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border border-hairline/70 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
                   })}
                 </div>
               </div>
