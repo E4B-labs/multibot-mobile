@@ -1,5 +1,5 @@
 // Wiersz grupy w szufladzie: kafelek awatarów o rozmiarze awatara bota
-// (`min-h-14 min-w-14`) + nazwy członków jako tytuł. Czyste funkcje siedzą tu,
+// (`size-14`, czyli 56 px) + nazwy członków jako tytuł. Czyste funkcje siedzą tu,
 // a nie w `Sidebar.tsx`, żeby dało się je przetestować bez renderowania całej
 // szuflady.
 

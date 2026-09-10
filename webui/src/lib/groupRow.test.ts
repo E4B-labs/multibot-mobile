@@ -26,7 +26,9 @@ describe("groupAvatarLayout", () => {
 
   it("counts every member above two in the badge, up to the cap", () => {
     expect(groupAvatarLayout(["a", "b", "c", "d", "e"]).hiddenCount).toBe(3);
-    expect(groupAvatarLayout(Array.from({ length: MAX_GROUP_MEMBERS }, (_, i) => i)).hiddenCount).toBe(10);
+    expect(groupAvatarLayout(Array.from({ length: MAX_GROUP_MEMBERS }, (_, i) => i)).hiddenCount).toBe(
+      MAX_GROUP_MEMBERS - 2,
+    );
   });
 
   it("survives an empty group without inventing an avatar", () => {

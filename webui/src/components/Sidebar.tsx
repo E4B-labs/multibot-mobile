@@ -882,8 +882,18 @@ function GroupCreateSheet({
               {polish ? "Nowa grupa" : "New group"}
             </span>
             {/* Sufit składu widać, zanim wiersze zgasną — inaczej wyszarzona
-                lista wygląda na zepsutą aplikację. */}
-            <span className="shrink-0 text-[11px] text-ink-secondary">
+                lista wygląda na zepsutą aplikację. Czytnik ekranu dostaje
+                pełne zdanie i słyszy każdą zmianę, bo to jedyny sygnał
+                tłumaczący, czemu reszta wierszy przestaje reagować. */}
+            <span
+              aria-live="polite"
+              aria-label={
+                polish
+                  ? `Wybrano ${picked.size} z ${MAX_GROUP_MEMBERS} botów`
+                  : `${picked.size} of ${MAX_GROUP_MEMBERS} bots picked`
+              }
+              className="shrink-0 text-[11px] text-ink-secondary"
+            >
               {picked.size}/{MAX_GROUP_MEMBERS}
             </span>
           </span>

@@ -66,13 +66,17 @@ describe("wiersz grupy w Sidebarze", () => {
     expect(row).toContain("GROUP_AVATAR_SLOTS[layout][index]");
     expect(row).toContain("size={layout === \"solo\" ? 56 : 28}");
     // Skład liczony z `bot_ids`, nie z lokalnie znanych botów.
-    expect(row).not.toContain("groupAvatarLayout(members)");
+    expect(row).toContain("groupAvatarLayout(members, group.bot_ids.length)");
+    expect(row).not.toContain("groupAvatarLayout(members, members.length)");
     expect(row).toContain("+{hiddenCount}");
     expect(row).toContain('layout === "stack" && hiddenCount > 0');
     expect(row).toContain("aria-label={polish ? `${hiddenCount} dodatkowych botów`");
     // Poprzedni układ: poziomy stos trzech awatarów rozpychający wiersz.
     expect(row).not.toContain("-space-x-1.5");
     expect(row).not.toContain("min-h-14 min-w-14");
+    // Awatary członków są bez obwódek (31d72f7) — plakietka +N ma jedyny ring.
+    expect(row).not.toContain("ring-2 ring-app");
+    expect(row).not.toContain("rounded-full ring");
     expect(row).toContain("avatarUrl={member.avatarUrl}");
     expect(row).toContain("shape={member.mascotShape}");
     expect(row).toContain("{...groupMemberAvatarProps(member)}");
@@ -83,7 +87,8 @@ describe("wiersz grupy w Sidebarze", () => {
   });
 
   it("cztery ułożenia siedzą w jednym miejscu i nie zachodzą na siebie", () => {
-    const slots = sidebar.slice(sidebar.indexOf("const GROUP_AVATAR_SLOTS"));
+    const slotsStart = sidebar.indexOf("const GROUP_AVATAR_SLOTS");
+    const slots = sidebar.slice(slotsStart, sidebar.indexOf("function GroupRow", slotsStart));
     expect(slots).toContain('solo: ["inset-0"]');
     expect(slots).toContain('pair: ["left-0 top-3.5", "right-0 top-3.5"]');
     expect(slots).toContain('trio: ["left-0 top-0", "right-0 top-0", "bottom-0 left-3.5"]');
@@ -93,7 +98,8 @@ describe("wiersz grupy w Sidebarze", () => {
 
 describe("szuflada tworzenia grupy", () => {
   it("pilnuje sufitu dwunastu botów", () => {
-    const sheet = sidebar.slice(sidebar.indexOf("function GroupCreateSheet"));
+    const sheetStart = sidebar.indexOf("function GroupCreateSheet");
+    const sheet = sidebar.slice(sheetStart, sidebar.indexOf("export function Sidebar()", sheetStart));
     expect(sheet).toContain("else if (next.size < MAX_GROUP_MEMBERS) next.add(id);");
     expect(sheet).toContain("const full = !on && picked.size >= MAX_GROUP_MEMBERS;");
     expect(sheet).toContain("disabled={full}");
