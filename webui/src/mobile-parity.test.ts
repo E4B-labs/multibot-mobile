@@ -38,8 +38,11 @@ describe("układ pod telefon", () => {
   });
 
   it("ustawienia to panel z prawej, nie pełny ekran z desktopu", () => {
-    expect(settings).toContain("<aside");
+    // Od 10.09 rama panelu to `SidePanel` (`<aside>` + uchwyt szerokości) —
+    // ważne zostaje to samo: kolumna z lewym obrysem, nie cały ekran.
+    expect(settings).toContain("<SidePanel");
     expect(settings).toContain("border-l border-hairline/40");
+    expect(settings).not.toContain("fixed inset-0 z-[90]");
   });
 
   it("karta System ma sam przełącznik powiadomień", () => {

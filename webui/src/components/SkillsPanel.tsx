@@ -23,6 +23,7 @@ import { SkillRef } from "./SkillRef";
 import { authFetch } from "@/lib/auth";
 import { useLanguage } from "@/lib/language";
 import { parseSkillFile, type ParsedSkillFile } from "@/lib/skillFile";
+import { SidePanel } from "./ResizablePanel";
 
 // Lokalny helper jak w RoutinesPanel, plus `status` na błędzie: teach/start
 // odróżnia "brak otwartej karty" (404) od realnej awarii po kodzie, nie po treści.
@@ -541,11 +542,15 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   };
 
   return (
-    <aside
+    <SidePanel
+      storageKey="multibot.panelWidth.skills"
+      defaultWidth={400}
+      label={polish ? "Zmień szerokość panelu umiejętności" : "Resize skills panel"}
       className={cn(
-        "animate-panel-in relative flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel",
+        "border-l border-hairline/40",
         dragOver && "outline outline-2 outline-dashed outline-offset-[-6px] outline-accent/70",
       )}
+      handleClassName="hidden md:flex"
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
@@ -714,6 +719,6 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
           </div>
         </div>
       )}
-    </aside>
+    </SidePanel>
   );
 }
