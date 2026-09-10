@@ -288,7 +288,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 <div className="grid grid-cols-7 justify-items-center gap-2">
                   {BOT_COLOR_NAMES.map((color) => {
                     const selected = bot.color === color;
-                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border border-hairline/70 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
+                    return <button type="button" key={color} onClick={() => patch({ color })} aria-pressed={selected} className={cn("size-7 rounded-full border-2 border-hairline/70 transition-[opacity,transform] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70", selected ? "scale-110 opacity-100" : "opacity-70 hover:scale-110 hover:opacity-100")} style={{ backgroundColor: BOT_COLORS[color] }} title={color} aria-label={`${polish ? "Użyj koloru awatara" : "Use mascot color"}: ${color}`} />;
                   })}
                 </div>
               </div>
