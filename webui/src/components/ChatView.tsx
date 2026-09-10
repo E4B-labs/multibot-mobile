@@ -262,7 +262,6 @@ function SessionSeparator({ at, polish }: { at: number; polish: boolean }) {
 function EventPill({ message, polish }: { message: Message; polish: boolean }) {
   const { dispatch } = useStore();
   if (!message.event) return null;
-  // przypomnienie jest rutyną z jednorazową datą, więc prowadzi w to samo miejsce
   // Rutyna prowadzi w panel rutyn; przypomnienie — ustawione i odpalone — w
   // panel przypomnień (od 10.09.2026 to osobny rekord, nie rutyna z datą).
   const routineEvent = message.event.type === "routine-created";

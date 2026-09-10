@@ -64,8 +64,6 @@ type AddressReport = {
 // potrzebny był panelowi przypomnień. Re-eksport, żeby nie ruszać wołających.
 import { relativeTime } from "@/lib/relativeTime";
 
-export { relativeTime };
-
 export function uptimeText(ms: number | undefined, polish: boolean): string {
   if (!ms || ms < 0) return "—";
   const hours = Math.floor(ms / 3_600_000);
