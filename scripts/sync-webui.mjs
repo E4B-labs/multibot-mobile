@@ -17,8 +17,20 @@
 // Androida, dyktowanie niedostępne w WebView) siedzą także w kilkunastu innych
 // plikach — `ChatView.tsx`, `GroupPanel.tsx`, `ComputerPanel.tsx`,
 // `SettingsPanel.tsx`, `ModelPicker.tsx`, `Composer.tsx`, `App.tsx`,
-// `Onboarding.tsx`, `UpdateBanner.tsx`. Zwykłe przepisanie ich z oryginału
-// kasuje tamtą robotę w całości; commit `13f960b` zrobił dokładnie to.
+// `Onboarding.tsx`, `UpdateBanner.tsx`, a od 10.09 także `InspectorPanel.tsx`,
+// `RoutinesPanel.tsx`, `SkillsPanel.tsx`, `GroupMembersPanel.tsx`
+// i `AppSettingsPanel.tsx` (prop `handleClassName` przy `SidePanel` — chowa
+// uchwyt szerokości, dopóki panel zakrywa ekran). Zwykłe przepisanie ich
+// z oryginału kasuje tamtą robotę w całości; commit `13f960b` zrobił
+// dokładnie to.
+//
+// Dwa wyjątki od strony przeciwnej:
+//   `components/ResizablePanel.tsx`      — ma być KOPIĄ 1:1 desktopu, przy
+//                                          konflikcie bierz THEIRS w całości
+//   `components/ResizablePanel.test.ts`  — istnieje po obu stronach z inną
+//                                          treścią, zostaje OURS
+// Strażnik przeróbek `handleClassName` siedzi w `mobile-parity.test.ts`,
+// bo tego pliku nie ma po tamtej stronie — sync go nie ruszy.
 //
 // Dlatego synchronizację robi się TRZYSTRONNIE, plik po pliku:
 //   OURS   = wersja telefonu sprzed synchronizacji (`git show <HEAD>:webui/src/<plik>`)

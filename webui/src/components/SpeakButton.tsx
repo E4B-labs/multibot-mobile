@@ -107,7 +107,9 @@ export function SpeakButton({ text }: { text: string }) {
         // ten rzad. Na telefonie nie ma hovera, wiec `group-hover/msg` nigdy by
         // nie zadzialal - dotyk dostaje przycisk na stale.
         "rounded p-1 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/msg:opacity-100 [@media(hover:none)]:opacity-100",
-        phase === "error" ? "text-danger" : "text-ink-secondary hover:bg-raised hover:text-ink",
+        // multibot: jasny kolor bazowy jak w CopyMessageButton — stopka stoi
+        // na czarnym tle czatu, szary text-ink-secondary ginal
+        phase === "error" ? "text-danger" : "text-ink/85 hover:bg-raised hover:text-white",
         phase !== "idle" && "opacity-100",
       )}
       title={

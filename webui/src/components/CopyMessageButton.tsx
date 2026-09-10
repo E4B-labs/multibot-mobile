@@ -35,7 +35,9 @@ export function CopyMessageButton({ text }: { text: string }) {
       onClick={copy}
       className={cn(
         "rounded p-1 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/msg:opacity-100 [@media(hover:none)]:opacity-100",
-        copied ? "text-success opacity-100" : "text-ink-secondary hover:bg-raised hover:text-ink",
+        // multibot: stopka stoi na czarnym tle czatu (nie w dymku), wiec
+        // bazowy kolor jest jasny — szary text-ink-secondary ginal na tle
+        copied ? "text-success opacity-100" : "text-ink/85 hover:bg-raised hover:text-white",
       )}
       title={polish ? "Kopiuj wiadomość" : "Copy message"}
     >

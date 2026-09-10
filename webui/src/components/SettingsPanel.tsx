@@ -15,6 +15,7 @@ import { AvatarCropper } from "./AvatarCropper";
 import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { Spinner } from "./Loading";
 import { openBotPicker } from "@/lib/mobileNavigation";
+import { SidePanel } from "./ResizablePanel";
 
 function Field({
   label,
@@ -187,7 +188,13 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   }, []);
 
   const panel = (
-    <aside className="animate-panel-in fixed inset-0 z-[90] flex h-full w-full flex-col border-l border-hairline/40 bg-panel pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[400px] md:shrink-0 md:pt-0">
+    <SidePanel
+      storageKey="multibot.panelWidth.settings"
+      defaultWidth={400}
+      label={polish ? "Zmień szerokość panelu bota" : "Resize bot panel"}
+      className="fixed inset-0 z-[90] w-full border-l border-hairline/40 pt-[env(safe-area-inset-top)] md:static md:inset-auto md:z-auto md:h-full md:w-[var(--panel-width)] md:shrink-0 md:pt-0"
+      handleClassName="hidden md:flex"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <button
@@ -437,7 +444,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
           </div>
         </div>
       </div>
-    </aside>
+    </SidePanel>
   );
 
   return mobile ? createPortal(panel, document.body) : panel;

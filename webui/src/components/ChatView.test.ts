@@ -75,8 +75,12 @@ describe("czat nie przewija się w bok", () => {
   // element flexa kurczy się do treści, a długa wiadomość, tabela i blok kodu
   // nadal dostają całe 100%.
   it("dymki mają sufit szerokości, a nie sztywną pełną szerokość", () => {
-    // Gałąź bota w `Bubble` — szerokość stoi w ternarnym, nie we wspólnej klasie.
-    expect(chat, "dymek bota stracił sufit szerokości").toContain('"max-w-full bg-card text-ink"');
+    // Sufit stoi na kolumnie dymek+stopka, odkąd stopka (TTS, kopiuj) wyszła
+    // z dymka na tło czatu — inaczej rząd przycisków rozpychałby kolumnę.
+    // Sama reguła bez zmian: bot dostaje `max-w-full`, użytkownik `max-w-[70%]`.
+    expect(chat, "kolumna dymka straciła sufit szerokości").toContain(
+      'cn("flex min-w-0 flex-col", user ? "max-w-[70%]" : "max-w-full")',
+    );
     // Wspólna klasa i dymek strumieniowany: żadnego przypięcia na sztywno.
     const bubbles = bubbleLines();
     expect(bubbles.length).toBeGreaterThanOrEqual(2);
@@ -167,7 +171,12 @@ describe("karta bot↔bot otwiera pokój", () => {
     for (const label of ["Napisano do", "Messaged", "Wiadomość od", "Message from"]) {
       expect(card, `brak kierunkowego opisu ${label}`).toContain(label);
     }
-    expect(card).toContain("const avatars = sent ? [actor, ...peers] : [actor];");
+    expect(card).not.toContain("const avatars = sent ? [actor, ...peers] : [actor];");
+    expect(card).toContain("id !== currentBotId");
+    expect(card).toContain("bot.id === currentBotId");
+    expect(card).toContain('"--bot": BOT_COLORS[bot.color]');
+    expect(card).toContain('dispatch({ type: "select", id: bot.id })');
+    expect(card).toContain("stopPropagation");
   });
 
   it("PeerActivity is a text-only row without a status pill", () => {
@@ -194,11 +203,16 @@ describe("karta bot↔bot otwiera pokój", () => {
 });
 
 describe("małe awatary rozmów botów", () => {
-  it("oddziela stos avatarów w karcie aktywności", () => {
+  it("umieszcza pojedynczy mały avatar w chipie obok nazwy", () => {
     const card = chat.slice(chat.indexOf("function PeerActivity"), chat.indexOf("function RoomChip"));
-    expect(card).toContain("bg-app ring-2 ring-app");
+    expect(card).toContain('role="link"');
+    expect(card).toContain('size={20}');
     expect(card).toContain('shape="blob"');
     expect(card).toContain("{...sidebarAvatarProps(bot)}");
+    expect(card).toContain("inline-flex items-center gap-1 rounded-full");
+    expect(card).not.toContain("-space-x-1");
+    // obwódka hovera nie może być obcinana przez `overflow-hidden` wiersza
+    for (const token of ["overflow-hidden", "p-1 -m-1", "items-center"]) expect(card).toContain(token);
     expect(card).not.toContain("state={stateForBot(bot)}");
   });
 
