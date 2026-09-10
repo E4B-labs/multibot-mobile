@@ -165,11 +165,13 @@ function Bubble({
         highlighted ? "ring-2 ring-accent/70" : "",
       )}
     >
-      {/* multibot: kolumna dymek+stopka — stopka (TTS, kopiuj) wyszła z dymka
-          na tło czatu, ale stoi w tym samym miejscu pod nim. Sufity szerokości
-          (max-w) i min-w-0 przeniesione z dymka na wrapper, żeby stopka nie
-          rozpychała kolumny. */}
-      <div className={cn("flex min-w-0 flex-col", user ? "max-w-[70%]" : "max-w-full")}>
+      {/* multibot: wiersz dymek+stopka — stopka (TTS, kopiuj) stoi na PRAWO od
+          dymka, na tle czatu, wyrównana do jego dołu (`items-end`), z małym
+          odstępem `gap-1`. Bez stopki pod dymkiem, więc dymki bota w liście
+          niemal się stykają. Sufity szerokości (max-w) i min-w-0 zostają na
+          wrapperze, przyciski są `shrink-0`, dymek `min-w-0` — długa treść
+          kurczy dymek, nie wypycha przycisków poza ekran. */}
+      <div className={cn("flex min-w-0 items-end gap-1", user ? "max-w-[70%]" : "max-w-full")}>
       <div
         className={cn(
           // multibot: dymek bota sięga aż do krawędzi kolumny — wcześniejsze
@@ -234,11 +236,12 @@ function Bubble({
           <ChatMarkdown text={text} />
         )}
       </div>
-      {/* multibot: stopka POD dymkiem, na tle czatu — sterowania (TTS, kopiuj)
-          w JEDNYM rzędzie. Hover dalej łapie `group/msg` na całym wierszu, więc
-          mechanika pokazywania przycisków bez zmian (na dotyku na stałe). */}
+      {/* multibot: stopka na PRAWO od dymka, na tle czatu — sterowania (TTS,
+          kopiuj) w JEDNYM rzędzie. Hover dalej łapie `group/msg` na całym
+          wierszu, więc mechanika pokazywania przycisków bez zmian (na dotyku
+          na stałe). */}
       {!user && (
-        <div className="mt-1 flex items-center justify-start gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {/* TTS renders null when the provider does not support it. */}
           <SpeakButton text={text} />
           {/* multibot: kopiuje zrodlo wiadomosci - patrz CopyMessageButton.tsx */}
@@ -495,10 +498,10 @@ function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
       {/* multibot: ta sama szerokość i ten sam dymek co w `Bubble` —
-          inaczej tekst przeskakiwałby po zakończeniu strumienia. Wrapper-kolumna
+          inaczej tekst przeskakiwałby po zakończeniu strumienia. Wrapper-wiersz
           identyczny jak w `Bubble`, żeby sufit szerokości liczył się w tym
           samym miejscu w obu ścieżkach. */}
-      <div className="flex min-w-0 max-w-full flex-col">
+      <div className="flex min-w-0 max-w-full items-end gap-1">
       <div className="min-w-0 break-words rounded-2xl bg-card px-4 py-2.5 text-[15px] leading-relaxed text-ink">
         <ChatMarkdown text={text} streaming />
         <span className="ml-0.5 inline-block h-[14px] w-[2px] animate-pulse bg-ink-secondary align-middle" />
