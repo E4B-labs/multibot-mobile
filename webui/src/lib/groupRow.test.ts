@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { groupAvatarLayout, groupRowTitle, MAX_GROUP_MEMBERS } from "./groupRow";
 
+// Tyle slotów ma każdy układ w GROUP_AVATAR_SLOTS (Sidebar.tsx). Sidebar indeksuje
+// tę tablicę numerem awatara, więc `shown` nigdy nie może być dłuższe.
+const SLOTS = { solo: 1, pair: 2, trio: 3, stack: 2 } as const;
+
 describe("groupRowTitle", () => {
   it("joins member names with a comma", () => {
     expect(groupRowTitle(["Szef sztabu", "Nowy"])).toBe("Szef sztabu, Nowy");
@@ -18,21 +22,39 @@ describe("groupAvatarLayout", () => {
     expect(groupAvatarLayout(["a", "b", "c", "d"])).toEqual({ layout: "stack", shown: ["a", "b"], hiddenCount: 2 });
   });
 
-  // Grupa może mieć boty, których ta aplikacja jeszcze nie zna — układ liczy
-  // pełny skład z `bot_ids`, a pokazuje tylko awatary, które naprawdę ma.
-  it("does not invent unknown members", () => {
-    expect(groupAvatarLayout(["a"], 4)).toEqual({ layout: "stack", shown: ["a"], hiddenCount: 2 });
+  // Skasowanie bota nie wyjmuje go z `bot_ids`, więc grupa potrafi mieć więcej
+  // członków niż awatarów. Układ idzie wtedy za tym, co da się narysować —
+  // inaczej para z jednym żywym botem rysowała mały awatar przy lewej krawędzi
+  // i pustą połowę kafelka.
+  it("falls back to the layout it can actually draw", () => {
+    expect(groupAvatarLayout(["a"], 2)).toEqual({ layout: "solo", shown: ["a"], hiddenCount: 0 });
+    expect(groupAvatarLayout(["a", "b"], 3)).toEqual({ layout: "pair", shown: ["a", "b"], hiddenCount: 0 });
   });
 
-  it("counts every member above two in the badge, up to the cap", () => {
-    expect(groupAvatarLayout(["a", "b", "c", "d", "e"]).hiddenCount).toBe(3);
-    expect(groupAvatarLayout(Array.from({ length: MAX_GROUP_MEMBERS }, (_, i) => i)).hiddenCount).toBe(
-      MAX_GROUP_MEMBERS - 2,
-    );
+  it("counts the badge up to the full membership", () => {
+    expect(groupAvatarLayout(["a"], 4)).toEqual({ layout: "stack", shown: ["a"], hiddenCount: 3 });
+    expect(groupAvatarLayout(["a", "b", "c"], 12)).toEqual({ layout: "stack", shown: ["a", "b"], hiddenCount: 10 });
+    for (let total = 4; total <= MAX_GROUP_MEMBERS; total++) {
+      const { shown, hiddenCount } = groupAvatarLayout(["a", "b", "c"], total);
+      expect(shown.length + hiddenCount).toBe(total);
+    }
   });
 
-  it("survives an empty group without inventing an avatar", () => {
-    expect(groupAvatarLayout([])).toEqual({ layout: "solo", shown: [], hiddenCount: 0 });
+  // Sidebar robi GROUP_AVATAR_SLOTS[layout][index] — brak slotu dałby `undefined`
+  // w className i awatar w lewym górnym rogu kafelka zamiast na swoim miejscu.
+  it("never asks for more slots than the layout has", () => {
+    const members = ["a", "b", "c", "d", "e"];
+    for (let known = 0; known <= members.length; known++) {
+      for (let total = 0; total <= 14; total++) {
+        const { layout, shown } = groupAvatarLayout(members.slice(0, known), total);
+        expect(shown.length).toBeLessThanOrEqual(SLOTS[layout]);
+      }
+    }
+  });
+
+  it("survives a nonsense count", () => {
+    expect(groupAvatarLayout(["a"], -3)).toEqual({ layout: "solo", shown: [], hiddenCount: 0 });
+    expect(groupAvatarLayout([], 0)).toEqual({ layout: "solo", shown: [], hiddenCount: 0 });
   });
 
   it("exports the twelve-member cap", () => expect(MAX_GROUP_MEMBERS).toBe(12));
