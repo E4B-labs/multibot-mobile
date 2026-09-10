@@ -276,6 +276,7 @@ export function SidePanel({
   className,
   handleClassName,
   children,
+  ...aside
 }: {
   storageKey: string;
   defaultWidth: number;
@@ -284,10 +285,12 @@ export function SidePanel({
   /** Kopia mobilna chowa uchwyt na telefonie: `hidden md:flex`. */
   handleClassName?: string;
   children: React.ReactNode;
-}) {
+  /** Reszta idzie na `<aside>` — panel umiejętności wiesza tu upuszczanie plików. */
+} & Omit<React.ComponentPropsWithoutRef<"aside">, "className" | "children" | "style">) {
   const resize = useResizableWidth(storageKey, { defaultWidth, label });
   return (
     <aside
+      {...aside}
       className={cn(
         "animate-panel-in relative flex h-full shrink-0 flex-col bg-panel w-[var(--panel-width)]",
         className,
