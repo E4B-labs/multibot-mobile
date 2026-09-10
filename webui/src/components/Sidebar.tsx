@@ -30,14 +30,14 @@ import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store"
 import { Skeleton } from "./Loading";
 import { BotAvatar } from "./Avatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
-import { GROUP_AVATAR_STATE, sidebarAvatarProps } from "@/lib/mascot";
+import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 // multibot: B4 — wspólny język (inspiracje.png): paleta wyszukiwania
 import { getLanguage, useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
-import { groupAvatarStack, groupRowTitle } from "@/lib/groupRow";
+import { groupAvatarOverflow, groupAvatarStack, groupRowTitle } from "@/lib/groupRow";
 // multibot: kolejność sekcji i podział wierszy — czysta logika, testowana osobno
 import { moveSectionTo, orderSections, sectionRows } from "@/lib/sidebarSections";
 
@@ -60,14 +60,9 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
  * nie ruszaly. */
 export { sidebarAvatarProps };
 
-/** Group rows use the same static face vocabulary as the appearance picker. */
+/** Group members keep exactly the same appearance and behaviour as bot rows. */
 export function groupMemberAvatarProps(bot: Bot) {
-  return {
-    ...sidebarAvatarProps(bot),
-    state: GROUP_AVATAR_STATE,
-    shape: "blob" as const,
-    avatarUrl: null,
-  };
+  return sidebarAvatarProps(bot);
 }
 
 function preview(bot: Bot): string {
@@ -711,6 +706,9 @@ function GroupRow({
     .filter((b): b is Bot => b != null);
   const selected = state.groupOpen?.id === group.id;
   const shown = groupAvatarStack(members);
+  // Licznik obejmuje także członków, których lokalna lista botów jeszcze nie
+  // zna — źródłem prawdy o pełnym składzie grupy jest `group.bot_ids`.
+  const plus = groupAvatarOverflow(group.bot_ids.length);
   // Czas ostatniej wiadomości bierzemy z wątku grupy, jeśli serwer go dosłał —
   // gdy grupa przyszła bez wiadomości, po prawej nie ma nic (żadnej liczby).
   const lastAt = group.messages?.[group.messages.length - 1]?.at;
@@ -735,19 +733,31 @@ function GroupRow({
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      {/* Skład grupy zamiast jednej szarej ikony: wszystkie znane avatary
-          stoją obok siebie w jednym poziomym stosie. Dla wielu członków są
-          małe i lekko nachodzą na siebie, bez dodatkowych oprawek. */}
+      {/* Najwyżej trzy prawdziwe avatary stoją obok siebie i lekko na siebie
+          nachodzą. Kolejni członkowie są zliczani w plakietce +N. */}
       {members.length > 0 ? (
-        <span className={cn("relative flex min-h-14 shrink-0 items-center", shown.length > 1 && "-space-x-1")}>
-          {shown.map((member) => (
-            <BotAvatar
-              key={member.id}
-              color={member.color}
-              size={shown.length === 1 ? 56 : 20}
-              {...groupMemberAvatarProps(member)}
-            />
-          ))}
+        <span className="relative flex min-h-14 min-w-14 shrink-0 items-center">
+          <span className={cn("flex items-center", shown.length > 1 && "-space-x-1.5")}>
+            {shown.map((member) => (
+              <span key={member.id} className="relative inline-flex rounded-full">
+                <BotAvatar
+                  color={member.color}
+                  avatarUrl={member.avatarUrl}
+                  shape={member.mascotShape}
+                  size={shown.length === 1 && plus === 0 ? 56 : 28}
+                  {...groupMemberAvatarProps(member)}
+                />
+              </span>
+            ))}
+            {plus > 0 && (
+              <span
+                aria-label={polish ? `${plus} dodatkowych botów` : `${plus} more bots`}
+                className="relative z-10 -ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-[#303030] text-[11px] font-semibold text-white shadow-[0_0_0_2px_var(--color-app)]"
+              >
+                +{plus}
+              </span>
+            )}
+          </span>
           {attention && (
             <span
               title={attention}

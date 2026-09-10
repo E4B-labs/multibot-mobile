@@ -54,21 +54,29 @@ describe("GroupMembersPanel", () => {
 });
 
 describe("wiersz grupy w Sidebarze", () => {
-  it("renders every known group avatar in one horizontal stack", () => {
+  it("renders up to three real avatars in one horizontal stack and a +N badge", () => {
     const start = sidebar.indexOf("groupAvatarStack(members");
     const end = sidebar.indexOf("function GroupCreateSheet", start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const row = sidebar.slice(start, end);
-    expect(row).toContain("relative flex min-h-14 shrink-0 items-center");
-    expect(row).toContain("shown.length > 1 && \"-space-x-1\"");
+    expect(row).toContain("relative flex min-h-14 min-w-14 shrink-0 items-center");
+    expect(row).toContain("shown.length > 1 && \"-space-x-1.5\"");
     expect(row).toContain("{shown.map((member) => (");
-    expect(row).toContain("size={shown.length === 1 ? 56 : 20}");
+    expect(row).toContain("size={shown.length === 1 && plus === 0 ? 56 : 28}");
+    expect(row).toContain("groupAvatarOverflow(group.bot_ids.length)");
+    expect(row).not.toContain("groupAvatarOverflow(members.length)");
+    expect(row).toContain("+{plus}");
+    expect(row).toContain("aria-label={polish ? `${plus} dodatkowych botów`");
+    expect(row).toContain("avatarUrl={member.avatarUrl}");
+    expect(row).toContain("shape={member.mascotShape}");
     expect(row).not.toContain("ring-2 ring-app");
     expect(row).not.toContain("rounded-full ring");
-    expect(row).not.toContain("+{plus}");
     expect(row).not.toContain("absolute left-0 top-0");
     expect(row).not.toContain("absolute bottom-0 right-0");
     expect(row).toContain("{...groupMemberAvatarProps(member)}");
+    expect(row).toContain('selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"');
+    expect(row).toContain("onContextMenu={(e) => {");
+    expect(row).toContain('style={{ WebkitTouchCallout: "none" }}');
   });
 });

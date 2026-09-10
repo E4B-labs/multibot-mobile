@@ -7,7 +7,12 @@ export function groupRowTitle(memberNames: string[]): string {
   return memberNames.join(", ");
 }
 
-/** Wszystkie znane avatary grupy, w kolejności z `bot_ids`. */
+/** Maksymalnie trzy znane avatary grupy, w kolejności z `bot_ids`. */
 export function groupAvatarStack<T>(members: T[]): T[] {
-  return members.slice();
+  return members.slice(0, 3);
+}
+
+/** Liczba członków schowanych za stosem trzech prawdziwych avatarów. */
+export function groupAvatarOverflow(memberCount: number): number {
+  return Math.max(0, memberCount - 3);
 }

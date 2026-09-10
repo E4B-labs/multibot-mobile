@@ -72,7 +72,12 @@ describe("sidebar group row avatars", () => {
     expect(groupMemberAvatarProps(member({ busy: false })).animated).toBe(false);
     expect(groupMemberAvatarProps(member({ busy: true })).animated).toBe(false);
     expect(groupMemberAvatarProps(member({ busy: true })).motion).toBe("none");
-    expect(groupMemberAvatarProps(member({ busy: true })).state).toBe("happy");
+    expect(groupMemberAvatarProps(member({ busy: true })).state).toBe("idle");
+  });
+
+  it("keeps each member's own avatar shape and photo", () => {
+    const bot = member({ avatarUrl: "data:image/png;base64,avatar", mascotShape: "triangle" as Bot["mascotShape"] });
+    expect(groupMemberAvatarProps(bot)).toEqual(sidebarAvatarProps(bot));
   });
 
   it("wires every sidebar avatar through sidebarAvatarProps", () => {
@@ -83,7 +88,9 @@ describe("sidebar group row avatars", () => {
     expect(sidebar).not.toContain("busyMascotMotion(");
     expect(sidebar).toContain("{shown.map((member) => (");
     expect(sidebar).toContain("{...groupMemberAvatarProps(member)}");
-    expect(sidebar).not.toContain("+{plus}");
+    expect(sidebar).toContain("+{plus}");
+    expect(sidebar).toContain("avatarUrl={member.avatarUrl}");
+    expect(sidebar).toContain("shape={member.mascotShape}");
     expect(sidebar).not.toContain("className=\"absolute left-0 top-0 flex\"");
     expect(sidebar.match(/\{\.\.\.sidebarAvatarProps\(/g)?.length).toBe(3);
   });
