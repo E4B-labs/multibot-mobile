@@ -594,6 +594,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       <WebView
         ref={webRef}
         key={attempt}
+        setBuiltInZoomControls={false}
         // Interfejs jedzie z paczki aplikacji, nie z serwera. `baseUrl` nadaje
         // dokumentowi origin hosta, dzięki czemu względne wywołania `/api/...`
         // i WebSockety w środku interfejsu trafiają tam, gdzie trzeba.
