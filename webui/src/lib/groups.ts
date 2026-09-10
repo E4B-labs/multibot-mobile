@@ -4,6 +4,8 @@
 // wciągnąłby React, lucide i `@/lib/analytics` (posthog inicjuje się przy
 // wczytaniu modułu) — czyli pół aplikacji po to, żeby sprawdzić dwa warunki.
 
+import { MAX_GROUP_MEMBERS } from "./groupRow";
+
 /**
  * Identyfikator bota po stronie silnika. Ten sam wzorzec co w
  * driverze silnika i w `GroupPanel` — odwracalny, więc z samego id
@@ -14,11 +16,12 @@ export function engineBotId(threadId: string): string {
 }
 
 /**
- * Grupę da się utworzyć dopiero, gdy ma nazwę i co najmniej jednego bota.
- * Silnik odrzuciłby jedno i drugie, ale przycisk ma być wyszarzony ZANIM
- * użytkownik wyśle żądanie — na telefonie odpowiedź serwera przychodzi po
- * sekundach i pusty formularz wyglądałby na zawieszony.
+ * Grupę da się utworzyć dopiero, gdy ma nazwę i co najmniej jednego bota, a
+ * skład nie przekracza `MAX_GROUP_MEMBERS`. Silnik odrzuciłby każdy z tych
+ * przypadków, ale przycisk ma być wyszarzony ZANIM użytkownik wyśle żądanie —
+ * na telefonie odpowiedź serwera przychodzi po sekundach i pusty formularz
+ * wyglądałby na zawieszony.
  */
 export function canCreateGroup(name: string, pickedCount: number): boolean {
-  return name.trim().length > 0 && pickedCount > 0;
+  return name.trim().length > 0 && pickedCount > 0 && pickedCount <= MAX_GROUP_MEMBERS;
 }

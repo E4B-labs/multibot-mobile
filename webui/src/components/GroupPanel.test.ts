@@ -54,29 +54,49 @@ describe("GroupMembersPanel", () => {
 });
 
 describe("wiersz grupy w Sidebarze", () => {
-  it("renders up to three real avatars in one horizontal stack and a +N badge", () => {
-    const start = sidebar.indexOf("groupAvatarStack(members");
+  it("mieści cały skład w kafelku wielkości awatara bota", () => {
+    const start = sidebar.indexOf("groupAvatarLayout(members");
     const end = sidebar.indexOf("function GroupCreateSheet", start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const row = sidebar.slice(start, end);
-    expect(row).toContain("relative flex min-h-14 min-w-14 shrink-0 items-center");
-    expect(row).toContain("shown.length > 1 && \"-space-x-1.5\"");
-    expect(row).toContain("{shown.map((member) => (");
-    expect(row).toContain("size={shown.length === 1 && plus === 0 ? 56 : 28}");
-    expect(row).toContain("groupAvatarOverflow(group.bot_ids.length)");
-    expect(row).not.toContain("groupAvatarOverflow(members.length)");
-    expect(row).toContain("+{plus}");
-    expect(row).toContain("aria-label={polish ? `${plus} dodatkowych botów`");
+    // Kafelek ma stały rozmiar awatara bota (56 px), więc wiersz grupy jest
+    // dokładnie tak wysoki jak wiersz bota — po to była cała ta przeróbka.
+    expect(row).toContain('className="relative size-14 shrink-0"');
+    expect(row).toContain("GROUP_AVATAR_SLOTS[layout][index]");
+    expect(row).toContain("size={layout === \"solo\" ? 56 : 28}");
+    // Skład liczony z `bot_ids`, nie z lokalnie znanych botów.
+    expect(row).not.toContain("groupAvatarLayout(members)");
+    expect(row).toContain("+{hiddenCount}");
+    expect(row).toContain('layout === "stack" && hiddenCount > 0');
+    expect(row).toContain("aria-label={polish ? `${hiddenCount} dodatkowych botów`");
+    // Poprzedni układ: poziomy stos trzech awatarów rozpychający wiersz.
+    expect(row).not.toContain("-space-x-1.5");
+    expect(row).not.toContain("min-h-14 min-w-14");
     expect(row).toContain("avatarUrl={member.avatarUrl}");
     expect(row).toContain("shape={member.mascotShape}");
-    expect(row).not.toContain("ring-2 ring-app");
-    expect(row).not.toContain("rounded-full ring");
-    expect(row).not.toContain("absolute left-0 top-0");
-    expect(row).not.toContain("absolute bottom-0 right-0");
     expect(row).toContain("{...groupMemberAvatarProps(member)}");
+    // Mobilne zachowania wiersza zostają nietknięte.
     expect(row).toContain('selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"');
     expect(row).toContain("onContextMenu={(e) => {");
     expect(row).toContain('style={{ WebkitTouchCallout: "none" }}');
+  });
+
+  it("cztery ułożenia siedzą w jednym miejscu i nie zachodzą na siebie", () => {
+    const slots = sidebar.slice(sidebar.indexOf("const GROUP_AVATAR_SLOTS"));
+    expect(slots).toContain('solo: ["inset-0"]');
+    expect(slots).toContain('pair: ["left-0 top-3.5", "right-0 top-3.5"]');
+    expect(slots).toContain('trio: ["left-0 top-0", "right-0 top-0", "bottom-0 left-3.5"]');
+    expect(slots).toContain('stack: ["left-0 top-0", "bottom-0 left-0"]');
+  });
+});
+
+describe("szuflada tworzenia grupy", () => {
+  it("pilnuje sufitu dwunastu botów", () => {
+    const sheet = sidebar.slice(sidebar.indexOf("function GroupCreateSheet"));
+    expect(sheet).toContain("else if (next.size < MAX_GROUP_MEMBERS) next.add(id);");
+    expect(sheet).toContain("const full = !on && picked.size >= MAX_GROUP_MEMBERS;");
+    expect(sheet).toContain("disabled={full}");
+    expect(sheet).toContain("{picked.size}/{MAX_GROUP_MEMBERS}");
   });
 });
