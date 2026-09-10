@@ -22,6 +22,7 @@ import { fetchUpdateLog, pageNumbers, type UpdateLogPage } from "@/lib/updateLog
 import type { AppInfo } from "@/lib/shell";
 import { readDesktopNotifications, requestBrowserNotifications, setDesktopNotifications } from "@/lib/notifications";
 import { openBotPicker } from "@/lib/mobileNavigation";
+import { SidePanel } from "./ResizablePanel";
 
 const slug = (value: string) =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
@@ -1044,7 +1045,13 @@ export function AppSettingsPanel() {
   }, []);
 
   return (
-    <aside className="animate-panel-in flex h-full w-[400px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
+    <SidePanel
+      storageKey="multibot.panelWidth.appSettings"
+      defaultWidth={400}
+      label={polish ? "Zmień szerokość ustawień aplikacji" : "Resize app settings panel"}
+      className="border-l border-hairline/40"
+      handleClassName="hidden min-[701px]:flex"
+    >
       <div className="flex items-center justify-between px-4 py-3">
         <span className="w-6" />
         <span className="text-[15px] font-semibold text-ink">{polish ? "Ustawienia aplikacji" : "App Settings"}</span>
@@ -1198,6 +1205,6 @@ export function AppSettingsPanel() {
           )}
         </div>
       </div>
-    </aside>
+    </SidePanel>
   );
 }
