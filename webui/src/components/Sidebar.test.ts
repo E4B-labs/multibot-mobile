@@ -86,9 +86,9 @@ describe("sidebar group row avatars", () => {
     // tworzenia grupy — każdy z nich brał wcześniej `busyMascotMotion`
     // inline i przez to animował bota, który nie pracuje.
     expect(sidebar).not.toContain("busyMascotMotion(");
-    expect(sidebar).toContain("{shown.map((member) => (");
+    expect(sidebar).toContain("{shown.map((member, index) => (");
     expect(sidebar).toContain("{...groupMemberAvatarProps(member)}");
-    expect(sidebar).toContain("+{plus}");
+    expect(sidebar).toContain("+{hiddenCount}");
     expect(sidebar).toContain("avatarUrl={member.avatarUrl}");
     expect(sidebar).toContain("shape={member.mascotShape}");
     expect(sidebar).not.toContain("className=\"absolute left-0 top-0 flex\"");

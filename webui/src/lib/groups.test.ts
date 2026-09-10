@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_GROUP_MEMBERS } from "./groupRow";
 import { canCreateGroup, engineBotId } from "./groups";
 
 describe("canCreateGroup", () => {
@@ -19,6 +20,13 @@ describe("canCreateGroup", () => {
 
   it("przepuszcza nazwę razem z co najmniej jednym botem", () => {
     expect(canCreateGroup("Zespół", 1)).toBe(true);
+  });
+
+  // Sufit składu jest twardy — serwer i tak odrzuci trzynastego bota, więc
+  // przycisk ma zgasnąć, zanim ktoś wyśle żądanie skazane na błąd.
+  it("nie przepuszcza składu ponad sufit", () => {
+    expect(canCreateGroup("Zespół", MAX_GROUP_MEMBERS)).toBe(true);
+    expect(canCreateGroup("Zespół", MAX_GROUP_MEMBERS + 1)).toBe(false);
   });
 });
 

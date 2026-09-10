@@ -37,7 +37,7 @@ import { getLanguage, useLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import { authFetch } from "@/lib/auth";
 import { canCreateGroup, engineBotId } from "@/lib/groups";
-import { groupAvatarOverflow, groupAvatarStack, groupRowTitle } from "@/lib/groupRow";
+import { groupAvatarLayout, groupRowTitle, MAX_GROUP_MEMBERS } from "@/lib/groupRow";
 // multibot: kolejność sekcji i podział wierszy — czysta logika, testowana osobno
 import { moveSectionTo, orderSections, sectionRows } from "@/lib/sidebarSections";
 
@@ -686,6 +686,18 @@ function useEngineGroups(workspaceVersion: unknown) {
   return [groups, setGroups] as const;
 }
 
+// Cztery ułożenia awatarów w kafelku 56 px (tyle ma awatar bota na telefonie;
+// na komputerze ten sam układ siedzi w kafelku 48 px): jeden awatar na cały
+// kafelek, dwa obok siebie, trzy w trójkącie, a od czterech w górę dwa jeden
+// pod drugim plus plakietka +N w prawym dolnym rogu. 3.5 = 14 px, czyli
+// wyśrodkowanie awatara 28 px w kafelku 56 px.
+const GROUP_AVATAR_SLOTS: Record<"solo" | "pair" | "trio" | "stack", string[]> = {
+  solo: ["inset-0"],
+  pair: ["left-0 top-3.5", "right-0 top-3.5"],
+  trio: ["left-0 top-0", "right-0 top-0", "bottom-0 left-3.5"],
+  stack: ["left-0 top-0", "bottom-0 left-0"],
+};
+
 // Wiersz grupy trzyma styl `BotRow` (`rounded-2xl pl-2 pr-3`, 8 px wcięcia
 // szuflady z `styles.css`), a nie wspólnego `ListRow` — `ListRow` ma własną
 // ramkę i tło karty, więc obok listy botów wyglądałby jak wtręt z innego
@@ -705,10 +717,9 @@ function GroupRow({
     .map((id) => bots.find((b) => engineBotId(b.threadId) === id))
     .filter((b): b is Bot => b != null);
   const selected = state.groupOpen?.id === group.id;
-  const shown = groupAvatarStack(members);
   // Licznik obejmuje także członków, których lokalna lista botów jeszcze nie
   // zna — źródłem prawdy o pełnym składzie grupy jest `group.bot_ids`.
-  const plus = groupAvatarOverflow(group.bot_ids.length);
+  const { layout, shown, hiddenCount } = groupAvatarLayout(members, group.bot_ids.length);
   // Czas ostatniej wiadomości bierzemy z wątku grupy, jeśli serwer go dosłał —
   // gdy grupa przyszła bez wiadomości, po prawej nie ma nic (żadnej liczby).
   const lastAt = group.messages?.[group.messages.length - 1]?.at;
@@ -733,31 +744,30 @@ function GroupRow({
         selected ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
       )}
     >
-      {/* Najwyżej trzy prawdziwe avatary stoją obok siebie i lekko na siebie
-          nachodzą. Kolejni członkowie są zliczani w plakietce +N. */}
+      {/* Skład mieści się w kafelku wielkości awatara bota — wiersz grupy ma
+          być tej samej wysokości co wiersz bota, więc awatary układają się
+          WEWNĄTRZ kafelka, a nie rozpychają go w bok. */}
       {members.length > 0 ? (
-        <span className="relative flex min-h-14 min-w-14 shrink-0 items-center">
-          <span className={cn("flex items-center", shown.length > 1 && "-space-x-1.5")}>
-            {shown.map((member) => (
-              <span key={member.id} className="relative inline-flex rounded-full">
-                <BotAvatar
-                  color={member.color}
-                  avatarUrl={member.avatarUrl}
-                  shape={member.mascotShape}
-                  size={shown.length === 1 && plus === 0 ? 56 : 28}
-                  {...groupMemberAvatarProps(member)}
-                />
-              </span>
-            ))}
-            {plus > 0 && (
-              <span
-                aria-label={polish ? `${plus} dodatkowych botów` : `${plus} more bots`}
-                className="relative z-10 -ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-[#303030] text-[11px] font-semibold text-white shadow-[0_0_0_2px_var(--color-app)]"
-              >
-                +{plus}
-              </span>
-            )}
-          </span>
+        <span className="relative size-14 shrink-0">
+          {shown.map((member, index) => (
+            <span key={member.id} className={cn("absolute", GROUP_AVATAR_SLOTS[layout][index])}>
+              <BotAvatar
+                color={member.color}
+                avatarUrl={member.avatarUrl}
+                shape={member.mascotShape}
+                size={layout === "solo" ? 56 : 28}
+                {...groupMemberAvatarProps(member)}
+              />
+            </span>
+          ))}
+          {layout === "stack" && hiddenCount > 0 && (
+            <span
+              aria-label={polish ? `${hiddenCount} dodatkowych botów` : `${hiddenCount} more bots`}
+              className="absolute bottom-0 right-0 z-10 flex size-7 items-center justify-center rounded-full bg-[#303030] text-[11px] font-semibold text-white shadow-[0_0_0_2px_var(--color-app)]"
+            >
+              +{hiddenCount}
+            </span>
+          )}
           {attention && (
             <span
               title={attention}
@@ -821,7 +831,9 @@ function GroupCreateSheet({
     setPicked((cur) => {
       const next = new Set(cur);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      // Grupa nie może mieć więcej niż `MAX_GROUP_MEMBERS` botów — sufit stoi
+      // też po stronie serwera, ale tu wiersz ma być martwy, zanim ktoś kliknie.
+      else if (next.size < MAX_GROUP_MEMBERS) next.add(id);
       return next;
     });
 
@@ -865,8 +877,25 @@ function GroupCreateSheet({
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl border border-hairline/50 bg-card pb-[var(--safe-bottom)] shadow-2xl shadow-black/60">
         <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
-          <span className="text-[15px] font-semibold text-ink">
-            {polish ? "Nowa grupa" : "New group"}
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="text-[15px] font-semibold text-ink">
+              {polish ? "Nowa grupa" : "New group"}
+            </span>
+            {/* Sufit składu widać, zanim wiersze zgasną — inaczej wyszarzona
+                lista wygląda na zepsutą aplikację. Czytnik ekranu dostaje
+                pełne zdanie i słyszy każdą zmianę, bo to jedyny sygnał
+                tłumaczący, czemu reszta wierszy przestaje reagować. */}
+            <span
+              aria-live="polite"
+              aria-label={
+                polish
+                  ? `Wybrano ${picked.size} z ${MAX_GROUP_MEMBERS} botów`
+                  : `${picked.size} of ${MAX_GROUP_MEMBERS} bots picked`
+              }
+              className="shrink-0 text-[11px] text-ink-secondary"
+            >
+              {picked.size}/{MAX_GROUP_MEMBERS}
+            </span>
           </span>
           <button
             onClick={onClose}
@@ -905,6 +934,7 @@ function GroupCreateSheet({
           {bots.map((b) => {
             const id = engineBotId(b.threadId);
             const on = picked.has(id);
+            const full = !on && picked.size >= MAX_GROUP_MEMBERS;
             // Cały wiersz jest celem dotyku i samym podświetleniem mówi,
             // czy bot jest wybrany — checkbox zniknął, bo kwadracik nie
             // pasował do języka wizualnego aplikacji.
@@ -913,10 +943,12 @@ function GroupCreateSheet({
                 key={b.id}
                 type="button"
                 onClick={() => toggle(id)}
+                disabled={full}
                 aria-pressed={on}
                 className={cn(
                   "flex min-h-12 cursor-pointer select-none items-center gap-3 rounded-xl px-2 py-2 text-left text-[15px] text-ink",
                   on ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
+                  full && "cursor-not-allowed opacity-40",
                 )}
               >
                 <BotAvatar

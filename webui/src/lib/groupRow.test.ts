@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupAvatarOverflow, groupAvatarStack, groupRowTitle } from "./groupRow";
+import { groupAvatarLayout, groupRowTitle, MAX_GROUP_MEMBERS } from "./groupRow";
 
 describe("groupRowTitle", () => {
   it("joins member names with a comma", () => {
@@ -10,42 +10,30 @@ describe("groupRowTitle", () => {
   });
 });
 
-describe("groupAvatarStack", () => {
-  it("stacks both members when the group has exactly two", () => {
-    expect(groupAvatarStack(["a", "b"])).toEqual(["a", "b"]);
-  });
-  it("shows no more than the first three known members", () => {
-    expect(groupAvatarStack(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c"]);
-  });
-  it("returns only known members when the group has unknown bots", () => {
-    // Grupa może mieć boty spoza tej aplikacji, ale stos pokazuje każdego znanego.
-    expect(groupAvatarStack(["a", "b", "c"])).toEqual(["a", "b", "c"]);
-  });
-  it("shows a single avatar for a one-member group", () => {
-    expect(groupAvatarStack(["a"])).toEqual(["a"]);
-  });
-  it("shows all three avatars when the group has exactly three members", () => {
-    expect(groupAvatarStack(["a", "b", "c"])).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("groupAvatarOverflow", () => {
-  it.each([
-    [1, 0],
-    [2, 0],
-    [3, 0],
-    [4, 1],
-    [5, 2],
-    [12, 9],
-  ])("a group of %i members has %i hidden avatars", (memberCount, hidden) => {
-    expect(groupAvatarOverflow(memberCount)).toBe(hidden);
+describe("groupAvatarLayout", () => {
+  it("covers solo, pair, trio, and stack layouts", () => {
+    expect(groupAvatarLayout(["a"])).toEqual({ layout: "solo", shown: ["a"], hiddenCount: 0 });
+    expect(groupAvatarLayout(["a", "b"])).toEqual({ layout: "pair", shown: ["a", "b"], hiddenCount: 0 });
+    expect(groupAvatarLayout(["a", "b", "c"])).toEqual({ layout: "trio", shown: ["a", "b", "c"], hiddenCount: 0 });
+    expect(groupAvatarLayout(["a", "b", "c", "d"])).toEqual({ layout: "stack", shown: ["a", "b"], hiddenCount: 2 });
   });
 
-  it("uses all group ids when 5 members exist but only 4 are locally known", () => {
-    const allGroupBotIds = ["a", "b", "c", "d", "remote"];
-    const knownMembers = ["a", "b", "c", "d"];
-
-    expect(groupAvatarStack(knownMembers)).toEqual(["a", "b", "c"]);
-    expect(groupAvatarOverflow(allGroupBotIds.length)).toBe(2);
+  // Grupa może mieć boty, których ta aplikacja jeszcze nie zna — układ liczy
+  // pełny skład z `bot_ids`, a pokazuje tylko awatary, które naprawdę ma.
+  it("does not invent unknown members", () => {
+    expect(groupAvatarLayout(["a"], 4)).toEqual({ layout: "stack", shown: ["a"], hiddenCount: 2 });
   });
+
+  it("counts every member above two in the badge, up to the cap", () => {
+    expect(groupAvatarLayout(["a", "b", "c", "d", "e"]).hiddenCount).toBe(3);
+    expect(groupAvatarLayout(Array.from({ length: MAX_GROUP_MEMBERS }, (_, i) => i)).hiddenCount).toBe(
+      MAX_GROUP_MEMBERS - 2,
+    );
+  });
+
+  it("survives an empty group without inventing an avatar", () => {
+    expect(groupAvatarLayout([])).toEqual({ layout: "solo", shown: [], hiddenCount: 0 });
+  });
+
+  it("exports the twelve-member cap", () => expect(MAX_GROUP_MEMBERS).toBe(12));
 });
