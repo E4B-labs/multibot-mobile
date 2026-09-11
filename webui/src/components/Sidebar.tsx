@@ -1499,7 +1499,7 @@ export function Sidebar() {
           <div
             data-user-menu
             style={{ top: userMenuAt.top, left: userMenuAt.left }}
-            className="fixed z-[90] w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
+            className="fixed z-[90] w-64 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
           >
             {/* Zdjęcie profilowe — upload jak przy awatarze bota: ukryty input
                 otwiera systemowy wybór pliku, wybrany plik idzie do kadrowania
@@ -1526,7 +1526,7 @@ export function Sidebar() {
               <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
                 <ImagePlus size={15} />
               </span>
-              {polish ? "Prześlij zdjęcie" : "Upload photo"}
+              {polish ? "Prześlij zdjęcie profilowe" : "Upload profile photo"}
             </button>
             {profileAvatar && (
               <button
@@ -1537,7 +1537,7 @@ export function Sidebar() {
                 <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515]">
                   {profileBusy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                 </span>
-                {polish ? "Usuń zdjęcie" : "Remove photo"}
+                {polish ? "Usuń zdjęcie profilowe" : "Remove profile photo"}
               </button>
             )}
             <button

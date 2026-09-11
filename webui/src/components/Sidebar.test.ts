@@ -46,7 +46,7 @@ describe("user menu icon alignment", () => {
     const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
     const slots = sidebar.match(/className="inline-flex size-7 shrink-0 items-center justify-center/g);
 
-    // Wtyczki + Ustawienia + Prześlij zdjęcie + Usuń zdjęcie.
+    // Wtyczki + Ustawienia + Prześlij zdjęcie profilowe + Usuń zdjęcie profilowe.
     expect(slots).toHaveLength(4);
     expect(sidebar).toContain('<Settings size={15} />');
   });
