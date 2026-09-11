@@ -47,20 +47,36 @@ let channelReady: Promise<void> | null = null;
 // Android bierze dźwięk i wagę wyłącznie z kanału, a nie z ładunku pushu.
 // Bez kanału `default` (tak nazywa go Expo, gdy serwer nie poda `channelId`)
 // powiadomienia wchodzą ciche i bez wyskakującego banera.
+//
+// Kanał niesie RODZAJ sprawy — serwer wybiera go w `channelForKind`
+// (`server/push.ts`): `asks` to prośby bota, na które człowiek ma
+// odpowiedzieć, `reminders` to przypomnienia, o które sam poprosił. Android
+// grupuje powiadomienia po kanale i pozwala wyciszyć jeden bez drugiego.
+// `default` zostaje dla starszych serwerów, które `channelId` nie podają.
+const CHANNELS: ReadonlyArray<readonly [string, string]> = [
+  ["default", "MultiBot"],
+  ["asks", "Prośby botów"],
+  ["reminders", "Przypomnienia"],
+];
+
 function ensureNotificationChannel(): Promise<void> | null {
   if (Platform.OS !== "android") return null;
-  channelReady ??= Notifications.setNotificationChannelAsync("default", {
-    name: "MultiBot",
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: "default",
-    vibrationPattern: [0, 250, 250, 250],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  channelReady ??= Promise.all(
+    CHANNELS.map(([id, name]) =>
+      Notifications.setNotificationChannelAsync(id, {
+        name,
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: "default",
+        vibrationPattern: [0, 250, 250, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      }),
+    ),
     // Nieudane założenie kanału nie może wywrócić rejestracji: bez kanału
     // powiadomienia będą ciche, ale token wciąż warto zdobyć.
-  }).then(
+  ).then(
     () => undefined,
     (e: unknown) => {
-      console.warn("push: nie udało się założyć kanału powiadomień", e);
+      console.warn("push: nie udało się założyć kanałów powiadomień", e);
     },
   );
   return channelReady;
