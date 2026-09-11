@@ -228,3 +228,34 @@ test("Tor stops holding the whole cold start behind its first circuit", () => {
   // And its budget has to cover the bootstrap it now runs alongside.
   assert.match(webview, /ONION_PROBE_TIMEOUT_MS = 90_000/);
 });
+
+test("K1: WebView wstaje z powrotem, gdy Android ubije mu renderer", () => {
+  // Bez tych dwóch RNCWebViewClient zwraca `true` i zostawia ŻYWY, PUSTY widok
+  // — dokładnie ten czarny ekran po powrocie do aplikacji.
+  assert.ok(webview.includes("onRenderProcessGone={handleRendererGone}"));
+  assert.ok(webview.includes("onContentProcessDidTerminate={handleRendererGone}"));
+  // Dokument przyszedł z `loadDataWithBaseURL`, więc nie ma URL-a do
+  // przeładowania: jedyne wyjście to nowy montaż z tym samym bootstrapem.
+  assert.ok(webview.includes("shouldReloadOnResume("));
+  assert.match(webview, /AppState\.addEventListener\("change"/);
+  // Przeładowanie zeruje `loaded`, więc wraca istniejący spinner z procentami,
+  // a nie czerń.
+  assert.match(webview, /function retry\(\) \{\s*rendererGone\.current = false;\s*setFailed\(null\);\s*setLoaded\(false\);/);
+  // Sonda życia musi mieć id, inaczej spóźniona odpowiedź zalicza następną.
+  assert.ok(webview.includes("probe && msg.id === probe.id"));
+});
+
+test("K5: powłoka pobiera plik przypiętym klientem i oddaje go systemowi", () => {
+  // `file.open` sięga do serwera z tokenem użytkownika — ramka noVNC nie może
+  // o nie prosić, więc siedzi za bramką nonce'a.
+  assert.ok(webview.includes('"file.open",'), "file.open is not in PRIVILEGED");
+  assert.ok(webview.includes('msg?.type === "file.open"'));
+  // `FileSystem.downloadAsync` buduje własnego OkHttpa i omija przypięcie
+  // z modules/multibot-tls — na certyfikacie self-signed by padło.
+  assert.ok(!webview.includes(".downloadAsync("), "attachment download bypasses the pinned client");
+  assert.ok(webview.includes("await fetch(request.url, { headers })"));
+  // Adres NIE jest brany z wiadomości na słowo.
+  assert.ok(webview.includes("fileOpenRequestOf(msg, host.url)"));
+  assert.ok(webview.includes("getContentUriAsync"));
+  assert.ok(webview.includes('IntentLauncher.startActivityAsync("android.intent.action.VIEW"'));
+});

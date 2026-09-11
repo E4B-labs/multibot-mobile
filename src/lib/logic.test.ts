@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { buildBootstrap, cacheFileName, fileOpenRequestOf, isOnionHost, isPrivateLanUrl, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, shouldReloadOnResume, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
 
 // A real v3 address is a 56-character base32 label plus `.onion`; the shape is
 // what matters here, not that this particular service exists.
@@ -221,4 +221,74 @@ test("the local-network hint covers RFC1918 and link-local, and nothing else", (
   // off-network — the one thing a 192.168 address can never do.
   assert.equal(isPrivateLanUrl("https://100.78.241.9:8799"), false);
   assert.equal(isPrivateLanUrl(`https://${ONION}`), false);
+});
+
+// ── K1: czarny ekran po powrocie z tła ─────────────────────────────────────
+
+test("powrót z tła przeładowuje WebView tylko wtedy, gdy jest pusty", () => {
+  const zdrowy = { next: "active", rendererGone: false, loaded: true, alive: true, failed: false };
+  // Żywa strona zostaje jak stała — przeładowanie zabrałoby pozycję w rozmowie.
+  assert.equal(shouldReloadOnResume(zdrowy), false);
+  // Renderer ubity przez Androida: widok żyje, ale jest pusty. To jest ten
+  // czarny ekran i jedyne wyjście to zmontować WebView od nowa.
+  assert.equal(shouldReloadOnResume({ ...zdrowy, rendererGone: true }), true);
+  // Sonda życia bez odpowiedzi — ten sam skutek, inna przyczyna.
+  assert.equal(shouldReloadOnResume({ ...zdrowy, alive: false }), true);
+});
+
+test("powrót z tła nie przerywa trwającego ładowania", () => {
+  // Onion ma 90 s budżetu. Bez tego wyjścia każde zerknięcie w inną aplikację
+  // startowało ładowanie od zera i strona nigdy by nie wstała.
+  const laduje = { next: "active", rendererGone: false, loaded: false, alive: false, failed: false };
+  assert.equal(shouldReloadOnResume(laduje), false);
+  // Chyba że renderer po drodze zginął — wtedy nie ma już czego doczekać.
+  assert.equal(shouldReloadOnResume({ ...laduje, rendererGone: true }), true);
+});
+
+test("powrót z tła nie rusza ekranu błędu ani stanów innych niż active", () => {
+  // Ekran błędu ma własne „Try again" i własny komunikat; podmiana go na
+  // spinner ukryłaby przed użytkownikiem, czego nie da się połączyć.
+  assert.equal(shouldReloadOnResume({ next: "active", rendererGone: true, loaded: true, alive: false, failed: true }), false);
+  for (const next of ["background", "inactive", "unknown"]) {
+    assert.equal(shouldReloadOnResume({ next, rendererGone: true, loaded: true, alive: false, failed: false }), false);
+  }
+});
+
+// ── K5: podgląd i pobranie pliku ───────────────────────────────────────────
+
+test("nazwa z serwera nie wychodzi poza katalog cache", () => {
+  assert.equal(cacheFileName("raport.pdf"), "raport.pdf");
+  assert.equal(cacheFileName("../../etc/passwd"), "passwd");
+  assert.equal(cacheFileName(String.raw`..\..\windows\system32\cmd.exe`), "cmd.exe");
+  assert.equal(cacheFileName(".bashrc"), "bashrc");
+  assert.equal(cacheFileName(""), "plik");
+  assert.equal(cacheFileName(undefined), "plik");
+  assert.equal(cacheFileName("a".repeat(300)).length, 100);
+});
+
+test("file.open przyjmuje wyłącznie ścieżki na swoim serwerze", () => {
+  const HOST = "https://sharp-salmon.example:8799";
+  const ok = fileOpenRequestOf({ url: "/api/bots/b1/attachments/f1", name: "raport.pdf", mime: "application/pdf" }, HOST);
+  assert.deepEqual(ok, {
+    url: `${HOST}/api/bots/b1/attachments/f1`,
+    fileName: "raport.pdf",
+    mime: "application/pdf",
+  });
+  // Adres bezwzględny musi BYĆ tym hostem — pobranie leci z tokenem
+  // użytkownika, więc obcy adres byłby dziurą, nie wygodą.
+  assert.deepEqual(fileOpenRequestOf({ url: `${HOST}/api/bots/b1/attachments/f1` }, HOST)?.url, `${HOST}/api/bots/b1/attachments/f1`);
+  assert.equal(fileOpenRequestOf({ url: "https://zly.example/x" }, HOST), null);
+  // Prefiks nazwy hosta to nie ten sam host.
+  assert.equal(fileOpenRequestOf({ url: `${HOST}.zly.example/x` }, HOST), null);
+  assert.equal(fileOpenRequestOf({ url: "blob:https://sharp-salmon.example/abc" }, HOST), null);
+  assert.equal(fileOpenRequestOf({ url: "" }, HOST), null);
+  assert.equal(fileOpenRequestOf({}, HOST), null);
+});
+
+test("file.open bez typu dostaje octet-stream, żeby system pokazał wybór aplikacji", () => {
+  const HOST = "https://sharp-salmon.example:8799";
+  assert.equal(fileOpenRequestOf({ url: "/f", mime: "nonsens" }, HOST)?.mime, "application/octet-stream");
+  assert.equal(fileOpenRequestOf({ url: "/f" }, HOST)?.mime, "application/octet-stream");
+  // Ukośnik na końcu hosta nie robi z adresu podwójnego ukośnika.
+  assert.equal(fileOpenRequestOf({ url: "/f" }, `${HOST}/`)?.url, `${HOST}/f`);
 });

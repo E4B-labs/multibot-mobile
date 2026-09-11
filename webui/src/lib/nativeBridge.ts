@@ -12,7 +12,43 @@ export type NativePhoto = {
 // bridge helper here on purpose: the shell drops any privileged message
 // arriving without `window.__MB_BRIDGE_NONCE__` (src/screens/WebViewScreen.tsx,
 // `PRIVILEGED`), and a local `postMessage` would silently lose `app.update.*`.
-import { shellPost } from "@/lib/shell";
+import { getAuthToken } from "@/lib/auth";
+import { shellPost, type ShellHost } from "@/lib/shell";
+
+/** Otwarcie pliku w powłoce telefonu. W Android WebView `<a download>` i
+ * `window.open` są martwe: nie ma DownloadListenera, a blob i tak nie wychodzi
+ * poza dokument — klik w „Pobierz" po prostu nic nie robił. Powłoka pobiera
+ * plik sama i oddaje go systemowemu podglądowi.
+ *
+ * `url` to ŚCIEŻKA na serwerze (`/api/bots/:id/attachments/:fileId`), nie blob
+ * i nie adres bezwzględny: powłoka dokleja ją do hosta, którego pilnuje, i
+ * odrzuca wszystko spoza niego (`fileOpenRequestOf` w mobile
+ * `src/lib/host-logic.ts`). Nagłówki jadą stąd, bo token dostępu żyje na tej
+ * stronie, a nie w powłoce.
+ *
+ * Zwraca `false` poza WebView — wołający zostawia wtedy zwykły `<a download>`,
+ * który w przeglądarce i w Electronie działa jak działał. */
+export function openFileViaShell(
+  url: string,
+  name: string,
+  mime: string,
+  // Ostatni na końcu, jak w `@/lib/shell`: to szew dla testu, nie parametr
+  // dla wołających.
+  host?: ShellHost,
+): boolean {
+  const token = getAuthToken();
+  const message = {
+    type: "file.open",
+    url,
+    name,
+    mime,
+    headers: {
+      "x-multibot-protocol": "2",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+  };
+  return host ? shellPost(message, host) : shellPost(message);
+}
 
 export function requestNativeCamera(requestId: string, purpose: NativePhotoPurpose): boolean {
   return shellPost({ type: "native.camera.request", requestId, purpose });

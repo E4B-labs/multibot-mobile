@@ -221,6 +221,79 @@ export function buildBootstrap(opts: {
          true;`;
 }
 
+// ── K1: powrót z tła ───────────────────────────────────────────────────────
+// Android ubija proces renderera WebView, gdy aplikacja siedzi w tle, a
+// systemowi robi się ciasno w pamięci (`WebViewClient.onRenderProcessGone`,
+// API 26+). Widok zostaje przy życiu, ale jest PUSTY — i to jest ten czarny
+// ekran po powrocie do aplikacji. Sam WebView nie ma czego przeładować:
+// dokument przyszedł z `loadDataWithBaseURL`, więc nie ma URL-a, do którego
+// dałoby się wrócić. Jedyne wyjście to zmontować widok od nowa z tym samym
+// bootstrapem (token + fragment sesji + nonce mostu).
+
+/** Czy po powrocie aplikacji na wierzch przeładować WebView. Trzymane tu, a
+ * nie w ekranie, bo decyzja ma się dać sprawdzić bez Reacta i bez urządzenia. */
+export function shouldReloadOnResume(state: {
+  /** Stan z `AppState`, na który właśnie przeszliśmy. */
+  next: string;
+  /** Renderer zginął, odkąd strona ostatnio wstała. */
+  rendererGone: boolean;
+  /** Strona zdążyła się wczytać choć raz. */
+  loaded: boolean;
+  /** Strona odpowiedziała na sondę życia (`native.alive`). */
+  alive: boolean;
+  /** Ekran błędu już wisi — ma własne „Try again", nie odbieramy mu go. */
+  failed: boolean;
+}): boolean {
+  if (state.next !== "active") return false;
+  if (state.failed) return false;
+  if (state.rendererGone) return true;
+  // Strona jeszcze się ładuje (onion potrafi 90 s) — sonda i tak by milczała,
+  // a przeładowanie startowałoby ładowanie od zera w kółko. Ten przypadek ma
+  // już swojego pilnowacza: budżet czasu ładowania.
+  if (!state.loaded) return false;
+  return !state.alive;
+}
+
+// ── K5: podgląd i pobranie pliku ───────────────────────────────────────────
+// W Android WebView `<a download>` i `window.open` na blobie nie robią NIC —
+// nie ma DownloadListenera, a blob i tak nie wychodzi poza dokument. Interfejs
+// prosi więc powłokę, a ta pobiera bajty i oddaje je systemowemu podglądowi.
+
+/** Nazwa pliku bezpieczna dla katalogu cache: bez separatorów ścieżki, bez
+ * wiodących kropek, przycięta. Nazwa przychodzi z serwera (nazwa załącznika),
+ * więc nie może adresować niczego poza katalogiem, który sami wskazujemy. */
+export function cacheFileName(name: unknown): string {
+  const base = (typeof name === "string" ? name : "").split(/[\\/]/).pop() ?? "";
+  const safe = base.replace(/[^\w.\- ]+/g, "_").replace(/^\.+/, "").trim();
+  return safe.slice(0, 100) || "plik";
+}
+
+export type FileOpenRequest = { url: string; fileName: string; mime: string };
+
+/** Waliduje `{type:"file.open"}` z interfejsu. Adres MUSI być ścieżką na
+ * serwerze, którego pilnuje ta powłoka: pobranie leci z tokenem użytkownika,
+ * więc dowolny adres podany przez stronę byłby dziurą, a nie wygodą. */
+export function fileOpenRequestOf(
+  msg: { url?: unknown; name?: unknown; mime?: unknown },
+  hostUrl: string,
+): FileOpenRequest | null {
+  if (typeof msg.url !== "string" || !msg.url) return null;
+  const base = hostUrl.replace(/\/+$/, "");
+  const url = msg.url.startsWith("/")
+    ? `${base}${msg.url}`
+    : msg.url === base || msg.url.startsWith(`${base}/`)
+      ? msg.url
+      : "";
+  if (!url) return null;
+  return {
+    url,
+    fileName: cacheFileName(msg.name),
+    // Bez typu systemowy wybierak nie wie, komu plik oddać; `octet-stream`
+    // pokazuje wtedy listę „otwórz za pomocą" zamiast nie zrobić nic.
+    mime: typeof msg.mime === "string" && msg.mime.includes("/") ? msg.mime : "application/octet-stream",
+  };
+}
+
 /** The three values of a remembered login the web UI is allowed to learn.
  * `null` until the profile half landed: offering a one-tap that cannot log in
  * is worse than not offering one. Pure, so the rule is testable without
