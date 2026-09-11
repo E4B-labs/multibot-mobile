@@ -42,13 +42,21 @@ describe("plugins menu icon", () => {
 });
 
 describe("user menu icon alignment", () => {
-  it("uses the same 28px icon slot for every user-menu row", () => {
+  it("uses the same 28px circled icon slot for every user-menu row", () => {
     const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
-    const slots = sidebar.match(/className="inline-flex size-7 shrink-0 items-center justify-center/g);
+    const slots = sidebar.match(
+      /className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white\/10 bg-\[#151515\]/g,
+    );
 
     // Wtyczki + Ustawienia + Prześlij zdjęcie profilowe + Usuń zdjęcie profilowe.
     expect(slots).toHaveLength(4);
     expect(sidebar).toContain('<Settings size={15} />');
+  });
+
+  it("sizes the user menu to its content instead of a fixed w-64", () => {
+    const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+    expect(sidebar).toContain("w-max min-w-44 max-w-[calc(100vw-16px)]");
+    expect(sidebar).not.toContain("z-[90] w-64");
   });
 });
 

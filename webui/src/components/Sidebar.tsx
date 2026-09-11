@@ -1499,7 +1499,7 @@ export function Sidebar() {
           <div
             data-user-menu
             style={{ top: userMenuAt.top, left: userMenuAt.left }}
-            className="fixed z-[90] w-64 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
+            className="fixed z-[90] w-max min-w-44 max-w-[calc(100vw-16px)] rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
           >
             {/* Zdjęcie profilowe — upload jak przy awatarze bota: ukryty input
                 otwiera systemowy wybór pliku, wybrany plik idzie do kadrowania
@@ -1561,7 +1561,7 @@ export function Sidebar() {
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
             >
-              <span className="inline-flex size-7 shrink-0 items-center justify-center text-ink-secondary">
+              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
                 <Settings size={15} />
               </span>
               {polish ? "Ustawienia" : "Settings"}
