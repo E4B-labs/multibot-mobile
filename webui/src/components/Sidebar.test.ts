@@ -42,12 +42,36 @@ describe("plugins menu icon", () => {
 });
 
 describe("user menu icon alignment", () => {
-  it("uses the same 28px icon slot for Plugins and Settings", () => {
+  it("uses the same 28px icon slot for every user-menu row", () => {
     const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
     const slots = sidebar.match(/className="inline-flex size-7 shrink-0 items-center justify-center/g);
 
-    expect(slots).toHaveLength(2);
+    // Wtyczki + Ustawienia + Prześlij zdjęcie + Usuń zdjęcie.
+    expect(slots).toHaveLength(4);
     expect(sidebar).toContain('<Settings size={15} />');
+  });
+});
+
+describe("profile photo", () => {
+  const sidebar = readFileSync(new URL("./Sidebar.tsx", import.meta.url), "utf8");
+
+  it("shows the uploaded photo instead of initials in the header bubble", () => {
+    expect(sidebar).toContain("state.config?.profile?.avatar");
+    expect(sidebar).toContain('className="size-full rounded-full object-cover"');
+  });
+
+  it("uploads through the same hidden-input + AvatarCropper flow as bot avatars", () => {
+    expect(sidebar).toContain("<AvatarCropper");
+    expect(sidebar).toContain('type="file"');
+    expect(sidebar).toContain('accept="image/*"');
+    expect(sidebar).toContain('"/api/profile/avatar"');
+    expect(sidebar).toContain('method: "POST"');
+    expect(sidebar).toContain('method: "DELETE"');
+    // Odpowiedź serwera ({user:{…}}) idzie przez czysty parser (testowany
+    // jednostkowo w lib/profileAvatar.test.ts) i dokleja się do bieżącego
+    // configu — `configStatus` podmienia cały config.
+    expect(sidebar).toContain("profileFromAvatarResponse");
+    expect(sidebar).toContain('dispatch({ type: "configStatus", config: { ...state.config, profile } })');
   });
 });
 

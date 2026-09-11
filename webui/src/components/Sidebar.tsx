@@ -14,6 +14,7 @@ import {
   Eye,
   EyeOff,
   FolderPlus,
+  ImagePlus,
   Loader2,
   Pencil,
   Pin,
@@ -29,6 +30,8 @@ import {
 import { useStore, formatTime, type Bot, type EngineGroup } from "@/state/store";
 import { Skeleton } from "./Loading";
 import { BotAvatar } from "./Avatar";
+import { AvatarCropper } from "./AvatarCropper";
+import { profileFromAvatarResponse } from "@/lib/profileAvatar";
 import { ScoutTeamModal } from "./ScoutTeamModal";
 import { sidebarAvatarProps } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
@@ -1038,6 +1041,63 @@ export function Sidebar() {
     setUserMenuOpen(true);
   };
 
+  // multibot: zdjęcie profilowe użytkownika — upload działa DOKŁADNIE jak przy
+  // awatarze bota (SettingsPanel): ukryty <input type=file> + AvatarCropper,
+  // zapis dataURL POST-em, tyle że na /api/profile/avatar. Serwer (wspólny z
+  // desktopem) odpowiada zaktualizowanym profilem; `configStatus` PODMIENIA
+  // cały config, więc doklejamy profil do bieżącego configu zamiast wysyłać
+  // sam profil. Błędy po cichu — Android WebView gubi window.alert (patrz
+  // komentarz przy moveGroupToSection).
+  const profileAvatar = state.config?.profile?.avatar ?? null;
+  const profileFileRef = useRef<HTMLInputElement>(null);
+  const [profileFile, setProfileFile] = useState<File | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const applyProfile = (body: unknown) => {
+    // Bez configu w stanie nie ma czego doklejać — świeży config i tak
+    // przyjdzie z /api/config przy następnym odpytaniu.
+    if (!state.config) return;
+    // Serwer odpowiada wrapperem {user:{displayName,email,avatar,…}} —
+    // mapowanie mieszka w czystym helperze (testowanym jednostkowo).
+    const profile = profileFromAvatarResponse(body);
+    if (!profile) return;
+    dispatch({ type: "configStatus", config: { ...state.config, profile } });
+  };
+  const uploadProfileAvatar = async (dataUrl: string) => {
+    setProfileBusy(true);
+    try {
+      const r = await authFetch("/api/profile/avatar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      if (!r.ok) return;
+      applyProfile(await r.json().catch(() => ({})));
+      setProfileFile(null);
+    } catch {
+      // cicho — patrz komentarz wyżej
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+  const removeProfileAvatar = async () => {
+    setProfileBusy(true);
+    try {
+      const r = await authFetch("/api/profile/avatar", { method: "DELETE" });
+      if (!r.ok) return;
+      const body = await r.json().catch(() => null);
+      // Ten sam parser co przy POST; gdy serwer odpowie bez rozpoznawalnego
+      // profilu, zerujemy avatar lokalnie na bieżącym profilu.
+      if (profileFromAvatarResponse(body)) applyProfile(body);
+      else if (state.config?.profile)
+        dispatch({ type: "configStatus", config: { ...state.config, profile: { ...state.config.profile, avatar: null } } });
+      setUserMenuOpen(false);
+    } catch {
+      // cicho — patrz komentarz wyżej
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
   // Powtórne przytrzymanie tego samego wiersza zamyka jego menu, zamiast
   // otwierać je od nowa. Bez tego `contextmenu` zawsze ustawiał stan na
   // "otwarte" i menu dało się zamknąć tylko kliknięciem gdzie indziej.
@@ -1166,12 +1226,17 @@ export function Sidebar() {
             <button
               ref={userButtonRef}
               onClick={toggleUserMenu}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[14px] font-semibold text-white"
+              className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-500 text-[14px] font-semibold text-white"
               style={{ minHeight: 0 }}
               aria-label={polish ? "Menu użytkownika" : "User menu"}
               aria-expanded={userMenuOpen}
             >
-              {profileInitials(state.config?.profile) || "R"}
+              {/* Ustawione zdjęcie profilowe zastępuje inicjały. */}
+              {profileAvatar ? (
+                <img src={profileAvatar} alt="" className="size-full rounded-full object-cover" />
+              ) : (
+                profileInitials(state.config?.profile) || "R"
+              )}
             </button>
           </div>
           <div className="flex-1" />
@@ -1436,6 +1501,45 @@ export function Sidebar() {
             style={{ top: userMenuAt.top, left: userMenuAt.left }}
             className="fixed z-[90] w-44 rounded-xl border border-white/10 bg-card p-1.5 shadow-lg"
           >
+            {/* Zdjęcie profilowe — upload jak przy awatarze bota: ukryty input
+                otwiera systemowy wybór pliku, wybrany plik idzie do kadrowania
+                (AvatarCropper w osobnej nakładce, menu jest za wąskie). */}
+            <input
+              ref={profileFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  setProfileFile(f);
+                  setUserMenuOpen(false);
+                }
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => profileFileRef.current?.click()}
+              disabled={profileBusy}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/10"
+            >
+              <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515] text-ink-secondary">
+                <ImagePlus size={15} />
+              </span>
+              {polish ? "Prześlij zdjęcie" : "Upload photo"}
+            </button>
+            {profileAvatar && (
+              <button
+                onClick={() => void removeProfileAvatar()}
+                disabled={profileBusy}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-danger hover:bg-white/10"
+              >
+                <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#151515]">
+                  {profileBusy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                </span>
+                {polish ? "Usuń zdjęcie" : "Remove photo"}
+              </button>
+            )}
             <button
               onClick={() => {
                 setUserMenuOpen(false);
@@ -1462,6 +1566,30 @@ export function Sidebar() {
               </span>
               {polish ? "Ustawienia" : "Settings"}
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {/* Kadrowanie zdjęcia profilowego — pełnoekranowa nakładka nad wszystkim
+          (z-[95] > panele z-[90]); menu użytkownika jest za wąskie na cropper. */}
+      {profileFile &&
+        createPortal(
+          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-[320px] rounded-xl border border-white/10 bg-card p-4 shadow-lg">
+              <div className="mb-1 text-center text-[14px] font-semibold text-ink">
+                {polish ? "Zdjęcie profilowe" : "Profile photo"}
+              </div>
+              <AvatarCropper
+                file={profileFile}
+                onSave={(dataUrl) => void uploadProfileAvatar(dataUrl)}
+                onCancel={() => setProfileFile(null)}
+              />
+              {profileBusy && (
+                <div className="mt-2 flex items-center justify-center gap-2 text-[12px] text-ink-secondary">
+                  <Loader2 size={12} className="animate-spin" /> {polish ? "Zapisywanie…" : "Saving…"}
+                </div>
+              )}
+            </div>
           </div>,
           document.body,
         )}

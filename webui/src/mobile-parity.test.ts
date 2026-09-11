@@ -95,6 +95,29 @@ describe("panele boczne o zmiennej szerokości", () => {
   });
 });
 
+describe("zdjęcie profilowe użytkownika", () => {
+  // Sidebar jest PHONE_OWNED, ale strażnik żyje tutaj — `Sidebar.test.ts`
+  // istnieje po stronie desktopu, więc sync może go nadpisać.
+  const sidebar = read("./components/Sidebar.tsx");
+
+  it("dymek profilu pokazuje zdjęcie zamiast inicjałów, gdy jest ustawione", () => {
+    expect(sidebar).toContain("state.config?.profile?.avatar");
+    expect(sidebar).toContain('className="size-full rounded-full object-cover"');
+  });
+
+  it("upload i usuwanie idą na wspólny endpoint /api/profile/avatar", () => {
+    expect(sidebar).toContain('"/api/profile/avatar"');
+    expect(sidebar).toContain("<AvatarCropper");
+    // Odpowiedź serwera to {user:{…}} — parser jest czystym helperem z testem
+    // jednostkowym (lib/profileAvatar.test.ts), a Sidebar go używa.
+    expect(sidebar).toContain("profileFromAvatarResponse");
+  });
+
+  it("typ profilu w store zna pole avatar", () => {
+    expect(read("./state/store.tsx")).toContain("avatar?: string | null");
+  });
+});
+
 describe("most do powłoki", () => {
   it("pobiera historię zmian przez natywny most WebView", () => {
     expect(read("./lib/updateLog.ts")).toContain('shellPost({ type: "update-log.request"');
