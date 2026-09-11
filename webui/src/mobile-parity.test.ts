@@ -9,7 +9,7 @@
 // Środowisko vitest to `node`, bez jsdom — sprawdzamy więc źródło, tak jak
 // robią to pozostałe testy w tym repo.
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { openFileViaShell } from "./lib/nativeBridge";
 
@@ -179,16 +179,19 @@ describe("most do powłoki", () => {
   it("powłoka rozumie file.open i nie bierze adresu ze strony na słowo", () => {
     const screen = read("../../src/screens/WebViewScreen.tsx");
     expect(screen).toContain('msg?.type === "file.open"');
-    expect(screen).toContain("fileOpenRequestOf(msg, host.url)");
+    expect(screen).toContain("openHostFile(msg, host.url, {");
   });
 
-  it("file.open jedzie z nonce'em, ścieżką i nagłówkami, a bez mostu nie jedzie wcale", () => {
+  it("file.open jedzie z nonce'em, ścieżką i nagłówkami, a bez mostu nie jedzie wcale", async () => {
     const sent: string[] = [];
     const host = {
       ReactNativeWebView: { postMessage: (message: string) => sent.push(message) },
       __MB_BRIDGE_NONCE__: "n-1",
     };
     expect(openFileViaShell("/api/bots/b1/attachments/f1", "raport.pdf", "application/pdf", host)).toBe(true);
+    // Wiadomość idzie PO odświeżeniu tokenu: powłoka nie umie odnowić go sama
+    // przy 401, więc nie może dostać przedawnionego zdjęcia.
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(JSON.parse(sent[0])).toEqual({
       type: "file.open",
       url: "/api/bots/b1/attachments/f1",
@@ -201,7 +204,16 @@ describe("most do powłoki", () => {
       // uwierzytelnieniem użytkownika, więc ramka noVNC nie może o nie prosić.
       nonce: "n-1",
     });
-    // Przeglądarka i Electron: brak mostu, więc wołający zostaje przy `<a download>`.
+    // Przeglądarka i Electron: brak mostu, więc wołający zostaje przy
+    // `<a download>` — i nic nie leci, nawet odświeżenie tokenu.
     expect(openFileViaShell("/api/bots/b1/attachments/f1", "raport.pdf", "application/pdf", {})).toBe(false);
+  });
+
+  it("token jest odświeżany PRZED posłaniem file.open, nie po", () => {
+    const bridge = read("./lib/nativeBridge.ts");
+    // Kolejność jest tu całą poprawką: `getAuthToken()` musi czytać token
+    // z WNĘTRZA `.then`, już po odnowieniu.
+    expect(bridge).toMatch(/refreshAccessToken\(\)\.then\(\(\) => \{\s*const token = getAuthToken\(\);/);
+    expect(bridge).toContain("if (!isReactNativeShell(host)) return false;");
   });
 });

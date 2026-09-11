@@ -253,9 +253,27 @@ test("K5: powłoka pobiera plik przypiętym klientem i oddaje go systemowi", () 
   // `FileSystem.downloadAsync` buduje własnego OkHttpa i omija przypięcie
   // z modules/multibot-tls — na certyfikacie self-signed by padło.
   assert.ok(!webview.includes(".downloadAsync("), "attachment download bypasses the pinned client");
-  assert.ok(webview.includes("await fetch(request.url, { headers })"));
-  // Adres NIE jest brany z wiadomości na słowo.
-  assert.ok(webview.includes("fileOpenRequestOf(msg, host.url)"));
+  // Reguły (adres, nazwa, whitelista nagłówków, 401) siedzą w `openHostFile`
+  // i mają własne testy w logic.test.ts; ekran wstrzykuje tylko to, czego nie
+  // da się uruchomić bez urządzenia.
+  assert.ok(webview.includes("openHostFile(msg, host.url, {"));
+  assert.ok(webview.includes("fetch: (url, init) => fetch(url, init)"));
   assert.ok(webview.includes("getContentUriAsync"));
   assert.ok(webview.includes('IntentLauncher.startActivityAsync("android.intent.action.VIEW"'));
+  // Cache czyścimy przy wejściu na ekran, NIE po `startActivityAsync`:
+  // ACTION_VIEW wraca, gdy podgląd wystartował, a nie gdy skończył czytać.
+  assert.ok(webview.includes("clearSharedFiles();"));
+  assert.ok(!webview.includes("file.delete()"), "the file is deleted out from under the viewer");
+});
+
+test("K1: sonda pyta o treść, ma dwa podejścia i nie zostawia timera", () => {
+  // „JS działa" to za mało: renderer wstał i wykonuje skrypty, a `body` pusty
+  // to nadal czarny ekran.
+  assert.ok(webview.includes("document.body.childElementCount"));
+  assert.ok(webview.includes("probe.resolve(msg.ok === true)"));
+  // Wątek JS wraca z zamrożenia z opóźnieniem — fałszywy negatyw kasuje draft
+  // i restartuje 90 s ładowania onionu, więc pytamy dwa razy.
+  assert.ok(webview.includes("(await probeAlive()) || (await probeAlive())"));
+  // Timer sondy ginie razem z ekranem.
+  assert.ok(webview.includes("if (aliveTimer.current) clearTimeout(aliveTimer.current);"));
 });

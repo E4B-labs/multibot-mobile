@@ -4,14 +4,14 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
 import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
-import { File as CacheFile, Paths } from "expo-file-system";
+import { Directory, File as CacheFile, Paths } from "expo-file-system";
 // `getContentUriAsync` (a z nim FileProvider Expo) żyje tylko w starym API —
 // dokładnie tak samo robi `downloadAndInstallApk` w lib/mobile-release.ts.
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, fileOpenRequestOf, isOnionHost, isPrivateLanUrl, isTailnetUrl, probeServer, rememberedEntryOf, shouldReloadOnResume, type AppInfo, type Host } from "../lib/host-logic";
+import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, openHostFile, probeServer, rememberedEntryOf, shouldReloadOnResume, type AppInfo, type Host } from "../lib/host-logic";
 import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
 import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
@@ -101,6 +101,27 @@ const PRIVILEGED = new Set([
 // — zdrowa strona odpowiada w jednostkach milisekund; sekunda to zapas na
 // przemrożony po wznowieniu wątek JS, a nie realny budżet.
 const ALIVE_PROBE_TIMEOUT_MS = 1_000;
+
+// Własny podkatalog cache'u na pliki oddawane systemowemu podglądowi (K5).
+// Osobny, żeby czyszczenie nie ruszyło niczego, co do nas nie należy.
+const SHARED_FILE_DIR = "shared-files";
+
+function sharedFileDirectory(): Directory {
+  return new Directory(Paths.cache, SHARED_FILE_DIR);
+}
+
+/** Czyścimy przy wejściu na ekran, a NIE po `startActivityAsync`: ACTION_VIEW
+ * wraca, gdy podgląd wystartował, a nie gdy skończył czytać — skasowanie pliku
+ * od razu wyrwałoby mu go z rąk i podgląd pokazałby błąd. W momencie montażu
+ * ekranu nic nie jest otwarte, więc to jedyna bezpieczna chwila. */
+function clearSharedFiles(): void {
+  try {
+    const directory = sharedFileDirectory();
+    if (directory.exists) directory.delete();
+  } catch {
+    // Pełny albo zajęty cache to nie powód, żeby nie wpuścić na czat.
+  }
+}
 
 function newBridgeNonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
@@ -317,23 +338,39 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // Rozwiązanie sondy życia: id żyje tu, żeby spóźniona odpowiedź z poprzedniej
   // sondy nie zaliczyła następnej.
   const aliveProbe = useRef<{ id: string; resolve: (ok: boolean) => void } | null>(null);
+  const aliveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // K5: pliki z poprzedniego wejścia są już nikomu niepotrzebne.
+    clearSharedFiles();
+    return () => {
+      if (aliveTimer.current) clearTimeout(aliveTimer.current);
+      aliveTimer.current = null;
+      // Odmontowanie w trakcie sondy: rozstrzygamy ją, żeby `await` w obsłudze
+      // powrotu z tła nie został zawieszony na zniknięciym ekranie.
+      aliveProbe.current?.resolve(false);
+      aliveProbe.current = null;
+    };
+  }, []);
 
   function probeAlive(): Promise<boolean> {
     return new Promise((resolve) => {
       const id = `alive-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
       const finish = (ok: boolean) => {
-        clearTimeout(timer);
+        if (aliveTimer.current) clearTimeout(aliveTimer.current);
+        aliveTimer.current = null;
         // Sprzątamy tylko po sobie: druga sonda mogła już zająć to miejsce.
         // Rozstrzygnąć MUSI się każda — inaczej powrót z tła w trakcie
         // poprzedniej sondy zostawiałby wiszące `await`.
         if (aliveProbe.current?.id === id) aliveProbe.current = null;
         resolve(ok);
       };
-      const timer = setTimeout(() => finish(false), ALIVE_PROBE_TIMEOUT_MS);
+      aliveTimer.current = setTimeout(() => finish(false), ALIVE_PROBE_TIMEOUT_MS);
       aliveProbe.current = { id, resolve: finish };
-      // Martwy renderer po prostu tego nie wykona — i o to chodzi.
+      // Martwy renderer po prostu tego nie wykona — i o to chodzi. `ok` pyta
+      // o TREŚĆ, nie o sam JS: renderer wstał i wykonuje skrypty, a `body`
+      // pusty to nadal czarny ekran.
       webRef.current?.injectJavaScript(
-        `window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: "native.alive", id: ${JSON.stringify(id)} })); true;`,
+        `window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: "native.alive", id: ${JSON.stringify(id)}, ok: !!(document.body && document.body.childElementCount) })); true;`,
       );
     });
   }
@@ -353,7 +390,15 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
       void (async () => {
         // Gdy renderer już zgłosił zgon albo strona wciąż się ładuje, nie ma
         // kogo pytać o życie.
-        const alive = rendererGone.current || !loadedRef.current ? false : await probeAlive();
+        //
+        // Inaczej pytamy DWA razy. Wątek JS strony wraca z zamrożenia
+        // z opóźnieniem i pierwsza sonda potrafi nie zdążyć — a fałszywy
+        // negatyw kosztuje tu drogo: remount kasuje wpisywaną wiadomość,
+        // pozycję w rozmowie i na onionie startuje 90 s ładowania od zera.
+        // Druga sonda to najwyżej sekunda spinnera, gdy strona faktycznie
+        // jest martwa.
+        const alive =
+          rendererGone.current || !loadedRef.current ? false : (await probeAlive()) || (await probeAlive());
         if (
           !shouldReloadOnResume({
             next: "active",
@@ -607,46 +652,31 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // podpisem wywaliłoby się na zaufaniu. `fetch` idzie przez
   // `OkHttpClientProvider`, który ten moduł podmienia.
   async function handleFileOpen(msg: { url?: unknown; name?: unknown; mime?: unknown; headers?: unknown }) {
-    const request = fileOpenRequestOf(msg, host.url);
+    // Reguły (adres, nazwa, whitelista nagłówków, 401) siedzą w `openHostFile`
+    // — tu zostaje wyłącznie to, czego nie da się uruchomić bez urządzenia.
+    const problem = await openHostFile(msg, host.url, {
+      platform: Platform.OS,
+      fetch: (url, init) => fetch(url, init),
+      store: async (fileName, bytes) => {
+        const file = new CacheFile(sharedFileDirectory(), fileName);
+        file.create({ overwrite: true, intermediates: true });
+        file.write(bytes);
+        return LegacyFileSystem.getContentUriAsync(file.uri);
+      },
+      open: async (data, type) => {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data,
+          type,
+          // FLAG_GRANT_READ_URI_PERMISSION — bez tego podgląd dostaje adres,
+          // którego nie wolno mu odczytać.
+          flags: 1,
+        });
+      },
+    });
     // Natywny alert, a nie odpowiedź do strony: klik w „Pobierz", po którym nic
     // się nie dzieje, JEST tym zgłoszonym błędem — cicha porażka wygląda
     // dokładnie tak samo jak martwy `<a download>`, który tu naprawiamy.
-    const fail = (message: string) => Alert.alert("Nie udało się otworzyć pliku", message);
-    if (!request) return fail("Nie rozpoznaję tego pliku.");
-    if (Platform.OS !== "android") {
-      // expo-sharing nie jest w zależnościach, a bez niego iOS nie ma czym
-      // oddać pliku systemowi. Strona pokaże komunikat zamiast martwego klika.
-      return fail("Otwieranie plików działa na razie tylko na Androidzie.");
-    }
-    try {
-      // Nagłówki przychodzą ze strony, bo to ONA trzyma 15-minutowy token
-      // dostępu; powłoka go nie ma. Bierzemy wyłącznie proste pary tekstowe.
-      const headers: Record<string, string> = {};
-      if (msg.headers && typeof msg.headers === "object") {
-        for (const [key, value] of Object.entries(msg.headers as Record<string, unknown>)) {
-          if (typeof value === "string") headers[key] = value;
-        }
-      }
-      const response = await fetch(request.url, { headers });
-      if (!response.ok) throw new Error(`Serwer odpowiedział HTTP ${response.status}.`);
-      // ponytail: cały plik przez pamięć. Załącznik ma serwerowy cap 25 MB, a
-      // strumieniowanie tutaj znaczyłoby własny klient HTTP po stronie
-      // natywnej — do zrobienia dopiero, gdy cap wideo pójdzie w górę (2.3).
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const file = new CacheFile(Paths.cache, request.fileName);
-      file.create({ overwrite: true, intermediates: true });
-      file.write(bytes);
-      const contentUri = await LegacyFileSystem.getContentUriAsync(file.uri);
-      await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-        data: contentUri,
-        type: request.mime,
-        // FLAG_GRANT_READ_URI_PERMISSION — bez tego podgląd dostaje adres,
-        // którego nie wolno mu odczytać.
-        flags: 1,
-      });
-    } catch (error) {
-      fail(error instanceof Error ? error.message : "Nie udało się otworzyć pliku.");
-    }
+    if (problem) Alert.alert("Nie udało się otworzyć pliku", problem);
   }
 
   async function readClipboardImage(requestId: string) {
@@ -750,7 +780,9 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             // władzy, a id pilnuje, żeby liczyła się tylko bieżąca sonda.
             const probe = aliveProbe.current;
             if (msg?.type === "native.alive" && probe && msg.id === probe.id) {
-              probe.resolve(true);
+              // `ok` musi przyjść prawdziwe: strona, która odpowiada, ale ma
+              // pusty `body`, to dokładnie ten czarny ekran.
+              probe.resolve(msg.ok === true);
               return;
             }
             if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
