@@ -29,6 +29,7 @@ import {
 } from "@/lib/notifications";
 import { stripPeerEnvelope } from "@/lib/peerMessage";
 import { sortMessages } from "@/lib/messageOrder";
+import { noteLocalBotEdit, settleLocalBotEdits, stripPendingBotEcho } from "@/lib/pendingBotEdits";
 
 export type { BotColor } from "@/lib/mascot";
 
@@ -1067,6 +1068,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           api(`/api/bots/${action.botId}/interrupt`, { method: "POST" }).catch(showError);
           break;
         case "updateBot": {
+          // Znacz edytowane pola: echa z kanału zdarzeń nie nadpiszą ich,
+          // dopóki NAJNOWSZY PATCH ich dotyczący nie wróci z serwera.
+          const editSeq = noteLocalBotEdit(action.botId, Object.keys(action.patch));
           const timers = patchTimers.current;
           const pending = timers.get(action.botId);
           const patch = { ...pending?.patch, ...action.patch };
@@ -1075,7 +1079,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             patch,
             timer: setTimeout(() => {
               timers.delete(action.botId);
-              api(`/api/bots/${action.botId}`, { method: "PATCH", body: JSON.stringify(patch) }).catch(showError);
+              // Po odpowiedzi (także błędnej — serwer i tak nie ma nowszego
+              // stanu) zwalniamy pola do editSeq; nowsze kliknięcia mają
+              // wyższy numer i pozostają chronione do swojego PATCH-a.
+              api(`/api/bots/${action.botId}`, { method: "PATCH", body: JSON.stringify(patch) })
+                .catch(showError)
+                .finally(() => settleLocalBotEdits(action.botId, editSeq));
             }, 400),
           });
           break;
@@ -1104,7 +1113,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let alive = true;
     const loadAll = () => {
       api("/api/bots")
-        .then(({ bots }) => alive && rawDispatch({ type: "hydrate", bots }))
+        .then(({ bots }) =>
+          alive && rawDispatch({
+            type: "hydrate",
+            // reconnect w trakcie niedomkniętej edycji (np. szybkie klikanie
+            // kształtu awatara) nie może hurtowo przywrócić starych pól —
+            // pola z niedomkniętym PATCH-em zachowują wartość lokalną
+            bots: bots.map((b: Bot) => {
+              const stripped = stripPendingBotEcho(b);
+              if (stripped === b) return b;
+              const local = stateRef.current.bots.find((x) => x.id === b.id);
+              if (!local) return b;
+              const kept = Object.fromEntries(
+                Object.keys(b).filter((k) => !(k in stripped)).map((k) => [k, local[k as keyof Bot]]),
+              );
+              return { ...b, ...kept } as Bot;
+            }),
+          }))
         .catch(() => {});
       api("/api/environment")
         .then(({ environment }) => alive && environment && rawDispatch({ type: "environment", environment }))
@@ -1182,7 +1207,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message });
           break;
         case "bot": {
-          const bot = frame.bot as Partial<Bot> & { id: string };
+          // multibot: echo serwera nie może nadpisać świeższej, jeszcze
+          // niepotwierdzonej edycji lokalnej (szybkie klikanie kształtu
+          // awatara: stare echo przychodziło po nowym kliknięciu i kształt
+          // przeskakiwał z powrotem). Pola z niedomkniętym PATCH-em wycinamy.
+          const bot = stripPendingBotEcho(frame.bot as Partial<Bot> & { id: string });
           // reading the selected chat clears its badge immediately
           if (bot.unread && bot.id === stateRef.current.selectedId) {
             bot.unread = false;
