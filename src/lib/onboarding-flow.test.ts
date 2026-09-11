@@ -228,3 +228,52 @@ test("Tor stops holding the whole cold start behind its first circuit", () => {
   // And its budget has to cover the bootstrap it now runs alongside.
   assert.match(webview, /ONION_PROBE_TIMEOUT_MS = 90_000/);
 });
+
+test("K1: WebView wstaje z powrotem, gdy Android ubije mu renderer", () => {
+  // Bez tych dwóch RNCWebViewClient zwraca `true` i zostawia ŻYWY, PUSTY widok
+  // — dokładnie ten czarny ekran po powrocie do aplikacji.
+  assert.ok(webview.includes("onRenderProcessGone={handleRendererGone}"));
+  assert.ok(webview.includes("onContentProcessDidTerminate={handleRendererGone}"));
+  // Dokument przyszedł z `loadDataWithBaseURL`, więc nie ma URL-a do
+  // przeładowania: jedyne wyjście to nowy montaż z tym samym bootstrapem.
+  assert.ok(webview.includes("shouldReloadOnResume("));
+  assert.match(webview, /AppState\.addEventListener\("change"/);
+  // Przeładowanie zeruje `loaded`, więc wraca istniejący spinner z procentami,
+  // a nie czerń.
+  assert.match(webview, /function retry\(\) \{\s*rendererGone\.current = false;\s*setFailed\(null\);\s*setLoaded\(false\);/);
+  // Sonda życia musi mieć id, inaczej spóźniona odpowiedź zalicza następną.
+  assert.ok(webview.includes("probe && msg.id === probe.id"));
+});
+
+test("K5: powłoka pobiera plik przypiętym klientem i oddaje go systemowi", () => {
+  // `file.open` sięga do serwera z tokenem użytkownika — ramka noVNC nie może
+  // o nie prosić, więc siedzi za bramką nonce'a.
+  assert.ok(webview.includes('"file.open",'), "file.open is not in PRIVILEGED");
+  assert.ok(webview.includes('msg?.type === "file.open"'));
+  // `FileSystem.downloadAsync` buduje własnego OkHttpa i omija przypięcie
+  // z modules/multibot-tls — na certyfikacie self-signed by padło.
+  assert.ok(!webview.includes(".downloadAsync("), "attachment download bypasses the pinned client");
+  // Reguły (adres, nazwa, whitelista nagłówków, 401) siedzą w `openHostFile`
+  // i mają własne testy w logic.test.ts; ekran wstrzykuje tylko to, czego nie
+  // da się uruchomić bez urządzenia.
+  assert.ok(webview.includes("openHostFile(msg, host.url, {"));
+  assert.ok(webview.includes("fetch: (url, init) => fetch(url, init)"));
+  assert.ok(webview.includes("getContentUriAsync"));
+  assert.ok(webview.includes('IntentLauncher.startActivityAsync("android.intent.action.VIEW"'));
+  // Cache czyścimy przy wejściu na ekran, NIE po `startActivityAsync`:
+  // ACTION_VIEW wraca, gdy podgląd wystartował, a nie gdy skończył czytać.
+  assert.ok(webview.includes("clearSharedFiles();"));
+  assert.ok(!webview.includes("file.delete()"), "the file is deleted out from under the viewer");
+});
+
+test("K1: sonda pyta o treść, ma dwa podejścia i nie zostawia timera", () => {
+  // „JS działa" to za mało: renderer wstał i wykonuje skrypty, a `body` pusty
+  // to nadal czarny ekran.
+  assert.ok(webview.includes("document.body.childElementCount"));
+  assert.ok(webview.includes("probe.resolve(msg.ok === true)"));
+  // Wątek JS wraca z zamrożenia z opóźnieniem — fałszywy negatyw kasuje draft
+  // i restartuje 90 s ładowania onionu, więc pytamy dwa razy.
+  assert.ok(webview.includes("(await probeAlive()) || (await probeAlive())"));
+  // Timer sondy ginie razem z ekranem.
+  assert.ok(webview.includes("if (aliveTimer.current) clearTimeout(aliveTimer.current);"));
+});

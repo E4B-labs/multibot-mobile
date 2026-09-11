@@ -221,6 +221,164 @@ export function buildBootstrap(opts: {
          true;`;
 }
 
+// ── K1: powrót z tła ───────────────────────────────────────────────────────
+// Android ubija proces renderera WebView, gdy aplikacja siedzi w tle, a
+// systemowi robi się ciasno w pamięci (`WebViewClient.onRenderProcessGone`,
+// API 26+). Widok zostaje przy życiu, ale jest PUSTY — i to jest ten czarny
+// ekran po powrocie do aplikacji. Sam WebView nie ma czego przeładować:
+// dokument przyszedł z `loadDataWithBaseURL`, więc nie ma URL-a, do którego
+// dałoby się wrócić. Jedyne wyjście to zmontować widok od nowa z tym samym
+// bootstrapem (token + fragment sesji + nonce mostu).
+
+/** Czy po powrocie aplikacji na wierzch przeładować WebView. Trzymane tu, a
+ * nie w ekranie, bo decyzja ma się dać sprawdzić bez Reacta i bez urządzenia. */
+export function shouldReloadOnResume(state: {
+  /** Stan z `AppState`, na który właśnie przeszliśmy. */
+  next: string;
+  /** Renderer zginął, odkąd strona ostatnio wstała. */
+  rendererGone: boolean;
+  /** Strona zdążyła się wczytać choć raz. */
+  loaded: boolean;
+  /** Strona odpowiedziała na sondę życia (`native.alive`). */
+  alive: boolean;
+  /** Ekran błędu już wisi — ma własne „Try again", nie odbieramy mu go. */
+  failed: boolean;
+}): boolean {
+  if (state.next !== "active") return false;
+  if (state.failed) return false;
+  if (state.rendererGone) return true;
+  // Strona jeszcze się ładuje (onion potrafi 90 s) — sonda i tak by milczała,
+  // a przeładowanie startowałoby ładowanie od zera w kółko. Ten przypadek ma
+  // już swojego pilnowacza: budżet czasu ładowania.
+  if (!state.loaded) return false;
+  return !state.alive;
+}
+
+// ── K5: podgląd i pobranie pliku ───────────────────────────────────────────
+// W Android WebView `<a download>` i `window.open` na blobie nie robią NIC —
+// nie ma DownloadListenera, a blob i tak nie wychodzi poza dokument. Interfejs
+// prosi więc powłokę, a ta pobiera bajty i oddaje je systemowemu podglądowi.
+
+/** Najdłuższa nazwa, jaką wkładamy do cache'u. Limit jest nasz, nie systemowy
+ * — ma tylko nie dopuścić do nazwy, której nie da się pokazać ani skasować. */
+const MAX_CACHE_NAME = 100;
+
+/** Nazwa pliku bezpieczna dla katalogu cache: bez separatorów ścieżki, bez
+ * wiodących kropek, przycięta. Nazwa przychodzi z serwera (nazwa załącznika),
+ * więc nie może adresować niczego poza katalogiem, który sami wskazujemy.
+ *
+ * Klasa znaków jest unikodowa (`\p{L}\p{N}`), a nie `\w`: to drugie jest
+ * w JS-ie wyłącznie ASCII, więc „sprawozdanie-wrzesień.pdf" wracało jako
+ * „sprawozdanie-wrzesie_.pdf". Podkreślenie zostaje w dozwolonych, bo jest
+ * w nazwach plików nagminne, a przepisywanie go na samo siebie to żaden zysk.
+ *
+ * Rozszerzenie przeżywa przycięcie: bez niego Android nie ma z czego wybrać
+ * podglądu, gdy typ MIME jest ogólny. */
+export function cacheFileName(name: unknown): string {
+  const base = (typeof name === "string" ? name : "").split(/[\\/]/).pop() ?? "";
+  const safe = base.replace(/[^\p{L}\p{N}._\- ]+/gu, "_").replace(/^\.+/, "").trim();
+  if (!safe) return "plik";
+  if (safe.length <= MAX_CACHE_NAME) return safe;
+  const dot = safe.lastIndexOf(".");
+  // Kropka daleko od końca to nie rozszerzenie, tylko kropka w nazwie.
+  const ext = dot > 0 && safe.length - dot <= 12 ? safe.slice(dot) : "";
+  return `${safe.slice(0, MAX_CACHE_NAME - ext.length)}${ext}`;
+}
+
+export type FileOpenRequest = { url: string; fileName: string; mime: string; headers: Record<string, string> };
+
+/** Jedyne nagłówki, które strona może kazać powłoce wysłać. Whitelista, nie
+ * filtr typów: strona bez tego dyktowała cały zestaw nagłówków żądania
+ * lecącego z urządzenia — `cookie`, `host`, cokolwiek. Tokenu powłoka nie ma
+ * (żyje 15 minut w `localStorage` strony), więc te dwa muszą przyjść stąd. */
+const FILE_OPEN_HEADERS = ["authorization", "x-multibot-protocol"];
+
+export function fileOpenHeaders(raw: unknown): Record<string, string> {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "string" && FILE_OPEN_HEADERS.includes(key.toLowerCase())) {
+      headers[key.toLowerCase()] = value;
+    }
+  }
+  return headers;
+}
+
+/** Waliduje `{type:"file.open"}` z interfejsu. Adres MUSI być ścieżką na
+ * serwerze, którego pilnuje ta powłoka: pobranie leci z tokenem użytkownika,
+ * więc dowolny adres podany przez stronę byłby dziurą, a nie wygodą. */
+export function fileOpenRequestOf(
+  msg: { url?: unknown; name?: unknown; mime?: unknown; headers?: unknown },
+  hostUrl: string,
+): FileOpenRequest | null {
+  if (typeof msg.url !== "string" || !msg.url) return null;
+  const base = hostUrl.replace(/\/+$/, "");
+  const url = msg.url.startsWith("/")
+    ? `${base}${msg.url}`
+    : msg.url === base || msg.url.startsWith(`${base}/`)
+      ? msg.url
+      : "";
+  if (!url) return null;
+  return {
+    url,
+    fileName: cacheFileName(msg.name),
+    // Bez typu systemowy wybierak nie wie, komu plik oddać; `octet-stream`
+    // pokazuje wtedy listę „otwórz za pomocą" zamiast nie zrobić nic.
+    mime: typeof msg.mime === "string" && msg.mime.includes("/") ? msg.mime : "application/octet-stream",
+    headers: fileOpenHeaders(msg.headers),
+  };
+}
+
+/** Co ekran wstrzykuje, żeby ta ścieżka dała się sprawdzić bez urządzenia.
+ * Wszystkie trzy są natywne (przypięty `fetch`, expo-file-system,
+ * expo-intent-launcher), więc ten plik nadal nie importuje niczego natywnego
+ * i chodzi pod czystym node'em. */
+export type FileOpenDeps = {
+  platform: string;
+  fetch: (url: string, init: { headers: Record<string, string> }) => Promise<{
+    ok: boolean;
+    status: number;
+    arrayBuffer(): Promise<ArrayBuffer>;
+  }>;
+  /** Zapisuje bajty w cache'u i zwraca adres `content://` dla podglądu. */
+  store: (fileName: string, bytes: Uint8Array) => Promise<string>;
+  open: (contentUri: string, mime: string) => Promise<void>;
+};
+
+/** Pobiera plik z serwera powłoki i oddaje go systemowemu podglądowi. Zwraca
+ * komunikat błędu dla użytkownika albo `null`, gdy plik poszedł dalej.
+ *
+ * Całość tutaj, a nie w ekranie, bo to jedyne miejsce w powłoce dotykające
+ * tokenu użytkownika — ma mieć test, nie tylko strażnika źródła. */
+export async function openHostFile(
+  msg: { url?: unknown; name?: unknown; mime?: unknown; headers?: unknown },
+  hostUrl: string,
+  deps: FileOpenDeps,
+): Promise<string | null> {
+  const request = fileOpenRequestOf(msg, hostUrl);
+  if (!request) return "Nie rozpoznaję tego pliku.";
+  // expo-sharing nie jest w zależnościach, a bez niego iOS nie ma czym oddać
+  // pliku systemowi. Komunikat zamiast martwego klika.
+  if (deps.platform !== "android") return "Otwieranie plików działa na razie tylko na Androidzie.";
+  try {
+    const response = await deps.fetch(request.url, { headers: request.headers });
+    if (response.status === 401) {
+      // Token dostępu żyje 15 minut. Strona odświeża go przed posłaniem
+      // wiadomości, więc 401 tutaj znaczy „sesja naprawdę wygasła".
+      return "Sesja wygasła. Odśwież aplikację i spróbuj jeszcze raz.";
+    }
+    if (!response.ok) return `Serwer odpowiedział HTTP ${response.status}.`;
+    // ponytail: cały plik przez pamięć. Załącznik ma serwerowy cap 25 MB,
+    // a strumieniowanie znaczyłoby własny klient HTTP po stronie natywnej —
+    // do zrobienia dopiero, gdy cap wideo pójdzie w górę (element 2.3 planu).
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    await deps.open(await deps.store(request.fileName, bytes), request.mime);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Nie udało się otworzyć pliku.";
+  }
+}
+
 /** The three values of a remembered login the web UI is allowed to learn.
  * `null` until the profile half landed: offering a one-tap that cannot log in
  * is worse than not offering one. Pure, so the rule is testable without

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
+import { buildBootstrap, cacheFileName, fileOpenHeaders, fileOpenRequestOf, isOnionHost, openHostFile, type FileOpenDeps, isPrivateLanUrl, isTailnetUrl, hostAuthHeaders, newHostId, normalizeHostUrl, removeHostById, renameHost, formatLastUsed, resolveStartupHost, shouldReloadOnResume, tlsKey, touchHost, upsertHost, type Host } from "./host-logic.ts";
 
 // A real v3 address is a 56-character base32 label plus `.onion`; the shape is
 // what matters here, not that this particular service exists.
@@ -221,4 +221,192 @@ test("the local-network hint covers RFC1918 and link-local, and nothing else", (
   // off-network — the one thing a 192.168 address can never do.
   assert.equal(isPrivateLanUrl("https://100.78.241.9:8799"), false);
   assert.equal(isPrivateLanUrl(`https://${ONION}`), false);
+});
+
+// ── K1: czarny ekran po powrocie z tła ─────────────────────────────────────
+
+test("powrót z tła przeładowuje WebView tylko wtedy, gdy jest pusty", () => {
+  const zdrowy = { next: "active", rendererGone: false, loaded: true, alive: true, failed: false };
+  // Żywa strona zostaje jak stała — przeładowanie zabrałoby pozycję w rozmowie.
+  assert.equal(shouldReloadOnResume(zdrowy), false);
+  // Renderer ubity przez Androida: widok żyje, ale jest pusty. To jest ten
+  // czarny ekran i jedyne wyjście to zmontować WebView od nowa.
+  assert.equal(shouldReloadOnResume({ ...zdrowy, rendererGone: true }), true);
+  // Sonda życia bez odpowiedzi — ten sam skutek, inna przyczyna.
+  assert.equal(shouldReloadOnResume({ ...zdrowy, alive: false }), true);
+});
+
+test("powrót z tła nie przerywa trwającego ładowania", () => {
+  // Onion ma 90 s budżetu. Bez tego wyjścia każde zerknięcie w inną aplikację
+  // startowało ładowanie od zera i strona nigdy by nie wstała.
+  const laduje = { next: "active", rendererGone: false, loaded: false, alive: false, failed: false };
+  assert.equal(shouldReloadOnResume(laduje), false);
+  // Chyba że renderer po drodze zginął — wtedy nie ma już czego doczekać.
+  assert.equal(shouldReloadOnResume({ ...laduje, rendererGone: true }), true);
+});
+
+test("powrót z tła nie rusza ekranu błędu ani stanów innych niż active", () => {
+  // Ekran błędu ma własne „Try again" i własny komunikat; podmiana go na
+  // spinner ukryłaby przed użytkownikiem, czego nie da się połączyć.
+  assert.equal(shouldReloadOnResume({ next: "active", rendererGone: true, loaded: true, alive: false, failed: true }), false);
+  for (const next of ["background", "inactive", "unknown"]) {
+    assert.equal(shouldReloadOnResume({ next, rendererGone: true, loaded: true, alive: false, failed: false }), false);
+  }
+});
+
+// ── K5: podgląd i pobranie pliku ───────────────────────────────────────────
+
+test("nazwa z serwera nie wychodzi poza katalog cache", () => {
+  assert.equal(cacheFileName("raport.pdf"), "raport.pdf");
+  assert.equal(cacheFileName("../../etc/passwd"), "passwd");
+  assert.equal(cacheFileName(String.raw`..\..\windows\system32\cmd.exe`), "cmd.exe");
+  assert.equal(cacheFileName(".bashrc"), "bashrc");
+  assert.equal(cacheFileName(""), "plik");
+  assert.equal(cacheFileName(undefined), "plik");
+  assert.equal(cacheFileName("a".repeat(300)).length, 100);
+});
+
+test("nazwa zachowuje polskie znaki i rozszerzenie", () => {
+  // `\w` w JS-ie to wyłącznie ASCII, więc stara klasa robiła z tego
+  // „sprawozdanie-wrzesie_.pdf".
+  assert.equal(cacheFileName("sprawozdanie-wrzesień.pdf"), "sprawozdanie-wrzesień.pdf");
+  assert.equal(cacheFileName("notatki_2026 (kopia).md"), "notatki_2026 _kopia_.md");
+  // Przycięcie nie może zabrać rozszerzenia: bez niego Android nie ma z czego
+  // wybrać podglądu, gdy typ MIME jest ogólny.
+  const long = cacheFileName(`${"ż".repeat(300)}.pdf`);
+  assert.equal(long.length, 100);
+  assert.ok(long.endsWith(".pdf"));
+  // Kropka daleko od końca to kropka w nazwie, nie rozszerzenie — 300 znaków
+  // za nią nie przykleja się do przyciętej nazwy jako „rozszerzenie".
+  assert.equal(cacheFileName(`a.${"b".repeat(300)}`), `a.${"b".repeat(98)}`);
+});
+
+test("strona dyktuje TYLKO dwa nagłówki", () => {
+  assert.deepEqual(fileOpenHeaders({ authorization: "Bearer t", "x-multibot-protocol": "2" }), {
+    authorization: "Bearer t",
+    "x-multibot-protocol": "2",
+  });
+  // Bez whitelisty strona dyktowałaby cały zestaw nagłówków żądania lecącego
+  // z urządzenia.
+  assert.deepEqual(fileOpenHeaders({ cookie: "a=b", host: "zly.example", "x-forwarded-for": "1.2.3.4" }), {});
+  assert.deepEqual(fileOpenHeaders({ Authorization: "Bearer t" }), { authorization: "Bearer t" });
+  assert.deepEqual(fileOpenHeaders({ authorization: 7 }), {});
+  assert.deepEqual(fileOpenHeaders(null), {});
+  assert.deepEqual(fileOpenHeaders("authorization"), {});
+});
+
+test("file.open przyjmuje wyłącznie ścieżki na swoim serwerze", () => {
+  const HOST = "https://sharp-salmon.example:8799";
+  const ok = fileOpenRequestOf({ url: "/api/bots/b1/attachments/f1", name: "raport.pdf", mime: "application/pdf" }, HOST);
+  assert.deepEqual(ok, {
+    url: `${HOST}/api/bots/b1/attachments/f1`,
+    fileName: "raport.pdf",
+    mime: "application/pdf",
+    headers: {},
+  });
+  // Adres bezwzględny musi BYĆ tym hostem — pobranie leci z tokenem
+  // użytkownika, więc obcy adres byłby dziurą, nie wygodą.
+  assert.deepEqual(fileOpenRequestOf({ url: `${HOST}/api/bots/b1/attachments/f1` }, HOST)?.url, `${HOST}/api/bots/b1/attachments/f1`);
+  assert.equal(fileOpenRequestOf({ url: "https://zly.example/x" }, HOST), null);
+  // Prefiks nazwy hosta to nie ten sam host.
+  assert.equal(fileOpenRequestOf({ url: `${HOST}.zly.example/x` }, HOST), null);
+  assert.equal(fileOpenRequestOf({ url: "blob:https://sharp-salmon.example/abc" }, HOST), null);
+  assert.equal(fileOpenRequestOf({ url: "" }, HOST), null);
+  assert.equal(fileOpenRequestOf({}, HOST), null);
+});
+
+test("file.open bez typu dostaje octet-stream, żeby system pokazał wybór aplikacji", () => {
+  const HOST = "https://sharp-salmon.example:8799";
+  assert.equal(fileOpenRequestOf({ url: "/f", mime: "nonsens" }, HOST)?.mime, "application/octet-stream");
+  assert.equal(fileOpenRequestOf({ url: "/f" }, HOST)?.mime, "application/octet-stream");
+  // Ukośnik na końcu hosta nie robi z adresu podwójnego ukośnika.
+  assert.equal(fileOpenRequestOf({ url: "/f" }, `${HOST}/`)?.url, `${HOST}/f`);
+});
+
+// `openHostFile` to jedyne miejsce w powłoce dotykające tokenu użytkownika,
+// więc zależności są wstrzykiwane i ścieżka ma prawdziwy test, a nie tylko
+// strażnika źródła.
+function fileDeps(overrides: Partial<FileOpenDeps> = {}) {
+  const calls = {
+    fetched: [] as { url: string; headers: Record<string, string> }[],
+    stored: [] as { fileName: string; bytes: number }[],
+    opened: [] as { uri: string; mime: string }[],
+  };
+  const deps: FileOpenDeps = {
+    platform: "android",
+    fetch: async (url, init) => {
+      calls.fetched.push({ url, headers: init.headers });
+      return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+    },
+    store: async (fileName, bytes) => {
+      calls.stored.push({ fileName, bytes: bytes.byteLength });
+      return `content://multibot/${fileName}`;
+    },
+    open: async (uri, mime) => {
+      calls.opened.push({ uri, mime });
+    },
+    ...overrides,
+  };
+  return { deps, calls };
+}
+
+const FILE_HOST = "https://sharp-salmon.example:8799";
+const FILE_MSG = {
+  url: "/api/bots/b1/attachments/f1",
+  name: "raport.pdf",
+  mime: "application/pdf",
+  headers: { authorization: "Bearer t", "x-multibot-protocol": "2", cookie: "a=b" },
+};
+
+test("openHostFile pobiera plik i oddaje go podglądowi, z samymi dozwolonymi nagłówkami", async () => {
+  const { deps, calls } = fileDeps();
+  assert.equal(await openHostFile(FILE_MSG, FILE_HOST, deps), null);
+  assert.deepEqual(calls.fetched, [
+    {
+      url: `${FILE_HOST}/api/bots/b1/attachments/f1`,
+      // `cookie` odpadło po drodze — whitelista, nie filtr typów.
+      headers: { authorization: "Bearer t", "x-multibot-protocol": "2" },
+    },
+  ]);
+  assert.deepEqual(calls.stored, [{ fileName: "raport.pdf", bytes: 3 }]);
+  assert.deepEqual(calls.opened, [{ uri: "content://multibot/raport.pdf", mime: "application/pdf" }]);
+});
+
+test("openHostFile mówi wprost o wygasłej sesji, a nie o kodzie HTTP", async () => {
+  const { deps, calls } = fileDeps({
+    fetch: async () => ({ ok: false, status: 401, arrayBuffer: async () => new ArrayBuffer(0) }),
+  });
+  // Strona odświeża token przed posłaniem wiadomości, więc 401 TUTAJ znaczy,
+  // że sesja naprawdę wygasła — i tak trzeba to powiedzieć.
+  assert.match(String(await openHostFile(FILE_MSG, FILE_HOST, deps)), /Sesja wygasła/);
+  assert.deepEqual(calls.opened, []);
+
+  const server = fileDeps({
+    fetch: async () => ({ ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(0) }),
+  });
+  assert.match(String(await openHostFile(FILE_MSG, FILE_HOST, server.deps)), /HTTP 500/);
+  assert.deepEqual(server.calls.stored, []);
+});
+
+test("openHostFile na iOS mówi, że tam tego nie ma — i nie sięga do serwera", async () => {
+  // `expo-sharing` nie jest w zależnościach, więc iOS nie ma czym oddać pliku
+  // systemowi. Komunikat zamiast martwego klika.
+  const { deps, calls } = fileDeps({ platform: "ios" });
+  assert.match(String(await openHostFile(FILE_MSG, FILE_HOST, deps)), /Androidzie/);
+  assert.deepEqual(calls.fetched, []);
+});
+
+test("openHostFile odrzuca obcy adres przed pobraniem czegokolwiek", async () => {
+  const { deps, calls } = fileDeps();
+  assert.match(String(await openHostFile({ url: "https://zly.example/x" }, FILE_HOST, deps)), /Nie rozpoznaję/);
+  assert.deepEqual(calls.fetched, []);
+});
+
+test("openHostFile zamienia wywrotkę sieci w komunikat, nie w wyjątek", async () => {
+  const { deps } = fileDeps({
+    fetch: async () => {
+      throw new Error("Certyfikat serwera się zmienił.");
+    },
+  });
+  assert.equal(await openHostFile(FILE_MSG, FILE_HOST, deps), "Certyfikat serwera się zmienił.");
 });

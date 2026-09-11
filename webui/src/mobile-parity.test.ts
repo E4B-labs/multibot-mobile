@@ -9,7 +9,9 @@
 // Środowisko vitest to `node`, bez jsdom — sprawdzamy więc źródło, tak jak
 // robią to pozostałe testy w tym repo.
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { openFileViaShell } from "./lib/nativeBridge";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const app = read("./App.tsx");
@@ -149,5 +151,69 @@ describe("most do powłoki", () => {
   it("rejestracja push idzie przez powłokę, nie przez krok onboardingu", () => {
     expect(app).toContain("registerPushViaShell()");
     expect(shell).toContain("/api/devices/");
+  });
+
+  // K5. W Android WebView `<a download>` i `window.open` nie robią NIC: nie ma
+  // DownloadListenera, a blob i tak nie wychodzi poza dokument. Plik musi
+  // pobrać powłoka.
+  it("pobranie pliku z czatu idzie przez most, a poza WebView zostaje zwykły link", () => {
+    expect(nativeBridge).toContain('type: "file.open"');
+    // Token dostępu żyje na STRONIE, nie w powłoce, więc nagłówki jadą stąd.
+    expect(nativeBridge).toContain("authorization: `Bearer ${token}`");
+    const card = read("./components/AttachmentCard.tsx");
+    const preview = read("./components/AttachmentPreview.tsx");
+    const chat = read("./components/ChatView.tsx");
+    for (const source of [card, preview]) {
+      // `shellPost` zwraca false poza WebView, więc `preventDefault` nie padnie
+      // i przeglądarka z Electronem pobierają dokładnie jak dotąd.
+      expect(source).toContain('openFileViaShell(path, name, mime ?? "")) e.preventDefault()');
+    }
+    // Ścieżka na serwerze, nie blob: powłoka dokleja ją do hosta, którego
+    // pilnuje, i odrzuca wszystko spoza niego.
+    expect(chat).toContain("const path = `/api/bots/${botId}/attachments/${file.id}`");
+    expect(chat).toContain("path={path} mime={file.mime}");
+    // „Otwórz" przy HTML-u wołało `window.open` na blobie — też martwe.
+    expect(chat).toContain("if (openFileViaShell(path, file.name, file.mime)) return;");
+  });
+
+  it("powłoka rozumie file.open i nie bierze adresu ze strony na słowo", () => {
+    const screen = read("../../src/screens/WebViewScreen.tsx");
+    expect(screen).toContain('msg?.type === "file.open"');
+    expect(screen).toContain("openHostFile(msg, host.url, {");
+  });
+
+  it("file.open jedzie z nonce'em, ścieżką i nagłówkami, a bez mostu nie jedzie wcale", async () => {
+    const sent: string[] = [];
+    const host = {
+      ReactNativeWebView: { postMessage: (message: string) => sent.push(message) },
+      __MB_BRIDGE_NONCE__: "n-1",
+    };
+    expect(openFileViaShell("/api/bots/b1/attachments/f1", "raport.pdf", "application/pdf", host)).toBe(true);
+    // Wiadomość idzie PO odświeżeniu tokenu: powłoka nie umie odnowić go sama
+    // przy 401, więc nie może dostać przedawnionego zdjęcia.
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(JSON.parse(sent[0])).toEqual({
+      type: "file.open",
+      url: "/api/bots/b1/attachments/f1",
+      name: "raport.pdf",
+      mime: "application/pdf",
+      // Bez tokenu w localStorage zostają same nagłówki protokołu — powłoka
+      // dostaje wtedy 401 i powie o tym, zamiast milczeć.
+      headers: { "x-multibot-protocol": "2" },
+      // Bez nonce'a powłoka odrzuca `file.open`: pobranie sięga do serwera
+      // uwierzytelnieniem użytkownika, więc ramka noVNC nie może o nie prosić.
+      nonce: "n-1",
+    });
+    // Przeglądarka i Electron: brak mostu, więc wołający zostaje przy
+    // `<a download>` — i nic nie leci, nawet odświeżenie tokenu.
+    expect(openFileViaShell("/api/bots/b1/attachments/f1", "raport.pdf", "application/pdf", {})).toBe(false);
+  });
+
+  it("token jest odświeżany PRZED posłaniem file.open, nie po", () => {
+    const bridge = read("./lib/nativeBridge.ts");
+    // Kolejność jest tu całą poprawką: `getAuthToken()` musi czytać token
+    // z WNĘTRZA `.then`, już po odnowieniu.
+    expect(bridge).toMatch(/refreshAccessToken\(\)\.then\(\(\) => \{\s*const token = getAuthToken\(\);/);
+    expect(bridge).toContain("if (!isReactNativeShell(host)) return false;");
   });
 });

@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, BackHandler, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Clipboard from "expo-clipboard";
 import { WebView } from "react-native-webview";
 import * as Application from "expo-application";
+import { Directory, File as CacheFile, Paths } from "expo-file-system";
+// `getContentUriAsync` (a z nim FileProvider Expo) żyje tylko w starym API —
+// dokładnie tak samo robi `downloadAndInstallApk` w lib/mobile-release.ts.
+import * as LegacyFileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
 import * as Updates from "expo-updates";
 
-import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, probeServer, rememberedEntryOf, type AppInfo, type Host } from "../lib/host-logic";
+import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, openHostFile, probeServer, rememberedEntryOf, shouldReloadOnResume, type AppInfo, type Host } from "../lib/host-logic";
 import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
 import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
@@ -85,7 +90,38 @@ const PRIVILEGED = new Set([
   "native.camera.request",
   "native.clipboard.image",
   "native.back.result",
+  // Pobranie leci Z TOKENEM użytkownika (nagłówki z wiadomości), więc ramka
+  // noVNC nie może o nie prosić — inaczej strona w ramce wyciągałaby cudze
+  // pliki z serwera cudzym uwierzytelnieniem.
+  "file.open",
 ]);
+
+// Ile czekamy na odpowiedź strony po powrocie z tła, zanim uznamy WebView za
+// martwy. Sonda to jedno `postMessage` w tę i z powrotem, w tym samym procesie
+// — zdrowa strona odpowiada w jednostkach milisekund; sekunda to zapas na
+// przemrożony po wznowieniu wątek JS, a nie realny budżet.
+const ALIVE_PROBE_TIMEOUT_MS = 1_000;
+
+// Własny podkatalog cache'u na pliki oddawane systemowemu podglądowi (K5).
+// Osobny, żeby czyszczenie nie ruszyło niczego, co do nas nie należy.
+const SHARED_FILE_DIR = "shared-files";
+
+function sharedFileDirectory(): Directory {
+  return new Directory(Paths.cache, SHARED_FILE_DIR);
+}
+
+/** Czyścimy przy wejściu na ekran, a NIE po `startActivityAsync`: ACTION_VIEW
+ * wraca, gdy podgląd wystartował, a nie gdy skończył czytać — skasowanie pliku
+ * od razu wyrwałoby mu go z rąk i podgląd pokazałby błąd. W momencie montażu
+ * ekranu nic nie jest otwarte, więc to jedyna bezpieczna chwila. */
+function clearSharedFiles(): void {
+  try {
+    const directory = sharedFileDirectory();
+    if (directory.exists) directory.delete();
+  } catch {
+    // Pełny albo zajęty cache to nie powód, żeby nie wpuścić na czat.
+  }
+}
 
 function newBridgeNonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
@@ -145,6 +181,9 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   const [status, setStatus] = useState("");
   const loadedRef = useRef(false);
   loadedRef.current = loaded;
+  // Ekran błędu ma własne „Try again" — powrót z tła mu go nie odbiera.
+  const failedRef = useRef(false);
+  failedRef.current = failed !== null;
   const [attempt, setAttempt] = useState(0);
   // How much of the page made it in before it stopped — "loading" means the
   // same at 0% and at 99% without this.
@@ -289,11 +328,100 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     webRef.current?.injectJavaScript(`location.hash = ${JSON.stringify(`#bot=${botId}`)}; true;`);
   }, [botId, loaded]);
 
+  // K1 — czarny ekran po powrocie z tła. Patrz `shouldReloadOnResume`
+  // w lib/host-logic.ts: Android ubija renderer WebView pod presją pamięci
+  // i zostawia żywy, pusty widok. `retry()` montuje go od nowa z TYM SAMYM
+  // bootstrapem (ten sam token, ten sam fragment sesji, ten sam nonce) i
+  // wraca do istniejącego spinnera zamiast do czerni.
+  const rendererGone = useRef(false);
+  const appActive = useRef(AppState.currentState === "active");
+  // Rozwiązanie sondy życia: id żyje tu, żeby spóźniona odpowiedź z poprzedniej
+  // sondy nie zaliczyła następnej.
+  const aliveProbe = useRef<{ id: string; resolve: (ok: boolean) => void } | null>(null);
+  const aliveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // K5: pliki z poprzedniego wejścia są już nikomu niepotrzebne.
+    clearSharedFiles();
+    return () => {
+      if (aliveTimer.current) clearTimeout(aliveTimer.current);
+      aliveTimer.current = null;
+      // Odmontowanie w trakcie sondy: rozstrzygamy ją, żeby `await` w obsłudze
+      // powrotu z tła nie został zawieszony na zniknięciym ekranie.
+      aliveProbe.current?.resolve(false);
+      aliveProbe.current = null;
+    };
+  }, []);
+
+  function probeAlive(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const id = `alive-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const finish = (ok: boolean) => {
+        if (aliveTimer.current) clearTimeout(aliveTimer.current);
+        aliveTimer.current = null;
+        // Sprzątamy tylko po sobie: druga sonda mogła już zająć to miejsce.
+        // Rozstrzygnąć MUSI się każda — inaczej powrót z tła w trakcie
+        // poprzedniej sondy zostawiałby wiszące `await`.
+        if (aliveProbe.current?.id === id) aliveProbe.current = null;
+        resolve(ok);
+      };
+      aliveTimer.current = setTimeout(() => finish(false), ALIVE_PROBE_TIMEOUT_MS);
+      aliveProbe.current = { id, resolve: finish };
+      // Martwy renderer po prostu tego nie wykona — i o to chodzi. `ok` pyta
+      // o TREŚĆ, nie o sam JS: renderer wstał i wykonuje skrypty, a `body`
+      // pusty to nadal czarny ekran.
+      webRef.current?.injectJavaScript(
+        `window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: "native.alive", id: ${JSON.stringify(id)}, ok: !!(document.body && document.body.childElementCount) })); true;`,
+      );
+    });
+  }
+
+  function handleRendererGone() {
+    rendererGone.current = true;
+    // W tle montowanie od nowa tylko zapętliłoby się z kolejnym ubiciem —
+    // wtedy decyzję podejmie powrót na wierzch.
+    if (appActive.current) retry();
+  }
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      const wasActive = appActive.current;
+      appActive.current = next === "active";
+      if (next !== "active" || wasActive) return;
+      void (async () => {
+        // Gdy renderer już zgłosił zgon albo strona wciąż się ładuje, nie ma
+        // kogo pytać o życie.
+        //
+        // Inaczej pytamy DWA razy. Wątek JS strony wraca z zamrożenia
+        // z opóźnieniem i pierwsza sonda potrafi nie zdążyć — a fałszywy
+        // negatyw kosztuje tu drogo: remount kasuje wpisywaną wiadomość,
+        // pozycję w rozmowie i na onionie startuje 90 s ładowania od zera.
+        // Druga sonda to najwyżej sekunda spinnera, gdy strona faktycznie
+        // jest martwa.
+        const alive =
+          rendererGone.current || !loadedRef.current ? false : (await probeAlive()) || (await probeAlive());
+        if (
+          !shouldReloadOnResume({
+            next: "active",
+            rendererGone: rendererGone.current,
+            loaded: loadedRef.current,
+            alive,
+            failed: failedRef.current,
+          })
+        ) {
+          return;
+        }
+        retry();
+      })();
+    });
+    return () => subscription.remove();
+  }, []);
+
   function handleBack() {
     onBack();
   }
 
   function retry() {
+    rendererGone.current = false;
     setFailed(null);
     setLoaded(false);
     setProgress(0);
@@ -517,6 +645,40 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
     }
   }
 
+  // K5 — podgląd i pobranie pliku z czatu. Pobieramy WŁASNYM `fetch`-em, nie
+  // `FileSystem.downloadAsync`: to drugie buduje swojego OkHttpa (patrz
+  // expo-file-system, FileSystemLegacyModule.okHttpClient), a więc omija
+  // przypięcie certyfikatu z modules/multibot-tls i na serwerze z własnym
+  // podpisem wywaliłoby się na zaufaniu. `fetch` idzie przez
+  // `OkHttpClientProvider`, który ten moduł podmienia.
+  async function handleFileOpen(msg: { url?: unknown; name?: unknown; mime?: unknown; headers?: unknown }) {
+    // Reguły (adres, nazwa, whitelista nagłówków, 401) siedzą w `openHostFile`
+    // — tu zostaje wyłącznie to, czego nie da się uruchomić bez urządzenia.
+    const problem = await openHostFile(msg, host.url, {
+      platform: Platform.OS,
+      fetch: (url, init) => fetch(url, init),
+      store: async (fileName, bytes) => {
+        const file = new CacheFile(sharedFileDirectory(), fileName);
+        file.create({ overwrite: true, intermediates: true });
+        file.write(bytes);
+        return LegacyFileSystem.getContentUriAsync(file.uri);
+      },
+      open: async (data, type) => {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data,
+          type,
+          // FLAG_GRANT_READ_URI_PERMISSION — bez tego podgląd dostaje adres,
+          // którego nie wolno mu odczytać.
+          flags: 1,
+        });
+      },
+    });
+    // Natywny alert, a nie odpowiedź do strony: klik w „Pobierz", po którym nic
+    // się nie dzieje, JEST tym zgłoszonym błędem — cicha porażka wygląda
+    // dokładnie tak samo jak martwy `<a download>`, który tu naprawiamy.
+    if (problem) Alert.alert("Nie udało się otworzyć pliku", problem);
+  }
+
   async function readClipboardImage(requestId: string) {
     try {
       const image = await Clipboard.getImageAsync({ format: "png" });
@@ -614,6 +776,15 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             // only mutes a notification — so it is the only one handled above
             // the gate. Everything else goes below it.
             if (msg?.type === "bot.selected") onBotVisible?.(typeof msg.botId === "string" ? msg.botId : null);
+            // Odpowiedź na sondę życia po powrocie z tła — też bez żadnej
+            // władzy, a id pilnuje, żeby liczyła się tylko bieżąca sonda.
+            const probe = aliveProbe.current;
+            if (msg?.type === "native.alive" && probe && msg.id === probe.id) {
+              // `ok` musi przyjść prawdziwe: strona, która odpowiada, ale ma
+              // pusty `body`, to dokładnie ten czarny ekran.
+              probe.resolve(msg.ok === true);
+              return;
+            }
             if (PRIVILEGED.has(msg?.type) && msg?.nonce !== nonce) return;
             if (msg?.type === "native.back.result" && msg.requestId === nativeBackRequest.current) {
               if (nativeBackTimer.current) clearTimeout(nativeBackTimer.current);
@@ -627,6 +798,7 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
               setCameraRequest({ requestId: msg.requestId, purpose: msg.purpose });
             }
             if (msg?.type === "native.clipboard.image" && typeof msg.requestId === "string") void readClipboardImage(msg.requestId);
+            if (msg?.type === "file.open") void handleFileOpen(msg);
             if (msg?.type === "host.join") void handleJoinHost(msg);
             if (msg?.type === "remember.get") void handleRememberGet();
             if (msg?.type === "remember.signin") void handleRememberSignIn();
@@ -687,6 +859,11 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
             <Text style={styles.errorBody}>{Math.round(progress * 100)}%</Text>
           </View>
         )}
+        // K1: renderer ubity przez system (Android) albo proces treści ubity
+        // przez iOS. Bez tych dwóch widok zostaje żywy, ale pusty — czarny
+        // ekran po powrocie z tła, na który narzekał Kacper.
+        onRenderProcessGone={handleRendererGone}
+        onContentProcessDidTerminate={handleRendererGone}
         onError={({ nativeEvent }) =>
           setFailed(nativeEvent.description || `WebView error ${nativeEvent.code ?? ""}`.trim())
         }
