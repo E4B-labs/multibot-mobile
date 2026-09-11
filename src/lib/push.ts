@@ -21,6 +21,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { currentBuildVersion, fetchMobileRelease } from "./mobile-release";
 import { pushUnavailableNotice } from "./push-notice";
+import { shouldPresentNotification } from "./notification-policy";
 
 // Bot otwarty na ekranie w tej chwili. Powiadomienie o NIM byłoby szumem —
 // użytkownik i tak patrzy na tę rozmowę. Ustawiane z powłoki (WebView melduje
@@ -73,19 +74,13 @@ export function configurePushNotifications(): void {
     // pierwszym planie — więc wystarczy porównać bota z tym na ekranie.
     handleNotification: async (notification) => {
       const data = notification.request.content.data as Record<string, unknown> | undefined;
-      const { botId } = extractBotTarget(data);
-      // multibot 10.09.2026: przypomnienie ma dojść ZAWSZE. Wyciszanie tego,
-      // co dotyczy bota akurat na ekranie, ma sens dla relacji z pracy, ale
-      // przypomnienie o dentyście jest o dentyście, nie o bocie — człowiek
-      // prosił o brzęk na konkretną godzinę i ma go dostać także wtedy, gdy
-      // ten czat jest otwarty.
-      const alwaysAlert = data?.kind === "reminder";
-      const onScreen = !alwaysAlert && Boolean(botId) && botId === visibleBotId;
+      const remote = (notification.request.trigger as { type?: string } | null)?.type === "push";
+      const present = shouldPresentNotification(data, visibleBotId, remote);
       return {
-        shouldShowAlert: !onScreen,
-        shouldShowBanner: !onScreen,
-        shouldShowList: !onScreen,
-        shouldPlaySound: !onScreen,
+        shouldShowAlert: present,
+        shouldShowBanner: present,
+        shouldShowList: present,
+        shouldPlaySound: present,
         shouldSetBadge: false,
       };
     },
