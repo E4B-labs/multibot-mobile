@@ -210,19 +210,15 @@ describe("composer na telefonie", () => {
     expect(composer).toContain('<div data-composer-row className="relative flex min-h-12');
     expect(composer).toContain("data-composer-input");
     expect(composer).toContain('wrap="off"');
-    expect(composer).toContain("min-w-0 flex-1 basis-0");
+    expect(composer).toContain("min-w-[8rem] flex-1");
     expect(composer).toContain("overflow-x-hidden overflow-y-auto");
     const phone = css.slice(css.indexOf("@media (max-width: 700px)"));
-    expect(phone).toContain("[data-composer-row] { flex-wrap: nowrap; min-width: 0; gap: 2px; }");
-    expect(phone).toContain("[data-composer-row] > [data-composer-input]");
-    expect(phone).toContain("flex: 1 1 0%");
-    const inputRuleStart = phone.indexOf("[data-composer-row] > [data-composer-input]");
-    const inputRuleEnd = phone.indexOf("  [data-composer-row] > button", inputRuleStart);
-    const inputRule = phone.slice(inputRuleStart, inputRuleEnd);
-    expect(inputRule).toContain("overflow-x: hidden");
-    expect(inputRule).toContain("font-size: 14px");
-    expect(inputRule).toContain("white-space: nowrap");
-    expect(inputRule).not.toContain("overflow-x: auto");
+    expect(phone).toContain("[data-composer-row] { flex-wrap: wrap; }");
+    // K2: reguła celuje w PUDEŁKO pola — od warstwy podświetlenia wzmianek samo
+    // `[data-composer-input]` nie jest już dzieckiem rzędu i stara reguła
+    // przestawała cokolwiek robić (czyli wracał błąd z 07.09).
+    expect(phone).toContain("[data-composer-row] > [data-composer-field] { order: -1; flex-basis: 100%; }");
+    expect(composer).toContain('<div data-composer-field className="relative min-w-[8rem] flex-1">');
     expect(phone).toContain("[data-composer-row] > div > button > span { display: none; }");
   });
 });
@@ -234,5 +230,73 @@ describe("sterowany draft composera", () => {
     expect(composer).toContain("const text = draft ?? localText;");
     expect(composer).toContain("if (draft !== undefined) onDraftChange?.(next);");
     expect(composer).toContain('setText("");');
+  });
+});
+
+// multibot K2: `@Bot` koloruje się już w pisanej wiadomości. Warstwa pod
+// przezroczystym tekstem stoi i upada na metrykach — te trzy rzeczy trzymają je
+// równo i każda z nich po cichu psuje pozycję kursora, jeśli zniknie.
+describe("podświetlenie wzmianek w composerze", () => {
+  const layer = composer.slice(composer.indexOf("function MentionHighlight"), composer.indexOf("// multibot: F8"));
+
+  it("pigułka nie wnosi szerokości i nie ma obwódki", () => {
+    expect(layer).toContain("-mx-[1px]");
+    expect(layer).toContain("px-[1px]");
+    expect(layer, "obwódka stykała się z sąsiednią literą").not.toContain("box-shadow");
+  });
+
+  it("kolor bota liczy się z BOT_COLORS i miesza ze skórką jak plakietka #170", () => {
+    expect(layer).toContain("style={botChipStyle(bot.color)}");
+    expect(composer).toContain('import { botChipStyle } from "./PeerBadge";');
+    expect(layer).toContain("text-[var(--bot-ink)]");
+    // tlo RZEDU composera (`bg-raised/60`), nie tlo czatu
+    expect(layer).toContain("bg-[color-mix(in_oklab,var(--bot)_26%,var(--color-raised))]");
+    expect(layer).not.toContain("var(--color-app)");
+  });
+
+  it("warstwa i pole mają tę samą typografię, zawijanie i przewijanie", () => {
+    expect(layer).toContain("COMPOSER_TYPO");
+    expect(layer).toContain("whitespace-pre-wrap break-words");
+    expect(composer).toContain("mentionLayerRef.current.scrollTop = e.currentTarget.scrollTop");
+    // przezroczysty tekst TYLKO przy wzmiance — bez niej pole zostaje jak było
+    expect(composer).toContain('highlightOn ? "text-transparent caret-ink" : "text-ink"');
+  });
+
+  it("warstwa jest zamontowana ZAWSZE, widocznoscia steruje opacity", () => {
+    // Montowana warunkowo wchodzila ze `scrollTop = 0`, wiec w przewinietym
+    // szkicu pierwsza wzmianka siadala o kilka wierszy za wysoko.
+    expect(composer).toContain("<MentionHighlight text={text} bots={state.bots} layerRef={mentionLayerRef} visible={highlightOn} />");
+    expect(composer).not.toContain("{liveMentions && <MentionHighlight");
+    expect(layer).toContain('visible ? "opacity-100" : "opacity-0"');
+  });
+
+  it("IME: przez czas komponowania pole maluje litery samo", () => {
+    expect(composer).toContain("onCompositionStart={() => setComposing(true)}");
+    expect(composer).toContain("onCompositionEnd={() => setComposing(false)}");
+    expect(composer).toContain("const highlightOn = liveMentions && !composing;");
+  });
+
+  it("pole jest `block`, wiec pudelko ma dokladnie jego wysokosc", () => {
+    // textarea jest domyslnie inline-block i zostawiala pod soba 6 px zejscia
+    // linii: rzad composera rosl, a warstwa `inset-0` miala inny zakres
+    // przewijania niz pole (w maks. przewinietym szkicu byla 6 px wyzej).
+    expect(composer).toContain("relative block max-h-64 w-full resize-none");
+  });
+
+  it("pudelko pola ma dolna granice szerokosci", () => {
+    // powyzej 700 px rzad sie nie zawija, wiec samo `min-w-0` pozwalalo
+    // pigulkom scisnac pole dowolnie wasko (blad z 07.09 w innym przebraniu)
+    expect(composer).toContain("min-w-[8rem]");
+  });
+
+  it("zaznaczenie ma jawne tlo — przy przezroczystym tekscie Chrome nie rysuje pasa", () => {
+    const rule = css.slice(css.indexOf("[data-composer-input][data-mentions]::selection"));
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("background: Highlight;");
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("color: HighlightText;");
+  });
+
+  it("na serwer leci surowy tekst pola, nie treść warstwy", () => {
+    expect(composer).toContain("text: text.trim()");
+    expect(layer).not.toContain("setText");
   });
 });

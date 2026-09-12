@@ -27,8 +27,15 @@ describe("drafty composera per bot", () => {
 });
 
 describe("awatar w nagłówku czatu", () => {
-  it("liczy propsy tym samym helperem co szuflada", () => {
-    expect(chat).toContain("sidebarAvatarProps(bot)");
+  it("nie jest animowany na sztywno", () => {
+    expect(chat, "nagłówek wrócił do `animated` bez warunku").not.toMatch(/^\s*animated\s*$/m);
+    expect(chat, "nagłówek znowu odtwarza jednorazowy state.mascotMotion").not.toContain(
+      "state.mascotMotion",
+    );
+  });
+
+  it("liczy propsy helperem, który NIGDY nie animuje (drugi blob obok paska nad composerem to drugi sygnał tej samej tury)", () => {
+    expect(chat).toContain("staticAvatarProps(bot)");
     expect(chat).toContain("animated={headerAvatar.animated}");
   });
 
@@ -209,7 +216,7 @@ describe("małe awatary rozmów botów", () => {
     expect(card).toContain('role="link"');
     expect(card).toContain('size={20}');
     expect(card).toContain('shape="blob"');
-    expect(card).toContain("{...sidebarAvatarProps(bot)}");
+    expect(card).toContain("{...staticAvatarProps(bot)}");
     expect(card).toContain("inline-flex items-center gap-1 rounded-full");
     expect(card).not.toContain("-space-x-1");
     // obwódka hovera nie może być obcinana przez `overflow-hidden` wiersza
@@ -236,7 +243,7 @@ describe("małe awatary rozmów botów", () => {
   it("oddziela avatary nagłówka i nadawcy w temporary chacie", () => {
     expect(roomPanel).toContain("bg-app ring-2 ring-app");
     expect(roomPanel).toContain('shape="blob"');
-    expect(roomPanel).toContain("{...sidebarAvatarProps(bot)}");
+    expect(roomPanel).toContain("{...staticAvatarProps(bot)}");
     expect(roomPanel).not.toContain("state={stateForBot(bot)}");
   });
 });
@@ -305,5 +312,64 @@ describe("seria dymków czatu", () => {
     // `[data-mb-side] [data-mb-bubble]` to selektor POTOMKA: gdyby oba
     // znaczniki wylądowały na jednym elemencie, reguły przestałyby trafiać
     expect(chat, "oba znaczniki na jednym elemencie").not.toMatch(/data-mb-side=[^\n]*data-mb-bubble|data-mb-bubble=[^\n]*data-mb-side/);
+  });
+});
+
+// multibot: nagłówek telefonu chowa akcje bota (w tym komputer) pod jednym
+// `ChatHeaderMenu` zamiast osobnej ikony w rzędzie — desktopowy akcent
+// "computerActing || state.computerOpen" nie ma tu odpowiednika. Osobny
+// przycisk komputera w nagłówku telefonu: do zrobienia, jeśli będzie potrzebny.
+
+// K5: na telefonie „Pobierz" idzie przez most natywny, ale przeglądarka
+// i Electron muszą ZOSTAĆ przy `<a download>` — dlatego link nigdy nie jest
+// zamieniany na przycisk, a `preventDefault()` wisi pod warunkiem z mostu
+// (`openFileViaShell` zwraca tam false; test wykonawczy w lib/nativeBridge.test.ts).
+describe("pobranie pliku przez powłokę telefonu", () => {
+  const card = readFileSync(new URL("./AttachmentCard.tsx", import.meta.url), "utf8");
+  const preview = readFileSync(new URL("./AttachmentPreview.tsx", import.meta.url), "utf8");
+
+  it("zostawia link z download i tylko warunkowo blokuje jego domyślne działanie", () => {
+    for (const source of [card, preview]) {
+      expect(source).toContain("download={name}");
+      expect(source).toContain("if (path && openFileViaShell(path, name, mime ?? \"\")) e.preventDefault();");
+    }
+  });
+
+  it("kafelek HTML wraca do window.open, gdy mostu nie ma", () => {
+    expect(chat).toContain("if (openFileViaShell(path, file.name, file.mime)) return;");
+    expect(chat).toContain("if (url) window.open(url, \"_blank\", \"noopener,noreferrer\");");
+  });
+});
+
+// multibot K2: wzmianka nie może zniknąć w chwili wysłania. Composer koloruje
+// `@Imię` w trakcie pisania; dymek użytkownika leci czystym tekstem, więc bez
+// MentionText wracał tam surowy zapis i chip „gasł" po Enterze.
+describe("wzmianka w wysłanej wiadomości użytkownika", () => {
+  const peerBadge = readFileSync(new URL("./PeerBadge.tsx", import.meta.url), "utf8");
+
+  it("dymek użytkownika renderuje treść przez MentionText, nie gołe {body}", () => {
+    expect(chat).toContain("<MentionText text={body} />");
+    expect(chat).toContain('import { MentionText, PeerBadge } from "./PeerBadge";');
+  });
+
+  it("MentionText używa tego samego tokenizera i tej samej pigułki co reszta", () => {
+    expect(peerBadge).toContain('import { splitMentions } from "@/lib/mentions";');
+    expect(peerBadge).toContain("<BotChip key={index} bot={bot} />");
+    // bez wzmianki zwraca sam tekst — żadnego nowego opakowania w dymku
+    expect(peerBadge).toContain("if (!parts.some((part) => part.name)) return <>{text}</>;");
+  });
+
+  // K2 (recenzja PR #185, p. 9): pigułka w wysłanej wiadomości ma kolor bota,
+  // tak jak ta w composerze. Przepis `--bot`/`--bot-ink` stoi w JEDNYM miejscu.
+  it("pigułka wysłanej wiadomości bierze kolor bota z jednego przepisu", () => {
+    expect(peerBadge).toContain("export function botChipStyle(color?: BotColor): CSSProperties");
+    expect(peerBadge).toContain('"--bot-ink": "color-mix(in oklab, var(--bot) 50%, var(--color-ink))"');
+    expect(peerBadge).toContain("text-[var(--bot-ink)]");
+    expect(peerBadge).toContain("bg-[color-mix(in_oklab,var(--bot)_18%,var(--color-app))]");
+    expect(peerBadge, "pigułka wróciła do szarego bg-raised").not.toContain("bg-raised px-2 py-0.5");
+    // każda droga do pigułki ustawia zmienne — bez nich `color-mix` jest
+    // nieprawidłowy i tekst traci kolor
+    expect(peerBadge).toContain("<span style={botChipStyle(bot.color)} className={cn(BOT_CHIP_CLASS, className)}>");
+    expect(peerBadge).toContain('<span style={botChipStyle()} className={cn(BOT_CHIP_CLASS, "mr-1.5")}>');
   });
 });
