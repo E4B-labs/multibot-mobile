@@ -50,6 +50,9 @@ public class MultibotTlsModule: Module {
     // resource to look for — reaching this module at all means it was built.
     Function("markerPresent") { true }
 
+    // iOS has no Android-style battery-optimization allowlist.
+    Function("isIgnoringBatteryOptimizations") { true }
+
     AsyncFunction("sha256File") { (path: String) -> String in
       let url = path.hasPrefix("file:") ? URL(string: path)! : URL(fileURLWithPath: path)
       return MultibotTlsModule.hex(try Data(contentsOf: url, options: .mappedIfSafe))

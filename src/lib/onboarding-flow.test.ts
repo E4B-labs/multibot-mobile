@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 const screen = readFileSync("src/screens/AddHostScreen.tsx", "utf8");
 const webview = readFileSync("src/screens/WebViewScreen.tsx", "utf8");
+const checklist = readFileSync("src/components/Server247Checklist.tsx", "utf8");
 
 test("QR pairing is gone from the first-run screen", () => {
   for (const dead of ["parseQrPayload", "claimPairing", "CameraView", "pairingCredential", "/api/pair"]) {
@@ -38,6 +39,27 @@ test("setup automates the Termux steps instead of only describing them", () => {
   assert.ok(screen.includes("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"));
   assert.ok(screen.includes("install-termux.sh"));
   assert.match(screen, /LOCAL_PROBE_INTERVAL_MS = 3_000/);
+});
+
+test("24/7 checklist opens every Android recovery screen without new packages", () => {
+  for (const required of [
+    "Serwer 24/7",
+    "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "IGNORE_BATTERY_OPTIMIZATION_SETTINGS",
+    "com.termux",
+    "com.tailscale.ipn",
+    "com.samsung.android.lool",
+    "com.samsung.android.sm",
+    "VPN_SETTINGS",
+    "WIFI_IP_SETTINGS",
+    "WIFI_SETTINGS",
+    "settings_enable_monitor_phantom_procs",
+    "ownAppIgnoresBatteryOptimizations",
+  ]) assert.ok(checklist.includes(required), `checklist is missing ${required}`);
+  assert.ok(webview.includes("120_000"));
+  assert.ok(webview.includes("Telefon niedostępny"));
+  assert.ok(webview.includes("Otwórz Termux"));
+  assert.ok(webview.includes("Server247Checklist"));
 });
 
 test("the WebView bridge carries host.join both ways", () => {

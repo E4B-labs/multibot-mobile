@@ -29,6 +29,8 @@ interface NativeTls {
   setTorSocksPort(port: number): void;
   /** SHA-256 of a file on disk, for checking a downloaded APK before installing. */
   sha256File(path: string): Promise<string>;
+  /** Battery optimization state for this APK's own package. */
+  isIgnoringBatteryOptimizations?(): boolean;
 }
 
 // Absent in Expo Go and in any build made before this module existed. Every
@@ -65,6 +67,11 @@ export function timeoutFor(url: string, direct: number): number {
 
 export function tlsAvailable(): boolean {
   return native !== null;
+}
+
+/** Returns null in Expo Go/old APKs, where this native method does not exist. */
+export function ownAppIgnoresBatteryOptimizations(): boolean | null {
+  return native?.isIgnoringBatteryOptimizations ? native.isIgnoringBatteryOptimizations() : null;
 }
 
 /** SHA-256 of a downloaded file. Throws when the native module is absent, so a

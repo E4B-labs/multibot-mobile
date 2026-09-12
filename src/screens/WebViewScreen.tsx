@@ -15,9 +15,10 @@ import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, openHostFil
 import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from "../lib/hosts";
 import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
-import { forgetServer, prepareTor } from "../lib/tls";
+import { forgetServer, LOCAL_SERVER_URL, prepareTor } from "../lib/tls";
 import { setWebViewProxyFor } from "../lib/tor";
 import { WEBUI_HTML } from "../webui-html";
+import Server247Checklist from "../components/Server247Checklist";
 
 interface Props {
   host: Host;
@@ -203,10 +204,41 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // natywnego paska) to domyślny ekran czatu. Przycisk „‹ Hosts" (collapse)
   // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
   const [expanded, setExpanded] = useState(true);
+  const [server247Open, setServer247Open] = useState(false);
+  const [localServerUnavailable, setLocalServerUnavailable] = useState(false);
 
   // Only `.onion` hosts touch Tor at all; everything else keeps the exact path
   // it had before, including the proxy override being taken back off.
   const onion = useMemo(() => isOnionHost(host.url), [host.url]);
+
+  // A local server can disappear after Termux/Android kills its process while
+  // the bundled WebView stays alive. Keep probing only this phone-local host;
+  // show recovery controls after two minutes of continuous failure.
+  useEffect(() => {
+    if (host.url !== LOCAL_SERVER_URL || !loaded) {
+      setLocalServerUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    let unavailableSince: number | null = null;
+    const check = async () => {
+      const healthy = (await probeServer(LOCAL_SERVER_URL, 8_000)) === "ok";
+      if (cancelled) return;
+      if (healthy) {
+        unavailableSince = null;
+        setLocalServerUnavailable(false);
+        return;
+      }
+      unavailableSince ??= Date.now();
+      if (Date.now() - unavailableSince >= 120_000) setLocalServerUnavailable(true);
+    };
+    void check();
+    const timer = setInterval(() => void check(), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [host.url, loaded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -871,6 +903,33 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
           if (e.nativeEvent.statusCode >= 500) setFailed(`Host answered HTTP ${e.nativeEvent.statusCode}.`);
         }}
       />
+      {host.url === LOCAL_SERVER_URL && !localServerUnavailable && !server247Open ? (
+        <Pressable accessibilityRole="button" style={styles.server247Shortcut} onPress={() => setServer247Open(true)}>
+          <Text style={styles.server247ShortcutText}>24/7</Text>
+        </Pressable>
+      ) : null}
+      {localServerUnavailable && !server247Open ? (
+        <View style={styles.outageBanner}>
+          <Text style={styles.outageTitle}>Telefon niedostępny</Text>
+          <Text style={styles.outageBody}>Termux lub MultiBot nie odpowiada od ponad 2 minut.</Text>
+          <View style={styles.outageActions}>
+            <Pressable
+              style={styles.outageButton}
+              onPress={() => void IntentLauncher.startActivityAsync("android.intent.action.MAIN", { packageName: "com.termux", category: "android.intent.category.LAUNCHER" }).catch(() => Alert.alert("Nie można otworzyć Termuxa", "Otwórz Termux ręcznie."))}
+            >
+              <Text style={styles.outageButtonText}>Otwórz Termux</Text>
+            </Pressable>
+            <Pressable style={styles.outageButton} onPress={() => setServer247Open(true)}>
+              <Text style={styles.outageButtonText}>Lista 24/7</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+      {server247Open ? (
+        <View style={styles.checklistOverlay}>
+          <Server247Checklist embedded={false} onClose={() => setServer247Open(false)} />
+        </View>
+      ) : null}
       {cameraRequest && (
         <View style={styles.cameraOverlay}>
           {cameraPermission?.granted ? (
@@ -951,6 +1010,15 @@ const styles = StyleSheet.create({
   errorHint: { color: "#fcfcfc66", fontSize: 12, textAlign: "center", marginTop: 4 },
   backButton: { marginTop: 12, backgroundColor: "#fcfcfc", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   backButtonText: { color: "#070707", fontWeight: "700" },
+  server247Shortcut: { position: "absolute", top: 12, right: 12, zIndex: 12, backgroundColor: "#070707dd", borderColor: "#38d591", borderRadius: 8, borderWidth: 1, minHeight: 42, justifyContent: "center", paddingHorizontal: 11 },
+  server247ShortcutText: { color: "#38d591", fontSize: 13, fontWeight: "800" },
+  outageBanner: { position: "absolute", top: 16, left: 14, right: 14, zIndex: 30, backgroundColor: "#3b211d", borderColor: "#ff8066", borderWidth: 1, borderRadius: 12, padding: 14, gap: 6 },
+  outageTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  outageBody: { color: "#ffd6cc", fontSize: 13, lineHeight: 18 },
+  outageActions: { flexDirection: "row", gap: 8, marginTop: 4 },
+  outageButton: { backgroundColor: "#fcfcfc", borderRadius: 8, minHeight: 42, justifyContent: "center", paddingHorizontal: 12 },
+  outageButtonText: { color: "#27110d", fontSize: 13, fontWeight: "800" },
+  checklistOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 40, backgroundColor: "#070707" },
   captureOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#070707cc", gap: 10 },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10, backgroundColor: "#070707", padding: 16 },
   cameraPreview: { flex: 1, borderRadius: 18, overflow: "hidden" },
