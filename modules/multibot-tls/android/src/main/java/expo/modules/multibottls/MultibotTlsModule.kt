@@ -1,5 +1,7 @@
 package expo.modules.multibottls
 
+import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -38,6 +40,11 @@ class MultibotTlsModule : Module() {
 
     /** False means the prebuild patches are missing and the WebView refuses every server. */
     Function("markerPresent") { markerPresent() }
+
+    Function("isIgnoringBatteryOptimizations") {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) true
+      else (context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true)
+    }
 
     AsyncFunction("probeFingerprint") { url: String, timeoutMs: Int, socksPort: Int ->
       MultibotTls.probeFingerprint(url, timeoutMs, socksPort)

@@ -18,6 +18,7 @@ import { forgetRemembered, readRemembered, rememberServer, saveHost, type Rememb
 import { joinErrorField, joinErrorMessage, loginErrorMessage, type JoinErrorCode, type JoinField, type LoginErrorCode } from "../lib/join";
 import { installTermux } from "../lib/mobile-release";
 import { forgetServer, joinHost, LOCAL_SERVER_URL, probeLocalServer, signInRemembered } from "../lib/tls";
+import Server247Checklist from "../components/Server247Checklist";
 
 interface Props {
   onDone: (host: Host, fragment?: string) => void;
@@ -48,6 +49,7 @@ export default function AddHostScreen({ onDone }: Props) {
   const [remember, setRemember] = useState(true);
   const [saved, setSaved] = useState<RememberedEntry | null>(null);
   const [savedError, setSavedError] = useState<string | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
 
   // A `.onion` address has to wait for Tor to build a circuit before anything
   // else happens, so the button says so instead of spinning silently for half a
@@ -301,6 +303,12 @@ export default function AddHostScreen({ onDone }: Props) {
                 </Text>
               </View>
             )}
+            {Platform.OS === "android" ? (
+              <Pressable style={styles.card} disabled={busy} onPress={() => { setMode("termux"); setShowChecklist(true); }}>
+                <Text style={styles.cardTitle}>Server 24/7</Text>
+                <Text style={styles.cardBody}>Open Android recovery checklist for battery, Samsung sleep rules, Tailscale VPN, Wi‑Fi and phantom processes.</Text>
+              </Pressable>
+            ) : null}
             <Pressable style={styles.card} disabled={busy} onPress={() => setMode("signin")}>
               <Text style={styles.cardTitle}>Sign in to a server</Text>
               <Text style={styles.cardBody}>
@@ -344,12 +352,20 @@ export default function AddHostScreen({ onDone }: Props) {
             <Text style={styles.hint}>
               On Android 12 and 13 the phantom process killer stops the server after a while; clearing that needs a one-off adb command from a computer.
             </Text>
+            <Pressable style={styles.secondaryButton} disabled={busy} onPress={() => setShowChecklist(true)}>
+              <Text style={styles.secondaryButtonText}>Open Server 24/7 checklist</Text>
+            </Pressable>
 
             {busy ? <ActivityIndicator color="#fcfcfc" style={styles.cardSpinner} /> : null}
             {notice ? <Text style={styles.notice}>{notice}</Text> : null}
             <Pressable style={styles.linkButton} onPress={() => setMode("choice")}>
               <Text style={styles.linkText}>Back</Text>
             </Pressable>
+            {showChecklist ? (
+              <View style={styles.checklistOverlay}>
+                <Server247Checklist embedded={false} onClose={() => setShowChecklist(false)} />
+              </View>
+            ) : null}
           </View>
         )}
 
@@ -485,4 +501,5 @@ const styles = StyleSheet.create({
   secondaryButtonText: { color: "#fcfcfc", fontSize: 15, fontWeight: "600" },
   linkButton: { alignItems: "center", justifyContent: "center", marginTop: 14, minHeight: 44 },
   linkText: { color: "#fcfcfc99", fontSize: 14 },
+  checklistOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "#070707", zIndex: 40 },
 });
