@@ -19,6 +19,20 @@ describe("banerka wygasłego logowania", () => {
     expect(LOGIN_EXPIRED_PREFIX).toBe("Login expired for ");
   });
 
+  // multibot: karta w transkrypcie — ten sam przycisk co banerka, a serwer
+  // dopisuje ją tam, gdzie tura padła, i gasi po udanym logowaniu.
+  it("karta w czacie jedzie tym samym przyciskiem co banerka i ma stan „zalogowano ponownie”", () => {
+    const card = read("./AuthExpiredBanner.tsx");
+    expect(card).toContain("export function LoginExpiredCard");
+    expect(card).toContain('dispatch({ type: "toggleAppSettings", open: true, cliLogin: tool })');
+    expect(card).toContain('"Odśwież logowanie" : "Refresh login"');
+    expect(card).toContain('"Otwórz ustawienia" : "Open settings"');
+    expect(card).toContain('"Zalogowano ponownie" : "Signed in again"');
+    expect(read("./ChatView.tsx")).toContain('case "login":');
+    // Serwer (`server/index.ts`, karta i wygaszanie po zalogowaniu) żyje w
+    // repo desktopowym — mobile nie ma katalogu `server/`, parzystość pilnuje ono.
+  });
+
   it("nie porywa innych powodów czekania", () => {
     expect(expiredLoginTool("Captcha przy logowaniu do Gmaila")).toBeNull();
     expect(expiredLoginTool(null)).toBeNull();

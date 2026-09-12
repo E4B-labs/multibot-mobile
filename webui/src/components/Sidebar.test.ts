@@ -87,12 +87,13 @@ describe("sidebar avatar", () => {
   const bot = (over: Partial<Bot>): Bot =>
     ({ id: "b1", name: "Bot", color: "#fff", messages: [], ...over }) as Bot;
 
-  // Jeden animowany bot na cala aplikacje stoi na pasku nad composerem, wiec
-  // pasek boczny nie rusza sie NIGDY — takze pod bota w trakcie tury.
-  it("freezes every bot, busy or not", () => {
+  // Od portu desktopu 12.09: roster animuje TYLKO zywy stan (pracuje, mysli,
+  // czeka na czlowieka) — bezczynny bot stoi. Pasek nad composerem ma
+  // wlasna, oddzielna regule (mascotStatic.test.ts).
+  it("idle bot stands still, busy bot animates", () => {
     const still = { state: "idle", motion: "none", animated: false, motionKey: 0 };
     expect(sidebarAvatarProps(bot({ busy: false }))).toEqual(still);
-    expect(sidebarAvatarProps(bot({ busy: true }))).toEqual(still);
+    expect(sidebarAvatarProps(bot({ busy: true })).animated).toBe(true);
   });
 });
 
@@ -100,11 +101,9 @@ describe("sidebar group row avatars", () => {
   const member = (over: Partial<Bot>): Bot =>
     ({ id: "m1", name: "Member", color: "#fff", messages: [], ...over }) as Bot;
 
-  it("freezes group members too", () => {
+  it("group members follow the same rule as a single bot avatar", () => {
     expect(groupMemberAvatarProps(member({ busy: false })).animated).toBe(false);
-    expect(groupMemberAvatarProps(member({ busy: true })).animated).toBe(false);
-    expect(groupMemberAvatarProps(member({ busy: true })).motion).toBe("none");
-    expect(groupMemberAvatarProps(member({ busy: true })).state).toBe("idle");
+    expect(groupMemberAvatarProps(member({ busy: true })).animated).toBe(true);
   });
 
   it("keeps each member's own avatar shape and photo", () => {

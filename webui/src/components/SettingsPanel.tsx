@@ -1,4 +1,4 @@
-import { ChevronLeft, ImagePlus, Pencil, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Pencil, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore, type Bot } from "@/state/store";
@@ -16,6 +16,7 @@ import { MASCOT_SHAPES } from "@/lib/mascotShapes";
 import { Spinner } from "./Loading";
 import { openBotPicker } from "@/lib/mobileNavigation";
 import { SidePanel } from "./ResizablePanel";
+import { UsagePanel } from "./UsagePanel";
 
 function Field({
   label,
@@ -151,6 +152,10 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   const [query, setQuery] = useState("");
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("closed");
   const appearanceSelected = (mode: AppearanceMode) => appearanceMode === mode;
+  // multibot: „Zużycie" zajmuje ten sam slot co ustawienia (własny SidePanel
+  // z własną zapamiętaną szerokością), a „Wstecz" wraca tutaj. Bez nowej flagi
+  // w sklepie — panel jest dostępny wyłącznie stąd.
+  const [usageOpen, setUsageOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +168,13 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       const match = !needle || (card.textContent ?? "").toLocaleLowerCase().includes(needle);
       (card as HTMLElement).style.display = match ? "" : "none";
     }
-  }, [query, appearanceMode]);
+    // `usageOpen` w zależnościach, bo powrót z „Zużycia" montuje te karty od
+    // nowa (wczesne wyjście niżej) — bez tego wpisane szukanie przestawało
+    // filtrować, choć w polu dalej stał tekst.
+  }, [query, appearanceMode, usageOpen]);
+  // Przełączenie bota przy otwartym „Zużyciu" wraca do ustawień — inaczej
+  // otwierasz ustawienia innego bota i widzisz od razu jego licznik.
+  useEffect(() => setUsageOpen(false), [bot.id]);
   const patch = (
     p: Partial<
       Pick<Bot, "name" | "title" | "description" | "notifications" | "color" | "mascotExpression" | "mascotShape" | "avatarUrl">
@@ -186,6 +197,10 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  // `key` = świeży panel per bot: bez tego odpowiedź poprzedniego bota po
+  // szybkim przełączeniu wpisałaby się do panelu nowego.
+  if (usageOpen) return <UsagePanel key={bot.id} bot={bot} onBack={() => setUsageOpen(false)} />;
 
   const panel = (
     <SidePanel
@@ -400,6 +415,20 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
 
           {/* multibot: workspace controls apply to every provider. Bot-to-bot
               delegation is automatic; no per-bot switch exists. */}
+          <button
+            type="button"
+            onClick={() => setUsageOpen(true)}
+            className="flex w-full items-center justify-between gap-4 rounded-xl bg-card p-3 text-left hover:bg-raised"
+          >
+            <div>
+              <div className="text-[14px] font-medium text-ink">{polish ? "Zużycie" : "Usage"}</div>
+              <div className="mt-0.5 text-[12px] text-ink-secondary">
+                {polish ? "Tokeny i tury zużyte przez tego bota" : "Tokens and turns this bot has used"}
+              </div>
+            </div>
+            <ChevronRight size={16} className="shrink-0 text-ink-secondary" />
+          </button>
+
           <EngineAutonomy key={`autonomy-${bot.id}`} bot={bot} />
 
           <div className="flex items-center justify-between gap-4 rounded-xl bg-card p-4">
