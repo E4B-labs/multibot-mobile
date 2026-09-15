@@ -41,7 +41,16 @@
 // nowe funkcje z THEIRS. Pliki, w których OURS nie różni się od BASE, można
 // przepisać wprost — telefon ich nie ruszał.
 //
-// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `45ca87b8` w repo
+// BAZA DLA NASTĘPNEJ SYNCHRONIZACJI: commit `f3847779` w repo `multibot-desktop`
+// (wciągnięta tutaj 2026-09-15: pomiar startu aplikacji — `lib/startupTiming.ts`,
+// znaczniki `js-start`/`events-open`/`bots-rendered`, sekcja „Start aplikacji"
+// w AppSettingsPanel, POST /api/client-timing z listy botów; plus tytuł paska
+// maskotki nad composerem mówi teraz co bot robi TERAZ, nie samą nazwę —
+// desktop trzyma ten pasek w osobnym `absolute` divie, telefon ma własny
+// w toku dokumentu od 0.5.26, więc port dołożył tylko `title={doing ?? ...}`
+// do mobilnej wersji; `catalogTimer` desktopu (odpytywanie /api/instances co
+// 12h) świadomie POMINIĘTY — telefon nigdy go nie miał).
+// Poprzednia baza: `45ca87b8` w repo
 // `multibot-desktop` (wciągnięta tutaj 2026-09-12: K2 podświetlenie wzmianek
 // w composerze, panel „Zużycie" per bot, karta zgody z notą przed kliknięciem,
 // karta zatwierdzenia, awatar rostera = stan+co teraz robi, ekran Zużycia,
