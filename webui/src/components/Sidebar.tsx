@@ -1,4 +1,5 @@
 import { track } from "@/lib/analytics";
+import { markStartup } from "@/lib/startupTiming";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1001,6 +1002,10 @@ function GroupCreateSheet({
 
 export function Sidebar() {
   const { state, dispatch } = useStore();
+  // multibot: lista botów właśnie się narysowała (efekt leci po commicie).
+  useEffect(() => {
+    if (state.hydrated) markStartup("bots-rendered");
+  }, [state.hydrated]);
   const polish = useLanguage() === "pl";
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);

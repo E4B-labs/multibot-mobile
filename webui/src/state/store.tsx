@@ -16,6 +16,7 @@ import type { BotColor, BotMotion, RuntimeKind, RuntimePhase } from "@/lib/masco
 import type { AutoVerifySettings } from "@/lib/autoVerifyTypes";
 import { BOT_COLORS } from "@/lib/mascot";
 import { authFetch, authenticatedEventSource } from "@/lib/auth";
+import { markStartup, onStartupReady } from "@/lib/startupTiming";
 import { getLanguage } from "@/lib/language";
 import { botDisplayName } from "@/lib/botNames";
 import {
@@ -1167,9 +1168,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .catch(() => {});
     };
     loadAll();
+    // multibot: raport startu leci na serwer raz — ląduje w client-timing.jsonl,
+    // żeby dało się porównać starty z telefonu i z drugiego miasta.
+    onStartupReady((report) => {
+      api("/api/client-timing", { method: "POST", body: JSON.stringify(report) }).catch(() => {});
+    });
 
     const es = authenticatedEventSource(`/api/events?lang=${getLanguage()}`);
     es.onopen = () => {
+      markStartup("events-open");
       rawDispatch({ type: "connected", value: true });
       loadAll(); // resync anything missed while disconnected
     };
