@@ -56,7 +56,7 @@ test("24/7 checklist opens every Android recovery screen without new packages", 
     "settings_enable_monitor_phantom_procs",
     "ownAppIgnoresBatteryOptimizations",
   ]) assert.ok(checklist.includes(required), `checklist is missing ${required}`);
-  assert.ok(webview.includes("120_000"));
+  assert.ok(webview.includes("reviveStep"));
   assert.ok(webview.includes("Telefon niedostępny"));
   assert.ok(webview.includes("Otwórz Termux"));
   assert.ok(webview.includes("Server247Checklist"));

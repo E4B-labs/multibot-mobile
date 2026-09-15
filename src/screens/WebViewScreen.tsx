@@ -9,6 +9,7 @@ import { Directory, File as CacheFile, Paths } from "expo-file-system";
 // dokładnie tak samo robi `downloadAndInstallApk` w lib/mobile-release.ts.
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as SecureStore from "expo-secure-store";
 import * as Updates from "expo-updates";
 
 import { buildBootstrap, isOnionHost, isPrivateLanUrl, isTailnetUrl, openHostFile, probeServer, rememberedEntryOf, shouldReloadOnResume, type AppInfo, type Host } from "../lib/host-logic";
@@ -16,6 +17,7 @@ import { forgetRemembered, getHostToken, readRemembered, rememberProfile } from 
 import { joinErrorMessage, loginErrorMessage, type JoinErrorCode, type LoginErrorCode } from "../lib/join";
 import { requestPushPermission } from "../lib/push";
 import { forgetServer, LOCAL_SERVER_URL, prepareTor } from "../lib/tls";
+import { AUTO_REVIVE_KEY, bumpAutoRevives, INITIAL_REVIVE_STATE, nextProbeDelay, reviveLaunchFailed, revivePhase, reviveStep, type RevivePhase } from "../lib/serverRevive";
 import { setWebViewProxyFor } from "../lib/tor";
 import { WEBUI_HTML } from "../webui-html";
 import Server247Checklist from "../components/Server247Checklist";
@@ -62,6 +64,11 @@ const ONION_LOAD_TIMEOUT_MS = 90_000;
 // cover the bootstrap as well as the trip through it. 45 s used to be enough
 // only because nothing dialled anything until the circuit already existed.
 const ONION_PROBE_TIMEOUT_MS = 90_000;
+
+// Starting the Termux activity is what revives a killed server: Termux's shell
+// startup runs runit, which brings `multibot` back in about 25 s.
+const launchTermux = () =>
+  IntentLauncher.startActivityAsync("android.intent.action.MAIN", { packageName: "com.termux", category: "android.intent.category.LAUNCHER" });
 
 // Anything running in this WebView can call `postMessage`, including a frame the
 // page embeds (the bot-computer noVNC view is one). The privileged messages —
@@ -205,38 +212,57 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
   // przywraca natywny pasek. Toggled, nie auto, bo WebView nie zgłasza scrolla.
   const [expanded, setExpanded] = useState(true);
   const [server247Open, setServer247Open] = useState(false);
-  const [localServerUnavailable, setLocalServerUnavailable] = useState(false);
+  const [outagePhase, setOutagePhase] = useState<RevivePhase>("hidden");
 
   // Only `.onion` hosts touch Tor at all; everything else keeps the exact path
   // it had before, including the proxy override being taken back off.
   const onion = useMemo(() => isOnionHost(host.url), [host.url]);
 
-  // A local server can disappear after Termux/Android kills its process while
-  // the bundled WebView stays alive. Keep probing only this phone-local host;
-  // show recovery controls after two minutes of continuous failure.
+  // A local server can disappear after Android kills Termux while the bundled
+  // WebView stays alive (LOW_MEMORY, 2026-09-14: no reboot, so Termux:Boot
+  // never ran). Starting the Termux activity is enough to bring it back, so the
+  // shell does that itself: see the machine in lib/serverRevive.ts. Only this
+  // phone-local host is probed.
   useEffect(() => {
     if (host.url !== LOCAL_SERVER_URL || !loaded) {
-      setLocalServerUnavailable(false);
+      setOutagePhase("hidden");
       return;
     }
     let cancelled = false;
-    let unavailableSince: number | null = null;
-    const check = async () => {
+    let inFlight = false;
+    let state = INITIAL_REVIVE_STATE;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = async (resumed = false) => {
+      if (inFlight) return;
+      inFlight = true;
+      if (timer) clearTimeout(timer);
       const healthy = (await probeServer(LOCAL_SERVER_URL, 8_000)) === "ok";
       if (cancelled) return;
-      if (healthy) {
-        unavailableSince = null;
-        setLocalServerUnavailable(false);
-        return;
+      const next = reviveStep(state, { healthy, now: Date.now(), resumed });
+      state = next.state;
+      if (next.launch) {
+        try {
+          await launchTermux();
+          const raw = await SecureStore.getItemAsync(AUTO_REVIVE_KEY).catch(() => null);
+          await SecureStore.setItemAsync(AUTO_REVIVE_KEY, bumpAutoRevives(raw, Date.now())).catch(() => undefined);
+        } catch {
+          state = reviveLaunchFailed(state);
+        }
+        if (cancelled) return;
       }
-      unavailableSince ??= Date.now();
-      if (Date.now() - unavailableSince >= 120_000) setLocalServerUnavailable(true);
+      const phase = revivePhase(state, Date.now());
+      setOutagePhase(phase);
+      inFlight = false;
+      timer = setTimeout(() => void check(), nextProbeDelay(state, Date.now()));
     };
     void check();
-    const timer = setInterval(() => void check(), 30_000);
+    // Back from the background: probe now, and if the server is already gone,
+    // wake Termux at once instead of waiting out the first 60 s.
+    const subscription = AppState.addEventListener("change", (next) => next === "active" && void check(true));
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
+      subscription.remove();
     };
   }, [host.url, loaded]);
 
@@ -903,26 +929,32 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
           if (e.nativeEvent.statusCode >= 500) setFailed(`Host answered HTTP ${e.nativeEvent.statusCode}.`);
         }}
       />
-      {host.url === LOCAL_SERVER_URL && !localServerUnavailable && !server247Open ? (
+      {host.url === LOCAL_SERVER_URL && outagePhase === "hidden" && !server247Open ? (
         <Pressable accessibilityRole="button" style={styles.server247Shortcut} onPress={() => setServer247Open(true)}>
           <Text style={styles.server247ShortcutText}>24/7</Text>
         </Pressable>
       ) : null}
-      {localServerUnavailable && !server247Open ? (
+      {outagePhase !== "hidden" && !server247Open ? (
         <View style={styles.outageBanner}>
-          <Text style={styles.outageTitle}>Telefon niedostępny</Text>
-          <Text style={styles.outageBody}>Termux lub MultiBot nie odpowiada od ponad 2 minut.</Text>
-          <View style={styles.outageActions}>
-            <Pressable
-              style={styles.outageButton}
-              onPress={() => void IntentLauncher.startActivityAsync("android.intent.action.MAIN", { packageName: "com.termux", category: "android.intent.category.LAUNCHER" }).catch(() => Alert.alert("Nie można otworzyć Termuxa", "Otwórz Termux ręcznie."))}
-            >
-              <Text style={styles.outageButtonText}>Otwórz Termux</Text>
-            </Pressable>
-            <Pressable style={styles.outageButton} onPress={() => setServer247Open(true)}>
-              <Text style={styles.outageButtonText}>Lista 24/7</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.outageTitle}>
+            {outagePhase === "recovered" ? "Serwer wrócił" : outagePhase === "waking" ? "Serwer padł, budzę Termux..." : "Telefon niedostępny"}
+          </Text>
+          {outagePhase === "manual" ? (
+            <>
+              <Text style={styles.outageBody}>Termux lub MultiBot nie odpowiada, automatyczne budzenie nie pomogło. Otwórz Termux ręcznie albo sprawdź listę 24/7.</Text>
+              <View style={styles.outageActions}>
+                <Pressable
+                  style={styles.outageButton}
+                  onPress={() => void launchTermux().catch(() => Alert.alert("Nie można otworzyć Termuxa", "Otwórz Termux ręcznie."))}
+                >
+                  <Text style={styles.outageButtonText}>Otwórz Termux</Text>
+                </Pressable>
+                <Pressable style={styles.outageButton} onPress={() => setServer247Open(true)}>
+                  <Text style={styles.outageButtonText}>Lista 24/7</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
         </View>
       ) : null}
       {server247Open ? (
