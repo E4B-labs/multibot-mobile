@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as SecureStore from "expo-secure-store";
+import { AUTO_REVIVE_KEY, formatAutoRevives, parseAutoRevives, type AutoRevives } from "../lib/serverRevive";
 import { ownAppIgnoresBatteryOptimizations } from "../lib/tls";
 
 const SELF_PACKAGE = "com.multibot2.mobile";
@@ -17,8 +19,12 @@ export default function Server247Checklist({ onClose, embedded = true }: Props) 
   const [ownBattery, setOwnBattery] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [autoRevives, setAutoRevives] = useState<AutoRevives>({ count: 0, last: null });
 
   const refresh = useCallback(() => {
+    void SecureStore.getItemAsync(AUTO_REVIVE_KEY)
+      .catch(() => null)
+      .then((raw) => setAutoRevives(parseAutoRevives(raw)));
     try {
       setOwnBattery(Platform.OS === "android" ? ownAppIgnoresBatteryOptimizations() : true);
     } catch {
@@ -99,6 +105,7 @@ export default function Server247Checklist({ onClose, embedded = true }: Props) 
         <Text style={styles.section}>Po restarcie telefonu</Text>
         <Text style={styles.hint}>Otwórz Termux:Boot raz. Wyłącz Samsung → Konserwacja urządzenia → Automatyczny restart. Zostaw wakelock Termuxa aktywny.</Text>
         {button("termux", "Otwórz Termux", () => openIntent("android.intent.action.MAIN", { packageName: "com.termux", category: "android.intent.category.LAUNCHER" }))}
+        <Text style={styles.hint}>{formatAutoRevives(autoRevives)}</Text>
 
         <Text style={styles.section}>Android 12+ — jednorazowo przez ADB</Text>
         <Text selectable style={styles.command}>{ADB_COMMAND}</Text>
