@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "MultiBot Mobile",
-    "slug": "multibot2-mobile",
+    "name": "MultiBot",
+    "slug": "multibot-app-mobile",
     "scheme": "multibot",
-    "version": "0.5.2",
-    "runtimeVersion": "1.6.0",
+    "version": "0.13.0",
+    "runtimeVersion": "1.0.0",
     "platforms": [
       "android",
       "ios"
@@ -12,15 +12,8 @@
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070707",
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.multibot2.mobile",
-      "infoPlist": {
-        "NSCameraUsageDescription": "Take a photo to attach it to a message."
-      }
-    },
     "android": {
-      "package": "com.multibot2.mobile",
+      "package": "com.e4blabs.multibotapp",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -51,14 +44,13 @@
       "expo-notifications",
       "./plugins/with-tls-pinning.js"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.e4blabs.multibotapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take a photo to attach it to a message."
       }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/ddb5cfa5-d72e-419f-acb7-e7c2dcddce14"
-    },
-    "icon": "./assets/icon.png"
+    }
   }
 }

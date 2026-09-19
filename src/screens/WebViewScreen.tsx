@@ -19,7 +19,6 @@ import { requestPushPermission } from "../lib/push";
 import { forgetServer, LOCAL_SERVER_URL, prepareTor } from "../lib/tls";
 import { AUTO_REVIVE_KEY, bumpAutoRevives, INITIAL_REVIVE_STATE, nextProbeDelay, reviveLaunchFailed, revivePhase, reviveStep, type RevivePhase } from "../lib/serverRevive";
 import { setWebViewProxyFor } from "../lib/tor";
-import { WEBUI_HTML } from "../webui-html";
 import Server247Checklist from "../components/Server247Checklist";
 
 interface Props {
@@ -815,12 +814,12 @@ export default function WebViewScreen({ host, botId, fragment, onBack, onBotVisi
         ref={webRef}
         key={attempt}
         setBuiltInZoomControls={false}
-        // Interfejs jedzie z paczki aplikacji, nie z serwera. `baseUrl` nadaje
-        // dokumentowi origin hosta, dzięki czemu względne wywołania `/api/...`
-        // i WebSockety w środku interfejsu trafiają tam, gdzie trzeba.
-        // Skutek praktyczny: zmiana wyglądu idzie przez `eas update`, bez
-        // wgrywania czegokolwiek na serwer MultiBota.
-        source={{ html: WEBUI_HTML, baseUrl: host.url.replace(/\/$/, "") }}
+        // multibot-app: renderer is served BY the harness itself (static:true),
+        // so the document loads straight from the host origin — no inlined
+        // bundle, no baseUrl trick. Same TLS pin (plugins/with-tls-pinning.js)
+        // trusts the document load, not just fetch: the native module patches
+        // the OkHttp client react-native-webview shares with RN's own fetch.
+        source={{ uri: host.url }}
         injectedJavaScriptBeforeContentLoaded={bootstrap}
         // The bridge nonce must not leak into an embedded frame (the
         // bot-computer noVNC view is one), which is what makes the check worth
